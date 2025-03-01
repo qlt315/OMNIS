@@ -1,6 +1,6 @@
 import warnings
-from action_space import ActionSpace
-from util import acq_max
+from omnis.action_space import ActionSpace
+from omnis.util import acq_max
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 

@@ -1,126 +1,61 @@
-import cbo
-import util
 import numpy as np
 from scipy.special import erf
-from sklearn.gaussian_process.kernels import Matern, WhiteKernel
 import random
 import cvxpy as cp
-import pandas as pd
 import matplotlib.pyplot as plt
+from sys_data.config import Config
 
 seed = 42
 np.random.seed(seed)
 
 
-class OMNIS:
+class RSS:
     def __init__(self):
         """Initialize system parameters including models, devices, and users."""
-        self.models = [
-            {'name': f'{q}{c}', 'quant_method': q, 'quant_channel': c}
-            for q, c in [('Box', 3), ('Box', 6), ('Box', 12), ('Standard', 3), ('Standard', 6), ('Standard', 12)]
-        ]
+        self.name = "rss"
+        config = Config()
+        self.models = config.models
+        self.data_size = config.data_size
+        self.head_flops = config.head_flops
+        self.tail_flops = config.tail_flops
+        self.users = config.users
+        self.md_params = config.md_params
+        self.time_slot_num = config.time_slot_num
+        self.user_num = config.user_num
+        self.es_params = config.es_params
+        self.available_coding_rate = config.available_coding_rate
+        self.fixed_delay = config.fixed_delay
+        self.fixed_energy = config.fixed_energy
+        self.fixed_energy_weight = config.fixed_energy_weight
+        self.instant_metrics = config.instant_metrics
+        self.total_bandwidth = config.total_bandwidth
+        self.est_err = config.est_err
+        self.noise_power_dBm = config.noise_power_dBm
+        self.noise_power = config.noise_power
+        self.acc_data = config.acc_data
+        self.bcd_flag = config.bcd_flag
+        self.bcd_max_iter = config.bcd_max_iter
+        self.average_metrics = config.average_metrics
+        self.rewards_history = config.rewards_history
 
-        # Define fixed data sizes for each model
-        self.data_size = {
-            'Box3': 6e3, 'Box6': 13.62e3, 'Box12': 33.58e3,
-            'Standard3': 11.23e3, 'Standard6': 22.46e3, 'Standard12': 44.93e3
-        }
 
-        # Define fixed FLOPs for head and tail (as dictionaries)
-        self.head_flops = {'Box3': 5e10, 'Box6': 1e10, 'Box12': 1.5e10, 'Standard3': 6e10, 'Standard6': 1.1e10,
-                           'Standard12': 1.4e9}
-        self.tail_flops = {'Box3': 1.2e10, 'Box6': 1.3e10, 'Box12': 1.8e10, 'Standard3': 1.5e10, 'Standard6': 1.8e10,
-                           'Standard12': 2.0e10}
-
-        # Initialize parameters for each user with random values within specified ranges
-        self.time_slot_num = 300
-        self.user_num = 5
-        self.users = [f'user_{i + 1}' for i in range(self.user_num)]
-        self.md_params = {user: {
-            'freq': np.random.uniform(0.8, 1),  # Frequency range between 800 MHz and 1000 MHz
-            'cores': np.random.randint(100, 200),  # Number of cores between 100 and 200
-            'flops_per_cycle': np.random.randint(1, 5),  # FLOPs per cycle between 1 and 5
-            'power_coeff': np.random.uniform(0.1, 0.3),  # Power coefficient between 0.1 and 0.3
-            'trans_power': 0.1
-        } for user in self.users}
-        self.es_params = {'freq': 1.5, 'cores': 2048, 'flops_per_cycle': 2, 'power_coeff': 0.7}
-
-        # Initialize a dictionary to store selected channel coding rates for each user
-        self.available_coding_rate = [1, 1 / 2, 1 / 5]
-
-        self.fixed_delay = {user: np.random.uniform(0.005, 0.01) for user in self.users}
-        self.fixed_energy = {user: np.random.uniform(0.5, 2.0) for user in self.users}
-        self.fixed_energy_weight = {user: np.random.uniform(0.3, 0.7) for user in self.users}
-
-        self.total_bandwidth = 1e6
-        self.modulation = 'bpsk'
-        self.est_err = 0.5
-        # Calculate AWGN noise power
-        self.noise_power_dBm = -174 + 10 * np.log10(self.total_bandwidth)  # Noise power in dBm
-        self.noise_power = 10 ** (self.noise_power_dBm / 10 - 3)  # Convert to Watts
-
-        self.bcd_flag = 10e-5
-        self.bcd_max_iter = 30
-
-        self.acc_data = pd.read_csv("sys_data/acc_data/fitted_acc_data.csv")
-        self.rewards_history = {user: [] for user in self.users}
-
-        # Initialize GP models for each user
-        self.action = {"model": np.array([0, 1, 2, 3, 4, 5])}
-        contexts = {
-            'delay_constraint': '',
-            'energy_constraint': '',
-            'transmission_rate': '',
-            "energy_weight": '',
-            "delay_weight": ''
-        }
-        self.action_dim = len(self.action)
-        self.context_dim = len(contexts)
-
-        # GP kernel settings
-        self.length_scale = np.ones(self.context_dim + self.action_dim)
-        self.kernel = WhiteKernel(noise_level=1) + Matern(nu=1.5, length_scale=self.length_scale)
-
-        self.noise = 1e-6
-        self.beta_function = 'const'
-        self.beta_const_val = 2.5
-
-        # Create an optimizer for each user
-        self.optimizers = {
-            user: cbo.ContextualBayesianOptimization(
-                all_actions_dict=self.action,
-                contexts=contexts,
-                kernel=self.kernel
-            ) for user in self.users
-        }
-        self.res_dic = {}
-        # Utility function (shared among users)
-        self.utility = util.UtilityFunction(kind="ucb", beta_kind=self.beta_function, beta_const=self.beta_const_val)
 
     def generate_tasks(self, time_slot):
-        """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
-        # task_dic = {
-        #     user: {
-        #         "delay_constraint": self.fixed_delay[user],
-        #         "energy_constraint": self.fixed_energy[user],
-        #         "energy_weight": self.fixed_energy_weight[user],
-        #     }
-        #     for user in self.users
-        # }
+            """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
 
-        task_dic = {
-            user: {
-                "delay_constraint": self.fixed_delay[user] + np.random.uniform(-0.001, 0.001),
-                "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.1, 0.1),
-                "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.05, 0.05),
+            task_dic = {
+                user: {
+                    "delay_constraint": self.fixed_delay[user] + np.random.uniform(-0.001, 0.001),
+                    "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.1, 0.1),
+                    "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.05, 0.05),
+                }
+                for user in self.users
             }
-            for user in self.users
-        }
 
-        for user in self.users:
-            task_dic[user]["delay_weight"] = 1 - task_dic[user]["energy_weight"]
+            for user in self.users:
+                task_dic[user]["delay_weight"] = 1 - task_dic[user]["energy_weight"]
 
-        return task_dic
+            return task_dic
 
     def observe_context(self, task_dic, trans_rate_dic):
         """Observe the current context as continuous variables."""
@@ -136,32 +71,25 @@ class OMNIS:
         }
         return context_dic
 
-    def model_selection(self, context_dic):
-        """Select the best model for each user using UCB-based Gaussian Process (GP)."""
 
-        model_selection_dic = {}  # Dictionary to store the best model for each user
+    def model_selection(self):
+        """Randomly select a model for each user."""
+
+        model_selection_dic = {}  # Dictionary to store the selected model for each user
 
         for user in self.users:
-            context_m = context_dic[user]
-            optimizer_m = self.optimizers[user]
-            action_m = optimizer_m.suggest(context_m, self.utility)
-            selected_model_m = action_m['model']
+            # Randomly select a model index for each user
+            selected_model_index = random.randint(0, len(self.models) - 1)
+
+            # Store the selected model name for the user
             model_selection_dic[user] = {
-                "model": self.models[selected_model_m]["name"],  # Best model name
+                "model": self.models[selected_model_index]["name"],  # Randomly selected model name
             }
-        return model_selection_dic  # Return the best model for all users
 
-    def update_gp(self, context_dic, model_selection_dic, reward_dic):
-        """Update the GP model with new observations."""
-        for user in self.users:
-            optimizer_m = self.optimizers[user]
-            context_m = context_dic[user]
-            model_m = model_selection_dic[user]['model']
-            action_m = next((index for index, model in enumerate(self.models) if model['name'] == model_m), None)
-            action_dic_m = {'model': action_m}
-            reward_m = reward_dic[user]
-            optimizer_m.register(context_m, action_dic_m, reward_m)
-            self.res_dic[user] = optimizer_m.res
+        return model_selection_dic  # Return the model selected for all users
+
+
+
 
     def get_reward(self, task_dic, acc_dic, total_overhead_dic):
         """Compute the reward of MDs based on accuracy and penalty terms."""
@@ -430,7 +358,7 @@ class OMNIS:
         """Apply moving average to smooth the data."""
         return np.convolve(data, np.ones(window_size) / window_size, mode='valid')
 
-    def show_reward(self, reward_history):
+    def show_reward(self):
         """Smooth and plot the rewards history for each MD."""
         window_size = 20
         for user in self.rewards_history:
@@ -453,11 +381,81 @@ class OMNIS:
         # Show the plot
         plt.show()
 
+    def show_metrics(self):
+        """Plot the latency, energy consumption, and accuracy for all users over time slots."""
+        slots = np.arange(1, self.time_slot_num + 1)  # X-axis: Time slot index
+
+        fig, axes = plt.subplots(3, 1, figsize=(10, 14))
+
+        # Plot latency for all users
+        for user in self.users:
+            axes[0].plot(slots, self.instant_metrics[user]["delay"], label=f"User {user}")
+        axes[0].set_ylabel("Latency (ms)")
+        axes[0].set_xlabel("Time Slot")
+        axes[0].set_title("Latency Over Time Slots for All Users")
+        axes[0].legend()
+        axes[0].grid(True)
+
+        # Plot energy consumption for all users
+        for user in self.users:
+            axes[1].plot(slots, self.instant_metrics[user]["energy"], label=f"User {user}")
+        axes[1].set_ylabel("Energy (J)")
+        axes[1].set_xlabel("Time Slot")
+        axes[1].set_title("Energy Consumption Over Time Slots for All Users")
+        axes[1].legend()
+        axes[1].grid(True)
+
+        # Plot accuracy for all users
+        for user in self.users:
+            axes[2].plot(slots, self.instant_metrics[user]["accuracy"], label=f"User {user}")
+        axes[2].set_ylabel("Accuracy")
+        axes[2].set_xlabel("Time Slot")
+        axes[2].set_title("Accuracy Over Time Slots for All Users")
+        axes[2].legend()
+        axes[2].grid(True)
+
+        plt.tight_layout()
+        plt.show()
+
+    def compute_average_metrics(self):
+        """Calculate the average latency, energy consumption, accuracy, and reward across all time slots and users."""
+
+        total_latency = 0
+        total_energy = 0
+        total_accuracy = 0
+        total_reward = 0
+        total_count = 0  # Track the total number of samples
+
+        # Iterate over all users
+        for user in self.users:
+            # Sum the metrics for all time slots for the current user
+            total_latency += sum(self.instant_metrics[user]["delay"])
+            total_energy += sum(self.instant_metrics[user]["energy"])
+            total_accuracy += sum(self.instant_metrics[user]["accuracy"])
+            total_reward += sum(self.rewards_history[user])
+
+
+        # Compute the average values, dividing by the total number of samples (time slots * users)
+        avg_latency = total_latency / (self.time_slot_num * len(self.users))
+        avg_energy = total_energy / (self.time_slot_num * len(self.users))
+        avg_accuracy = total_accuracy / (self.time_slot_num * len(self.users))
+        avg_reward = total_reward / (self.time_slot_num * len(self.users))
+
+        # Store the computed averages in self.average_metrics
+        self.average_metrics = {
+            "name": self.name,
+            "latency": avg_latency,
+            "energy": avg_energy,
+            "accuracy": avg_accuracy,
+            "reward": avg_reward
+        }
+
+
     def simulation(self):
         """main loop for simulation"""
         # Load MIMO channel data
         channel_data = np.load("sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data.npy")
-
+        model_selection_dic = self.model_selection()
         for t in range(self.time_slot_num):
             # Estimate the achievable rate
             snr_dic, trans_rate_dic = self.get_trans_rate(t, channel_data)
@@ -465,9 +463,6 @@ class OMNIS:
             # Task generation
             task_dic = self.generate_tasks(t)
 
-            # MDs observe the context and select ML models based on GP
-            context_dic = self.observe_context(task_dic, trans_rate_dic)
-            model_selection_dic = self.model_selection(context_dic)
 
             # Calculate the local processing overhead
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
@@ -537,15 +532,21 @@ class OMNIS:
 
             # Calculate the reward for MDs and update the GP
             reward_dic = self.get_reward(task_dic, acc_dic, total_overhead_dic)
-            for user in reward_dic:
+
+            for user in self.users:
+                self.instant_metrics[user]["delay"].append(total_overhead_dic[user]['delay'])
+                self.instant_metrics[user]["energy"].append(total_overhead_dic[user]['energy'])
+                self.instant_metrics[user]["accuracy"].append(acc_dic[user])
                 self.rewards_history[user].append(reward_dic[user])  # Store reward for the current time slot
                 reward_dic[user] = float(reward_dic[user])
             print("reward dic:", reward_dic)
-            self.update_gp(context_dic, model_selection_dic, reward_dic)
 
-        self.show_reward(self.rewards_history)
 
+        self.compute_average_metrics()
+        # self.show_reward()
+        # self.show_metrics()
 
 if __name__ == "__main__":
-    omnis = OMNIS()
-    omnis.simulation()
+    rss = RSS()
+    rss.simulation()
+    print(rss.average_metrics)
