@@ -1,5 +1,4 @@
 import warnings
-
 from action_space import ActionSpace
 from util import acq_max
 
@@ -68,6 +67,8 @@ class ContextualBayesianOptimization():
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
+            # print("self._space.context_action", self._space.context_action)
+            # print("self._space.reward", self._space.reward)
             self._gp.fit(self._space.context_action, self._space.reward)
 
         # Finding argmax of the acquisition function.

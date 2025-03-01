@@ -3,7 +3,7 @@ import numpy as np
 # Simulation Parameters
 radius = 250  # MD movement area radius in meters
 num_mds = 10  # Number of mobile devices
-num_slots = 100  # Number of time slots
+num_slots = 3000  # Number of time slots
 Nm, Ne = 4, 64  # Number of antennas at MD and ES
 bandwidth = 1e6  # System bandwidth in Hz (1 MHz)
 speed_range = (10, 20)  # MD speed range in m/s
