@@ -3,6 +3,8 @@ import pandas as pd
 from sklearn.gaussian_process.kernels import WhiteKernel, Matern
 import omnis.cbo as cbo  # Assuming ContextualBayesianOptimization is part of cbo module
 import omnis.util as util  # Assuming UtilityFunction is part of util module
+seed = 42
+np.random.seed(seed)
 
 class Config:
     def __init__(self):
@@ -40,11 +42,11 @@ class Config:
 
         # Channel coding rates and other metrics
         self.available_coding_rate = [1, 1 / 2, 1 / 5]
-        self.fixed_delay = {user: np.random.uniform(0.005, 0.01) for user in self.users}
-        self.fixed_energy = {user: np.random.uniform(0.5, 2.0) for user in self.users}
+        self.fixed_delay = {user: np.random.uniform(0.5, 1) for user in self.users}
+        self.fixed_energy = {user: np.random.uniform(0.1, 1.0) for user in self.users}
         self.fixed_energy_weight = {user: np.random.uniform(0.3, 0.7) for user in self.users}
         self.instant_metrics = {
-            user: {"delay": [], "energy": [], "accuracy": []} for user in self.users
+            user: {"delay": [], "energy": [], "accuracy": [], "is_vio": [], "vio_degree": [], "reward": []} for user in self.users
         }
 
         # Total bandwidth and noise power calculations

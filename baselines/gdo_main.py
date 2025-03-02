@@ -36,30 +36,27 @@ class GDO:
         self.bcd_flag = config.bcd_flag
         self.bcd_max_iter = config.bcd_max_iter
         self.average_metrics = config.average_metrics
-        self.rewards_history = config.rewards_history
         self.action = config.action
         self.context_dim = config.context_dim
         self.action_dim = config.action_dim
 
 
     def generate_tasks(self, time_slot):
-        """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
+            """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
 
-        task_dic = {
-            user: {
-                "delay_constraint": self.fixed_delay[user] + np.random.uniform(-0.001, 0.001),
-                "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.1, 0.1),
-                "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.05, 0.05),
+            task_dic = {
+                user: {
+                    "delay_constraint": self.fixed_delay[user] + np.random.uniform(-0.001, 0.001),
+                    "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.1, 0.1),
+                    "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.05, 0.05),
+                }
+                for user in self.users
             }
-            for user in self.users
-        }
 
-        for user in self.users:
-            task_dic[user]["delay_weight"] = 1 - task_dic[user]["energy_weight"]
+            for user in self.users:
+                task_dic[user]["delay_weight"] = 1 - task_dic[user]["energy_weight"]
 
-        return task_dic
-
-
+            return task_dic
 
     def greedy_model_selection(self, model_selection_dic, snr_dic, ldpc_rate_dic, acc_dic):
         # Find the user with the minimum and maximum accuracy in acc_dic
@@ -374,16 +371,17 @@ class GDO:
     def show_reward(self):
         """Smooth and plot the rewards history for each MD."""
         window_size = 20
-        for user in self.rewards_history:
+        for user in self.users:
             # Apply moving average to smooth the rewards for each user
-            self.rewards_history[user] = self.moving_average(self.rewards_history[user], window_size)
+            self.instant_metrics[user]['reward'] = self.moving_average(self.instant_metrics[user]['reward'],
+                                                                       window_size)
 
         # Set up a figure for plotting
         plt.figure(figsize=(10, 6))
 
         # Plot the rewards for each user over time slots
-        for user in self.rewards_history:
-            plt.plot(self.rewards_history[user], label=f'User {user}')
+        for user in self.users:
+            plt.plot(self.instant_metrics[user]['reward'], label=f'User {user}')
 
         # Add labels and title
         plt.xlabel('Time Slots')
@@ -430,23 +428,35 @@ class GDO:
         plt.tight_layout()
         plt.show()
 
-    def compute_average_metrics(self):
-        """Calculate the average latency, energy consumption, accuracy, and reward across all time slots and users."""
+    def get_average_metrics(self):
+        """Calculate the average latency, energy consumption, accuracy, reward,
+        the probability of violating delay and energy consumption constraints, and
+        the number of violations across all time slots and users."""
 
         total_latency = 0
         total_energy = 0
         total_accuracy = 0
         total_reward = 0
-        total_count = 0  # Track the total number of samples
+
+        total_vio_sum = 0  # Total number of violations across all time slots
+        total_vio_num = 0
+        vio_prob = 0  # Probability of violating the constraints
+        vio_sum = 0  # The degree of constraint violation
 
         # Iterate over all users
         for user in self.users:
-            # Sum the metrics for all time slots for the current user
-            total_latency += sum(self.instant_metrics[user]["delay"])
-            total_energy += sum(self.instant_metrics[user]["energy"])
-            total_accuracy += sum(self.instant_metrics[user]["accuracy"])
-            total_reward += sum(self.rewards_history[user])
 
+            # Sum the metrics for all time slots for the current user
+            for t in range(self.time_slot_num):
+                # Sum the total metrics
+
+                total_latency += self.instant_metrics[user]["delay"][t]
+                total_energy += self.instant_metrics[user]["energy"][t]
+                total_accuracy += self.instant_metrics[user]["accuracy"][t]
+                total_reward += self.instant_metrics[user]["reward"][t]
+
+                total_vio_num += self.instant_metrics[user]["is_vio"][t]
+                total_vio_sum += self.instant_metrics[user]["vio_degree"][t]
 
         # Compute the average values, dividing by the total number of samples (time slots * users)
         avg_latency = total_latency / (self.time_slot_num * len(self.users))
@@ -454,15 +464,47 @@ class GDO:
         avg_accuracy = total_accuracy / (self.time_slot_num * len(self.users))
         avg_reward = total_reward / (self.time_slot_num * len(self.users))
 
-        # Store the computed averages in self.average_metrics
+        # Compute the violation probability
+        vio_prob = total_vio_num / (self.time_slot_num * len(self.users))
+
+        # Compute the average number of violations per time slot
+        avg_vio_sum = total_vio_sum / (self.time_slot_num * len(self.users))
+
+        # Store the computed averages and new metrics in self.average_metrics
         self.average_metrics = {
             "name": self.name,
             "latency": avg_latency,
             "energy": avg_energy,
             "accuracy": avg_accuracy,
-            "reward": avg_reward
+            "reward": avg_reward,
+            "vio_prob": vio_prob,
+            "vio_sum": avg_vio_sum
         }
 
+    def get_instant_metrics(self, task_dic, total_overhead_dic, reward_dic, acc_dic):
+        for user in self.users:
+            self.instant_metrics[user]["delay"].append(total_overhead_dic[user]['delay'])
+            self.instant_metrics[user]["energy"].append(total_overhead_dic[user]['energy'])
+            self.instant_metrics[user]["accuracy"].append(acc_dic[user])
+            self.instant_metrics[user]["reward"].append(reward_dic[user])  # Store reward for the current time slot
+            reward_dic[user] = float(reward_dic[user])
+
+            # Check if the constraints are violated
+            if (total_overhead_dic[user]['delay'] > task_dic[user]["delay_constraint"]
+                    or total_overhead_dic[user]['energy'] > task_dic[user]["energy_constraint"]):
+                self.instant_metrics[user]["is_vio"].append(1)
+                self.instant_metrics[user]["vio_degree"].append(task_dic[user]["delay_weight"] *
+                                                                (total_overhead_dic[user]['delay'] - task_dic[user][
+                                                                    "delay_constraint"]) + task_dic[user][
+                                                                    "energy_weight"] *
+                                                                (total_overhead_dic[user]['energy'] - task_dic[user][
+                                                                    "energy_constraint"]))
+            else:
+                self.instant_metrics[user]["is_vio"].append(0)
+                self.instant_metrics[user]["vio_degree"].append(0)
+
+        print("reward dic:", reward_dic)
+        return self.instant_metrics
 
     def simulation(self):
         """main loop for simulation"""
@@ -551,23 +593,17 @@ class GDO:
                 bcd_iter += 1
                 bcd_obj_last = bcd_obj
 
-            # Calculate the reward for MDs and update the GP
-            reward_dic = self.get_reward(task_dic, acc_dic, total_overhead_dic)
-
             # Use greedy algorithm to update the model selection strategy
             if t > 0:
                 model_selection_dic = self.greedy_model_selection(model_selection_dic, snr_dic, ldpc_rate_dic, acc_dic)
 
-            for user in self.users:
-                self.instant_metrics[user]["delay"].append(total_overhead_dic[user]['delay'])
-                self.instant_metrics[user]["energy"].append(total_overhead_dic[user]['energy'])
-                self.instant_metrics[user]["accuracy"].append(acc_dic[user])
-                self.rewards_history[user].append(reward_dic[user])  # Store reward for the current time slot
-                reward_dic[user] = float(reward_dic[user])
-            print("reward dic:", reward_dic)
+
+            # Calculate the performance for MDs
+            reward_dic = self.get_reward(task_dic, acc_dic, total_overhead_dic)
+            self.get_instant_metrics(task_dic, total_overhead_dic, reward_dic, acc_dic)
 
 
-        self.compute_average_metrics()
+        self.get_average_metrics()
         self.show_reward()
         self.show_metrics()
 
