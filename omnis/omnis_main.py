@@ -45,6 +45,7 @@ class OMNIS:
         self.instant_metrics = config.instant_metrics
         self.average_metrics = config.average_metrics
         self.acc_data = config.acc_data
+        self.channel_data = config.channel_data
         self.est_err = config.est_err
         self.action_freq = config.action_freq
 
@@ -134,11 +135,11 @@ class OMNIS:
 
         return reward_dic
 
-    def get_trans_rate(self, time_slot, channel_data):
+    def get_trans_rate(self, time_slot):
         """Calculate the achievable transmission rate for each user based on channel estimation."""
 
         # Retrieve the true channel matrix for the current time slot (shape: 10 x 64 x 4)
-        true_channel = channel_data[time_slot]
+        true_channel = self.channel_data[time_slot]
 
         # Channel estimate with error
         random_noise = (np.random.randn(*true_channel.shape) + 1j * np.random.randn(*true_channel.shape)) / np.sqrt(2)
@@ -546,11 +547,9 @@ class OMNIS:
 
     def simulation(self):
         """main loop for simulation"""
-        # Load MIMO channel data
-        channel_data = np.load("sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data.npy")
         for t in range(self.time_slot_num):
             # Estimate the achievable rate
-            snr_dic, trans_rate_dic = self.get_trans_rate(t, channel_data)
+            snr_dic, trans_rate_dic = self.get_trans_rate(t)
 
             # Task generation
             task_dic = self.generate_tasks(t)

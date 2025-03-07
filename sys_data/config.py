@@ -71,6 +71,9 @@ class Config:
         # Load precomputed accuracy data
         self.acc_data = pd.read_csv("sys_data/acc_data/fitted_acc_data.csv")
 
+        # Load MIMO channel data
+        self.channel_data = np.load("sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data.npy")
+
         # Optimization parameters
         self.bcd_flag = 10e-5  # Convergence threshold for BCD
         self.bcd_max_iter = 30  # Maximum iterations for BCD
