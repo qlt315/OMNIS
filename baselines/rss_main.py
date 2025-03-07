@@ -5,40 +5,58 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 from sys_data.config import Config
 
-seed = 42
-np.random.seed(seed)
 
 
 class RSS:
-    def __init__(self):
+    def __init__(self, config):
         """Initialize system parameters including models, devices, and users."""
+        # Basic configuration
         self.name = "rss"
-        config = Config()
+        self.seed = config.seed
+        np.random.seed(self.seed)  # Set random seed for reproducibility
+
+        # Computation-related parameters
         self.models = config.models
         self.data_size = config.data_size
         self.head_flops = config.head_flops
         self.tail_flops = config.tail_flops
+
+
+        # User and system parameters
         self.users = config.users
-        self.md_params = config.md_params
-        self.time_slot_num = config.time_slot_num
         self.user_num = config.user_num
+        self.md_params = config.md_params
         self.es_params = config.es_params
+        self.time_slot_num = config.time_slot_num
+
+        # Network and communication parameters
         self.available_coding_rate = config.available_coding_rate
+        self.total_bandwidth = config.total_bandwidth
+        self.noise_power_dBm = config.noise_power_dBm
+        self.noise_power = config.noise_power
+
+        # Fixed execution costs
         self.fixed_delay = config.fixed_delay
         self.fixed_energy = config.fixed_energy
         self.fixed_energy_weight = config.fixed_energy_weight
+
+        # Performance metrics
         self.instant_metrics = config.instant_metrics
-        self.total_bandwidth = config.total_bandwidth
-        self.est_err = config.est_err
-        self.noise_power_dBm = config.noise_power_dBm
-        self.noise_power = config.noise_power
+        self.average_metrics = config.average_metrics
+        self.action_freq = config.action_freq
         self.acc_data = config.acc_data
+        self.est_err = config.est_err
+
+        # BCD (Block Coordinate Descent) algorithm settings
         self.bcd_flag = config.bcd_flag
         self.bcd_max_iter = config.bcd_max_iter
-        self.average_metrics = config.average_metrics
 
-
-
+        # Randomly select a model index for each user
+        self.static_model_dic= {}
+        for user in self.users:
+            # Randomly select a model index for each user
+            selected_model_index = random.randint(0, len(self.models) - 1)
+            self.static_model_dic[user] = selected_model_index
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
@@ -77,10 +95,10 @@ class RSS:
 
         model_selection_dic = {}  # Dictionary to store the selected model for each user
 
-        for user in self.users:
+        for user_idx, user in enumerate(self.users):
             # Randomly select a model index for each user
-            selected_model_index = random.randint(0, len(self.models) - 1)
-
+            selected_model_index = self.static_model_dic[user]
+            self.action_freq[user_idx, selected_model_index] +=1
             # Store the selected model name for the user
             model_selection_dic[user] = {
                 "model": self.models[selected_model_index]["name"],  # Randomly selected model name
@@ -459,16 +477,16 @@ class RSS:
 
         # Compute the average number of violations per time slot
         avg_vio_sum = total_vio_sum / (self.time_slot_num * len(self.users))
-
+        self.action_freq = self.action_freq / self.time_slot_num
         # Store the computed averages and new metrics in self.average_metrics
         self.average_metrics = {
             "name": self.name,
-            "latency": avg_latency,
-            "energy": avg_energy,
-            "accuracy": avg_accuracy,
-            "reward": avg_reward,
-            "vio_prob": vio_prob,
-            "vio_sum": avg_vio_sum
+            "latency": float(avg_latency),
+            "energy": float(avg_energy),
+            "accuracy": float(avg_accuracy),
+            "reward": float(avg_reward),
+            "vio_prob": float(vio_prob),
+            "vio_sum": float(avg_vio_sum)
         }
 
     def get_instant_metrics(self, task_dic, total_overhead_dic, reward_dic, acc_dic):
@@ -479,19 +497,31 @@ class RSS:
             self.instant_metrics[user]["reward"].append(reward_dic[user])  # Store reward for the current time slot
             reward_dic[user] = float(reward_dic[user])
 
-            # Check if the constraints are violated
-            if (total_overhead_dic[user]['delay'] > task_dic[user]["delay_constraint"]
-                    or total_overhead_dic[user]['energy'] > task_dic[user]["energy_constraint"]):
-                self.instant_metrics[user]["is_vio"].append(1)
-                self.instant_metrics[user]["vio_degree"].append(task_dic[user]["delay_weight"] *
-                                                                (total_overhead_dic[user]['delay'] - task_dic[user][
-                                                                    "delay_constraint"]) + task_dic[user][
-                                                                    "energy_weight"] *
-                                                                (total_overhead_dic[user]['energy'] - task_dic[user][
-                                                                    "energy_constraint"]))
-            else:
-                self.instant_metrics[user]["is_vio"].append(0)
-                self.instant_metrics[user]["vio_degree"].append(0)
+            # Get the current user's constraint values and weights
+            delay = total_overhead_dic[user]['delay']
+            energy = total_overhead_dic[user]['energy']
+            delay_constraint = task_dic[user]["delay_constraint"]
+            energy_constraint = task_dic[user]["energy_constraint"]
+            delay_weight = task_dic[user]["delay_weight"]
+            energy_weight = task_dic[user]["energy_weight"]
+
+            # Initialize violation degree and violation flag
+            vio_degree = 0
+            is_vio = 0
+
+            # Check if any constraints are violated
+            if delay > delay_constraint or energy > energy_constraint:
+                is_vio = 1  # Set violation flag
+                # If delay constraint is violated, calculate the violation degree
+                if delay > delay_constraint:
+                    vio_degree += delay_weight * (delay - delay_constraint)
+                # If energy constraint is violated, calculate the violation degree
+                if energy > energy_constraint:
+                    vio_degree += energy_weight * (energy - energy_constraint)
+
+            # Update the results
+            self.instant_metrics[user]["is_vio"].append(is_vio)
+            self.instant_metrics[user]["vio_degree"].append(vio_degree)
 
         print("reward dic:", reward_dic)
         return self.instant_metrics
@@ -500,8 +530,9 @@ class RSS:
         """main loop for simulation"""
         # Load MIMO channel data
         channel_data = np.load("sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data.npy")
-        model_selection_dic = self.model_selection()
+
         for t in range(self.time_slot_num):
+            model_selection_dic = self.model_selection()
             # Estimate the achievable rate
             snr_dic, trans_rate_dic = self.get_trans_rate(t, channel_data)
 
@@ -580,10 +611,14 @@ class RSS:
             self.get_instant_metrics(task_dic, total_overhead_dic, reward_dic, acc_dic)
 
         self.get_average_metrics()
-        self.show_reward()
-        self.show_metrics()
+        # self.show_reward()
+        # self.show_metrics()
 
 if __name__ == "__main__":
-    rss = RSS()
+    seed = 42
+    config = Config(seed)
+    rss = RSS(config)
     rss.simulation()
     print(rss.average_metrics)
+    print(rss.action_freq)
+
