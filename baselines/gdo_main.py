@@ -533,7 +533,7 @@ class GDO:
             self.instant_metrics[user]["is_vio"].append(is_vio)
             self.instant_metrics[user]["vio_degree"].append(vio_degree)
 
-        print("reward dic:", reward_dic)
+        # print("reward dic:", reward_dic)
         return self.instant_metrics
 
     def simulation(self):

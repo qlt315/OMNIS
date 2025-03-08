@@ -34,7 +34,7 @@ class Config:
         }
 
         # User-specific configurations
-        self.time_slot_num = 150  # Number of time slots
+        self.time_slot_num = 1 # Number of time slots
         self.user_num = 5  # Number of users
         self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
 
@@ -114,5 +114,41 @@ class Config:
 
         self.utility = util.UtilityFunction(kind="ucb", beta_kind=self.beta_function, beta_const=self.beta_const_val)
 
+        # Track action selection frequencies
+        self.action_freq = np.zeros([self.user_num, len(self.models)])
+
+    def update_users(self, new_user_num):
+        """Update user number and reinitialize dependent variables."""
+        self.user_num = new_user_num
+        self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
+
+        # Mobile device (MD) parameters for each user
+        self.md_params = {user: {
+            'freq': np.random.uniform(0.8, 1),  # Randomized CPU frequency
+            'cores': np.random.randint(100, 200),  # Number of CPU cores
+            'flops_per_cycle': np.random.randint(1, 5),  # FLOPs per CPU cycle
+            'power_coeff': np.random.uniform(0.1, 0.3),  # Power consumption coefficient
+            'trans_power': 0.1  # Transmission power (W)
+        } for user in self.users}
+        self.fixed_delay = {user: np.random.uniform(0.5, 1) for user in self.users}  # Delay constraints
+        self.fixed_energy = {user: np.random.uniform(0.1, 1.0) for user in self.users}  # Energy constraints
+        self.fixed_energy_weight = {user: np.random.uniform(0.3, 0.7) for user in
+                                    self.users}  # Energy weight factors
+
+        # Instantaneous performance metrics tracking
+        self.instant_metrics = {
+            user: {"delay": [], "energy": [], "accuracy": [], "is_vio": [], "vio_degree": [], "reward": []} for user
+            in
+            self.users
+        }
+        self.rewards_history = {user: [] for user in self.users}  # History of rewards for users
+        # Bayesian optimization setup for each user
+        self.optimizers = {
+            user: cbo.ContextualBayesianOptimization(
+                all_actions_dict=self.action,
+                contexts=self.contexts,
+                kernel=self.kernel
+            ) for user in self.users
+        }
         # Track action selection frequencies
         self.action_freq = np.zeros([self.user_num, len(self.models)])

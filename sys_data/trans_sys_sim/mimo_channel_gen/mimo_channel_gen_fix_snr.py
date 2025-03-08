@@ -49,18 +49,7 @@ def awgn_noise():
     return noise_power_linear
 
 
-# Initialize positions and movement parameters
-positions = generate_positions(num_mds)
-speeds = np.random.uniform(speed_range[0], speed_range[1], num_mds)  # Random speeds
-directions = np.random.uniform(0, 2 * np.pi, num_mds)  # Random initial directions
-noise_power = awgn_noise()  # Compute noise power
-
-# Step 2: Generate Initial Channels
-fading_memory = 0.9  # Memory factor for correlated small-scale fading
-small_scale_fading_prev = np.zeros((num_mds, Ne, Nm), dtype=np.complex128)  # Store past fading
-
-
-def generate_initial_channels(positions, user_snr_dB):
+def generate_initial_channels(positions, user_snr_dB, noise_power, small_scale_fading_prev):
     """Generate initial channel matrices based on assigned SNRs."""
     user_snr_linear = 10 ** (user_snr_dB / 10)  # Convert dB to linear scale
     H_init = np.zeros((num_mds, Ne, Nm), dtype=np.complex128)
@@ -83,10 +72,10 @@ def generate_initial_channels(positions, user_snr_dB):
 
         H_init[i] = H_raw * scaling_factor
 
-    return H_init
+    return H_init, small_scale_fading_prev
 
 
-def update_channel(H_prev, user_snr_dB):
+def update_channel(H_prev, user_snr_dB, noise_power, small_scale_fading_prev, fading_memory=0.9):
     """Update the channel with time-correlated fading and small SNR variations."""
     H_new = np.zeros((num_mds, Ne, Nm), dtype=np.complex128)
     user_snr_linear = 10 ** (user_snr_dB / 10)  # Convert dB to linear scale
@@ -104,44 +93,59 @@ def update_channel(H_prev, user_snr_dB):
 
         H_new[i] = H_prev[i] * scaling_factor  # Adjusted channel
 
-    return H_new
+    return H_new, small_scale_fading_prev
 
 
-# Loop over different SNR values
-for snr_value in snr_values:
-    print(f"Simulating for SNR = {snr_value} dB")
+def main():
+    """Main function to run the simulation for different SNR values."""
+    # Initialize positions and movement parameters
+    positions = generate_positions(num_mds)
+    speeds = np.random.uniform(speed_range[0], speed_range[1], num_mds)  # Random speeds
+    directions = np.random.uniform(0, 2 * np.pi, num_mds)  # Random initial directions
+    noise_power = awgn_noise()  # Compute noise power
 
-    # Store channel data for each SNR value
-    channel_data = np.zeros((num_slots, num_mds, Ne, Nm), dtype=np.complex128)
-    snr_values_record = []  # Store all SNR values for verification
+    # Small-scale fading memory
+    small_scale_fading_prev = np.zeros((num_mds, Ne, Nm), dtype=np.complex128)  # Store past fading
 
-    # Assign fixed SNR for this loop
-    user_snr_dB = np.full(num_mds, snr_value)  # Fixed SNR value for each user
+    # Loop over different SNR values
+    for snr_value in snr_values:
+        print(f"Simulating for SNR = {snr_value} dB")
 
-    # Generate Initial Channel Data
-    H_t = generate_initial_channels(positions, user_snr_dB)
+        # Store channel data for each SNR value
+        channel_data = np.zeros((num_slots, num_mds, Ne, Nm), dtype=np.complex128)
+        snr_values_record = []  # Store all SNR values for verification
 
-    for t in range(num_slots):
-        # Store current channel state
-        channel_data[t] = H_t
+        # Assign fixed SNR for this loop
+        user_snr_dB = np.full(num_mds, snr_value)  # Fixed SNR value for each user
 
-        # Store SNR values
-        computed_snr_linear = np.linalg.norm(H_t, axis=(1, 2)) ** 2 / noise_power
-        computed_snr_dB = 10 * np.log10(computed_snr_linear)
-        snr_values_record.extend(computed_snr_dB)
+        # Generate Initial Channel Data
+        H_t, small_scale_fading_prev = generate_initial_channels(positions, user_snr_dB, noise_power, small_scale_fading_prev)
 
-        # Update positions smoothly
-        positions, directions = update_positions(positions, speeds, directions)
+        for t in range(num_slots):
+            # Store current channel state
+            channel_data[t] = H_t
 
-        # Update channel with small variation
-        H_t = update_channel(H_t, user_snr_dB)
+            # Store SNR values
+            computed_snr_linear = np.linalg.norm(H_t, axis=(1, 2)) ** 2 / noise_power
+            computed_snr_dB = 10 * np.log10(computed_snr_linear)
+            snr_values_record.extend(computed_snr_dB)
 
-    # Save channel data for this specific SNR value as an NPZ file
-    np.save(f"mimo_channel_data_snr_{snr_value}.npy", channel_data)
-    print(f"MIMO channel data for SNR = {snr_value} saved as 'mimo_channel_data_snr_{snr_value}.npy'")
+            # Update positions smoothly
+            positions, directions = update_positions(positions, speeds, directions)
 
-    # Verify SNR distribution
-    snr_values_record = np.array(snr_values_record)
-    print(f"SNR range: {snr_values_record.min():.2f} dB to {snr_values_record.max():.2f} dB")
-    print(f"Mean SNR: {snr_values_record.mean():.2f} dB")
-    print(f"Standard deviation of SNR: {snr_values_record.std():.2f} dB")
+            # Update channel with small variation
+            H_t, small_scale_fading_prev = update_channel(H_t, user_snr_dB, noise_power, small_scale_fading_prev)
+
+        # Save channel data for this specific SNR value as an NPZ file
+        np.save(f"mimo_channel_data_snr_{snr_value}.npy", channel_data)
+        print(f"MIMO channel data for SNR = {snr_value} saved as 'mimo_channel_data_snr_{snr_value}.npy'")
+
+        # Verify SNR distribution
+        snr_values_record = np.array(snr_values_record)
+        print(f"SNR range: {snr_values_record.min():.2f} dB to {snr_values_record.max():.2f} dB")
+        print(f"Mean SNR: {snr_values_record.mean():.2f} dB")
+        print(f"Standard deviation of SNR: {snr_values_record.std():.2f} dB")
+
+
+if __name__ == "__main__":
+    main()

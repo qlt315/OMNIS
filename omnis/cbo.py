@@ -28,7 +28,7 @@ class ContextualBayesianOptimization():
             kernel.set_params(**opt_hyp)
             optimizer = None
         else:
-            warnings.warn('Kernel hyperparameters will be computed during the optimization.')
+            # warnings.warn('Kernel hyperparameters will be computed during the optimization.')
             optimizer = 'fmin_l_bfgs_b'
             
         self._gp = GaussianProcessRegressor(

@@ -462,8 +462,6 @@ class OMNIS:
 
         total_vio_sum = 0  # Total number of violations across all time slots
         total_vio_num = 0
-        vio_prob = 0  # Probability of violating the constraints
-        vio_sum = 0  # The degree of constraint violation
 
         # Iterate over all users
         for user in self.users:
@@ -539,7 +537,7 @@ class OMNIS:
             self.instant_metrics[user]["is_vio"].append(is_vio)
             self.instant_metrics[user]["vio_degree"].append(vio_degree)
 
-        print("reward dic:", reward_dic)
+        # print("reward dic:", reward_dic)
         return self.instant_metrics
 
 
@@ -631,8 +629,8 @@ class OMNIS:
             # Update the GP
             self.update_gp(context_dic, model_selection_dic,reward_dic)
         self.get_average_metrics()
-        self.show_reward()
-        self.show_metrics()
+        # self.show_reward()
+        # self.show_metrics()
 
 if __name__ == "__main__":
     seed = 42
