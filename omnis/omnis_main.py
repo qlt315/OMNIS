@@ -6,9 +6,6 @@ import matplotlib.pyplot as plt
 from sys_data.config import Config
 
 
-
-
-
 class OMNIS:
     def __init__(self, config):
         """Initialize system parameters including models, devices, and users."""
@@ -629,8 +626,7 @@ class OMNIS:
             # Update the GP
             self.update_gp(context_dic, model_selection_dic,reward_dic)
         self.get_average_metrics()
-        # self.show_reward()
-        # self.show_metrics()
+
 
 if __name__ == "__main__":
     seed = 42
@@ -639,3 +635,5 @@ if __name__ == "__main__":
     omnis.simulation()
     print(omnis.average_metrics)
     print(omnis.action_freq)
+    omnis.show_reward()
+    omnis.show_metrics()

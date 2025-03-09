@@ -647,3 +647,5 @@ if __name__ == "__main__":
     gdo.simulation()
     print(gdo.average_metrics)
     print(gdo.action_freq)
+    gdo.show_reward()
+    gdo.show_metrics()

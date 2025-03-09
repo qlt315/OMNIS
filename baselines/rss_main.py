@@ -619,4 +619,5 @@ if __name__ == "__main__":
     rss.simulation()
     print(rss.average_metrics)
     print(rss.action_freq)
-
+    rss.show_reward()
+    rss.show_metrics()

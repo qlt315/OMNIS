@@ -655,3 +655,5 @@ if __name__ == "__main__":
     cto.simulation()
     print(cto.average_metrics)
     print(cto.action_freq)
+    cto.show_reward()
+    cto.show_metrics()

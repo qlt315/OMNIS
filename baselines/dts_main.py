@@ -638,3 +638,5 @@ if __name__ == "__main__":
     dts.simulation()
     print(dts.average_metrics)
     print(dts.action_freq)
+    dts.show_reward()
+    dts.show_metrics()
