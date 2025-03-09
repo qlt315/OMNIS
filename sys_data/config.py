@@ -34,7 +34,7 @@ class Config:
         }
 
         # User-specific configurations
-        self.time_slot_num = 1 # Number of time slots
+        self.time_slot_num = 150 # Number of time slots
         self.user_num = 5  # Number of users
         self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
 
@@ -117,8 +117,13 @@ class Config:
         # Track action selection frequencies
         self.action_freq = np.zeros([self.user_num, len(self.models)])
 
+    def reset_seed(self):
+        """Reset the random seed for reproducibility."""
+        np.random.seed(self.seed)
+
     def update_users(self, new_user_num):
         """Update user number and reinitialize dependent variables."""
+        self.reset_seed()  # Ensure consistency when updating users
         self.user_num = new_user_num
         self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
 

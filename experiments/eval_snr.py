@@ -11,37 +11,51 @@ from sys_data.trans_sys_sim.mimo_channel_gen.mimo_channel_gen_fix_snr import snr
 # Initialize parameters
 snr_list = snr_values
 snr_num = len(snr_list)
-seed = 42
+seed_list = [0, 37, 42]  # Define the list of seeds to average over
+seed_num = len(seed_list)
 
 # Define metric names
 metric_names = ["reward", "latency", "energy", "accuracy", "vio_prob", "vio_sum"]
+metric_save_names = ["reward_diff_snr", "latency_diff_snr", "energy_diff_snr",
+                     "accuracy_diff_snr", "vio_prob_diff_snr", "vio_sum_diff_snr"]
 num_algorithms = 5
 
-# Initialize storage for evaluation results
-eval_results = {name: np.zeros([num_algorithms, snr_num]) for name in metric_names}
+# Initialize storage for evaluation results (for each metric)
+eval_results = {name: np.zeros([num_algorithms, snr_num]) for name in metric_save_names}
 
 # Define baseline algorithms
 algorithms = [OMNIS, CTO, DTS, GDO, RSS]
 algorithm_names = ["OMNIS", "CTO", "DTS", "GDO", "RSS"]
 
-for snr_idx, snr in enumerate(snr_list):
-    print(f"Evaluating SNR (dB): {snr}")
+# Iterate over each seed and perform the simulations
+for seed_idx, seed in enumerate(seed_list):
+    print(f"Evaluating Seed: {seed}")
 
-    # Load system configuration and channel data
-    config = Config(seed)
-    channel_data_filename = f"sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data_snr_{snr}.npy"
-    config.channel_data = np.load(channel_data_filename)
+    # Iterate over each SNR value
+    for snr_idx, snr in enumerate(snr_list):
+        print(f"Evaluating SNR (dB): {snr}")
 
-    # Evaluate each algorithm
-    for alg_idx, (alg_cls, alg_name) in enumerate(zip(algorithms, algorithm_names)):
-        print(f"Evaluating {alg_name}...")
-        algorithm = alg_cls(config)
-        algorithm.simulation()
+        # Iterate over each algorithm
+        for alg_idx, (alg_cls, alg_name) in enumerate(zip(algorithms, algorithm_names)):
+            print(f"Evaluating {alg_name} at SNR {snr} dB with seed = {seed}...")
 
-        # Store results
-        for metric in metric_names:
-            eval_results[metric][alg_idx, snr_idx] = algorithm.average_metrics[metric]
+            # Reinitialize Config for each algorithm to avoid shared state issues
+            config = Config(seed)
+            channel_data_filename = f"sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data_snr_{snr}.npy"
+            config.channel_data = np.load(channel_data_filename)
 
-# Save results to .mat file
-sio.savemat("experiments/eval_diff_snr.mat", eval_results)
-print("Data successfully saved to experiments/eval_diff_snr.mat")
+            # Initialize and run the algorithm
+            algorithm = alg_cls(config)
+            algorithm.simulation()
+
+            # Store the results for each metric and each algorithm, averaging over all seeds
+            for metric, save_metric in zip(metric_names, metric_save_names):
+                eval_results[save_metric][alg_idx, snr_idx] += algorithm.average_metrics[metric]
+
+# After collecting results for all seeds, compute the average across all seeds for each algorithm and SNR
+for save_metric in eval_results:
+    eval_results[save_metric] /= seed_num  # Average over the seeds
+
+# Save the averaged results to a .mat file
+sio.savemat("experiments/results/eval_diff_snr.mat", eval_results)
+print("Seed-averaged data successfully saved to experiments/results/eval_diff_snr.mat")

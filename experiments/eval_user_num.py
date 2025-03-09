@@ -10,37 +10,50 @@ from baselines.rss_main import RSS
 # Define different user numbers for evaluation
 user_num_list = [1, 2, 3, 4, 5, 6, 7, 8]
 num_user_cases = len(user_num_list)
-seed = 42
+seed_list = [0, 37, 42]  # Define the list of seeds to average over
+seed_num = len(seed_list)
 
 # Define metric names
 metric_names = ["reward", "latency", "energy", "accuracy", "vio_prob", "vio_sum"]
+metric_save_names = ["reward_diff_user_num", "latency_diff_user_num", "energy_diff_user_num",
+                     "accuracy_diff_user_num", "vio_prob_diff_user_num", "vio_sum_diff_user_num"]
 num_algorithms = 5
 
-# Initialize storage for evaluation results
-eval_results = {name: np.zeros([num_algorithms, num_user_cases]) for name in metric_names}
+# Initialize storage for evaluation results (for each metric)
+eval_results = {name: np.zeros([num_algorithms, num_user_cases]) for name in metric_save_names}
 
 # Define baseline algorithms
 algorithms = [OMNIS, CTO, DTS, GDO, RSS]
 algorithm_names = ["OMNIS", "CTO", "DTS", "GDO", "RSS"]
 
-# Iterate over different numbers of users
-for user_idx, user_num in enumerate(user_num_list):
-    print(f"Evaluating User Number: {user_num}")
+# Iterate over different seeds
+for seed_idx, seed in enumerate(seed_list):
+    print(f"Evaluating Seed: {seed}")
 
-    # Load system configuration
-    config = Config(seed)
-    config.update_users(user_num)
+    # Iterate over different numbers of users
+    for user_idx, user_num in enumerate(user_num_list):
+        print(f"Evaluating User Number: {user_num}")
 
-    # Evaluate each algorithm
-    for alg_idx, (alg_cls, alg_name) in enumerate(zip(algorithms, algorithm_names)):
-        print(f"Evaluating {alg_name}...")
-        algorithm = alg_cls(config)
-        algorithm.simulation()
+        # Iterate over each algorithm
+        for alg_idx, (alg_cls, alg_name) in enumerate(zip(algorithms, algorithm_names)):
+            print(f"Evaluating {alg_name} with {user_num} users with seed = {seed}...")
 
-        # Store results
-        for metric in metric_names:
-            eval_results[metric][alg_idx, user_idx] = algorithm.average_metrics[metric]
+            # Reinitialize config for each algorithm to avoid shared state
+            config = Config(seed)
+            config.update_users(user_num)
 
-# Save results to .mat file
-sio.savemat("experiments/eval_diff_users.mat", eval_results)
-print("Data successfully saved to experiments/eval_diff_users.mat")
+            # Initialize and run the algorithm
+            algorithm = alg_cls(config)
+            algorithm.simulation()
+
+            # Store the results for each metric and each algorithm, averaging over all seeds
+            for metric in metric_names:
+                eval_results[metric][alg_idx, user_idx] += algorithm.average_metrics[metric]
+
+# After collecting results for all seeds, compute the average across all seeds for each algorithm and user number
+for metric in eval_results:
+    eval_results[metric] /= seed_num  # Average over the seeds
+
+# Save the averaged results to a .mat file
+sio.savemat("experiments/results/eval_diff_user_num.mat", eval_results)
+print("Seed-averaged data successfully saved to experiments/results/eval_diff_user_num.mat")
