@@ -1,9 +1,14 @@
 import numpy as np
-
+from sys_data.config import Config
 # Simulation Parameters
+# Set random seed for reproducibility
+seed = 42
+np.random.seed(seed)
+config = Config(seed)
+
 radius = 250  # MD movement area radius in meters
-num_mds = 10  # Number of mobile devices
-num_slots = 3000  # Number of time slots
+user_num = config.user_num  # Number of mobile devices
+time_slot_num = config.time_slot_num  # Number of time slots
 Nm, Ne = 4, 64  # Number of antennas at MD and ES
 bandwidth = 1e6  # System bandwidth in Hz (1 MHz)
 speed_range = (10, 20)  # MD speed range in m/s

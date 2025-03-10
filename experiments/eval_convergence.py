@@ -9,8 +9,8 @@ from baselines.rss_main import RSS
 
 # Define the random seed list, number of users, and number of time slots
 seed_list = [0, 37, 42]
-seed_num, user_num, time_slot_num = len(seed_list), 3, 150
-
+seed_num = len(seed_list)
+config = Config(0)  # just roughly initialize to get the  number of MD and time slots.
 # Metrics to be recorded
 metrics = ["reward", "delay", "accuracy", "energy"]
 algorithms = {
@@ -22,8 +22,8 @@ algorithms = {
 }
 
 # Initialize dictionaries to store results for each algorithm and metric
-results = {f"{algo}_ins_{metric}": np.zeros((seed_num, user_num, time_slot_num)) for algo in algorithms for metric in metrics}
-aver_rewards = {f"{algo}_ins_aver_reward": np.zeros((user_num, time_slot_num)) for algo in algorithms}
+results = {f"{algo}_ins_{metric}": np.zeros((seed_num, config.user_num, config.time_slot_num)) for algo in algorithms for metric in metrics}
+aver_rewards = {f"{algo}_ins_aver_reward": np.zeros((config.user_num, config.time_slot_num)) for algo in algorithms}
 
 # Iterate over different random seeds
 for seed_idx, seed in enumerate(seed_list):
@@ -35,8 +35,8 @@ for seed_idx, seed in enumerate(seed_list):
 
         # Reinitialize config for each algorithm evaluation
         alg_config = Config(seed)
-        alg_config.user_num, alg_config.time_slot_num = user_num, time_slot_num
-        alg_config.users = [f"user_{i + 1}" for i in range(user_num)]
+        alg_config.user_num, alg_config.time_slot_num = config.user_num, config.time_slot_num
+        alg_config.users = [f"user_{i + 1}" for i in range(config.user_num)]
         alg_config.fixed_delay = {user: np.random.uniform(0.5, 1) for user in alg_config.users}
         alg_config.fixed_energy = {user: np.random.uniform(0.1, 1.0) for user in alg_config.users}
         alg_config.fixed_energy_weight = {user: np.random.uniform(0.3, 0.7) for user in alg_config.users}
@@ -46,7 +46,7 @@ for seed_idx, seed in enumerate(seed_list):
         instance.simulation()
 
         # Store instant metrics for each user and time slot
-        for t in range(time_slot_num):
+        for t in range(config.time_slot_num):
             for user_idx, user in enumerate(alg_config.users):
                 for metric in metrics:
                     results[f"{name}_ins_{metric}"][seed_idx, user_idx, t] = instance.instant_metrics[user][metric][t]
