@@ -2,7 +2,7 @@ import numpy as np
 
 # Simulation Parameters
 radius = 250  # MD movement area radius in meters
-num_mds = 10  # Number of mobile devices
+num_users = 10  # Number of mobile devices
 num_slots = 3000  # Number of time slots
 Nm, Ne = 4, 64  # Number of antennas at MD and ES
 bandwidth = 1e6  # System bandwidth in Hz (1 MHz)
@@ -16,10 +16,10 @@ seed = 42
 np.random.seed(seed)
 
 
-def generate_positions(num_mds):
+def generate_positions(num_users):
     """Generate initial random positions within a circular area."""
-    angles = np.random.uniform(0, 2 * np.pi, num_mds)
-    distances = np.sqrt(np.random.uniform(0, radius ** 2, num_mds))
+    angles = np.random.uniform(0, 2 * np.pi, num_users)
+    distances = np.sqrt(np.random.uniform(0, radius ** 2, num_users))
     x = distances * np.cos(angles)
     y = distances * np.sin(angles)
     return np.stack((x, y), axis=-1)
@@ -50,22 +50,22 @@ def awgn_noise():
 
 
 # Initialize positions and movement parameters
-positions = generate_positions(num_mds)
-speeds = np.random.uniform(speed_range[0], speed_range[1], num_mds)  # Random speeds
-directions = np.random.uniform(0, 2 * np.pi, num_mds)  # Random initial directions
+positions = generate_positions(num_users)
+speeds = np.random.uniform(speed_range[0], speed_range[1], num_users)  # Random speeds
+directions = np.random.uniform(0, 2 * np.pi, num_users)  # Random initial directions
 noise_power = awgn_noise()  # Compute noise power
 
 # Step 1: Assign initial SNR to each user
-user_snr_dB = np.random.uniform(*snr_range, num_mds)  # Fixed per user
+user_snr_dB = np.random.uniform(*snr_range, num_users)  # Fixed per user
 user_snr_linear = 10 ** (user_snr_dB / 10)  # Convert dB to linear scale
 
 # Step 2: Generate Initial Channels
 fading_memory = 0.9  # Memory factor for correlated small-scale fading
-small_scale_fading_prev = np.zeros((num_mds, Ne, Nm), dtype=np.complex128)  # Store past fading
+small_scale_fading_prev = np.zeros((num_users, Ne, Nm), dtype=np.complex128)  # Store past fading
 
 def generate_initial_channels(positions):
     """Generate initial channel matrices based on assigned SNRs."""
-    H_init = np.zeros((num_mds, Ne, Nm), dtype=np.complex128)
+    H_init = np.zeros((num_users, Ne, Nm), dtype=np.complex128)
 
     for i, pos in enumerate(positions):
         d = np.linalg.norm(pos) + 1e-3  # Avoid division by zero
@@ -90,9 +90,9 @@ def generate_initial_channels(positions):
 
 def update_channel(H_prev):
     """Update the channel with time-correlated fading and small SNR variations."""
-    H_new = np.zeros((num_mds, Ne, Nm), dtype=np.complex128)
+    H_new = np.zeros((num_users, Ne, Nm), dtype=np.complex128)
 
-    for i in range(num_mds):
+    for i in range(num_users):
         # Time-correlated small-scale fading
         new_fading = (np.random.randn(Ne, Nm) + 1j * np.random.randn(Ne, Nm)) / np.sqrt(2)
         small_scale_fading = fading_memory * small_scale_fading_prev[i] + (1 - fading_memory) * new_fading
@@ -117,7 +117,7 @@ def update_channel(H_prev):
 H_t = generate_initial_channels(positions)
 
 # Store channel data
-channel_data = np.zeros((num_slots, num_mds, Ne, Nm), dtype=np.complex128)
+channel_data = np.zeros((num_slots, num_users, Ne, Nm), dtype=np.complex128)
 snr_values = []  # Store all SNR values for verification
 
 for t in range(num_slots):
