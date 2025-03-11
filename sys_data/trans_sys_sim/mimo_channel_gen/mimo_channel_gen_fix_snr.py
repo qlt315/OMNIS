@@ -1,14 +1,14 @@
 import numpy as np
-from sys_data.config import Config
+
 # Simulation Parameters
 # Set random seed for reproducibility
 seed = 42
 np.random.seed(seed)
-config = Config(seed)
+
 
 radius = 250  # MD movement area radius in meters
-user_num = config.user_num  # Number of mobile devices
-time_slot_num = config.time_slot_num  # Number of time slots
+user_num = 5  # Number of mobile devices
+time_slot_num = 150  # Number of time slots
 Nm, Ne = 4, 64  # Number of antennas at MD and ES
 bandwidth = 1e6  # System bandwidth in Hz (1 MHz)
 speed_range = (10, 20)  # MD speed range in m/s
@@ -142,7 +142,7 @@ def main():
             H_t, small_scale_fading_prev = update_channel(H_t, user_snr_dB, noise_power, small_scale_fading_prev)
 
         # Save channel data for this specific SNR value as an NPZ file
-        np.save(f"mimo_channel_data_snr_{snr_value}.npy", channel_data)
+        np.save(f"sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data_snr_{snr_value}.npy", channel_data)
         print(f"MIMO channel data for SNR = {snr_value} saved as 'mimo_channel_data_snr_{snr_value}.npy'")
 
         # Verify SNR distribution
