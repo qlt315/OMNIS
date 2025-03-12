@@ -47,8 +47,8 @@ for seed_idx, seed in enumerate(seed_list):
             algorithm.simulation()
 
             # Store the results for each metric and each algorithm, averaging over all seeds
-            for metric in metric_names:
-                eval_results[metric][alg_idx, user_idx] += algorithm.average_metrics[metric]
+            for metric, save_metric in zip(metric_names, metric_save_names):
+                eval_results[save_metric][alg_idx, user_idx] += algorithm.average_metrics[metric]
 
 # After collecting results for all seeds, compute the average across all seeds for each algorithm and user number
 for metric in eval_results:
