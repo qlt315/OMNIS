@@ -8,7 +8,7 @@ np.random.seed(seed)
 
 
 radius = 250  # MD movement area radius in meters
-user_num = 5  # Number of mobile devices
+user_num = 10  # Number of mobile devices
 time_slot_num = 150  # Number of time slots
 Nm, Ne = 4, 64  # Number of antennas at MD and ES
 bandwidth = 1e6  # System bandwidth in Hz (1 MHz)
