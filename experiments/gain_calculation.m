@@ -1,0 +1,52 @@
+% Load data
+load('results/eval_diff_snr.mat');
+load('results/eval_diff_user_num.mat');
+
+% Define metric names
+metrics = {'reward', 'latency', 'energy', 'accuracy', 'vio_prob', 'vio_sum'};
+
+% Metrics to be maximized (higher is better)
+maximize_metrics = {'reward', 'accuracy'};
+
+% Metrics to be minimized (lower is better)
+minimize_metrics = {'latency', 'energy', 'vio_prob', 'vio_sum'};
+
+% Store results
+results = struct();
+
+% Process each metric
+for i = 1:length(metrics)
+    metric = metrics{i};
+    
+    % Retrieve data for different SNR values
+    eval_snr = eval([metric,'_diff_snr']);
+    eval_user = eval([metric, '_diff_user_num']);
+    
+    % Compute the improvement of OMNIS-UCB compared to CTO (second row compared to the first row)
+    diff_snr = eval_snr(2, :) - eval_snr(1, :);
+    diff_user = eval_user(2, :) - eval_user(1, :);
+    
+    % Calculate the percentage improvement for SNR and User number
+    if ismember(metric, maximize_metrics)
+        % For maximization metrics (reward, accuracy)
+        percentage_improvement_snr = (-diff_snr ./ eval_snr(2, :)) * 100; % Percentage increase
+        percentage_improvement_user = -(diff_user ./ eval_user(2, :)) * 100; % Percentage increase
+    else
+        % For minimization metrics (latency, energy, vio_prob, vio_sum)
+        percentage_improvement_snr = (diff_snr ./ eval_snr(2, :)) * 100; % Percentage decrease
+        percentage_improvement_user = (diff_user ./ eval_user(2, :)) * 100; % Percentage decrease
+    end
+    
+    % Store the results (maximum percentage improvement for SNR and User)
+    results.(metric).snr = max(percentage_improvement_snr);
+    results.(metric).user = max(percentage_improvement_user);
+end
+
+% Display the results with values
+disp('Maximum percentage improvement (or least degradation) for each metric:');
+for i = 1:length(metrics)
+    metric = metrics{i};
+    disp([metric ':']);
+    disp(['  SNR: ' num2str(results.(metric).snr) '%']);
+    disp(['  User: ' num2str(results.(metric).user) '%']);
+end

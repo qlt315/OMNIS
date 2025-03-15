@@ -6,9 +6,9 @@ data = load('results/eval_diff_snr.mat');
 
 % Define SNR values and algorithm names
 snr_values = [0, 2, 4, 6, 8, 10]; % SNR levels
-algorithms = {'OMNIS', 'CTO', 'DTS', 'GDO', 'RSS'}; % 5 algorithms
+algorithms = {'OMNIS-UCB', 'CTO', 'OMNIS-TS', 'GDO', 'RSS'}; % 5 algorithms
 metrics = {'reward', 'latency', 'energy', 'accuracy', 'vio_prob', 'vio_sum'}; % 6 performance metrics
-metric_labels = {'Aver. Reward of MDs', 'Aver. Latency [s]', 'Aver. Energy [J]', 'Aver. Acc. [%]', 'Aver. Vio. Prob.', 'Aver. Vio. Sum'}; % Y-axis labels
+metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Energy [J]', 'Avg. Acc. [%]', 'Avg. Violation Prob.', ' Avg. Violation Excess'}; % Labels
 
 % Define color scheme for different algorithms
 colors = lines(length(algorithms)); % Automatically assign different colors

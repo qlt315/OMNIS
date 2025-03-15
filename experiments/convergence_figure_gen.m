@@ -2,9 +2,10 @@
 load('results/eval_convergence.mat');
 
 % Extract the relevant data
-metrics = {'reward', 'delay', 'accuracy', 'energy'}; % Use actual metric names
-metric_labels = {'Aver. Reward', 'Aver. Latency [s]', 'Aver. Acc. [%]', 'Aver. Energy [J]'}; % Labels
+metrics = {'reward', 'delay', 'accuracy', 'energy', 'is_vio', 'vio_degree'}; % Use actual metric names
+metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Acc. [%]', 'Avg. Energy [J]', 'Avg. Violation Prob.', ' Avg. Violation Excess'}; % Labels
 algorithms = {'omnis', 'cto', 'dts', 'gdo', 'rss'};
+algorithm_labels = {'OMNIS-UCB', 'CTO', 'OMNIS-TS', 'GDO', 'RSS'}; % 5 algorithms
 user_num = 3; % Number of users
 time_slot_num = 150; % Number of time slots
 
@@ -15,7 +16,7 @@ line_styles = {'--', ':', '-.'}; % Dashed line styles for individual users
 % Create a figure with tighter spacing
 figure('Position', [100, 100, 1000, 800]); % Adjust figure size
 
-tiledlayout(2,2, 'Padding', 'compact', 'TileSpacing', 'compact'); % Use tiledlayout for tighter control
+tiledlayout(2,3, 'Padding', 'compact', 'TileSpacing', 'compact'); % Use tiledlayout for tighter control
 
 legend_entries = {}; % Initialize legend list
 
@@ -29,22 +30,13 @@ for metric_idx = 1:length(metrics)
     % OMNIS user-wise metrics
     omnis_ins_metric = eval(['omnis_ins_' metric]);
 
-    % Plot OMNIS per-user data with different dashed styles
-    for user_idx = 1:user_num
-        plot(omnis_ins_metric(user_idx, :), 'LineWidth', 1.5, 'LineStyle', line_styles{user_idx}, ...
-            'Color', colors(1,:), 'DisplayName', sprintf('OMNIS User %d', user_idx));
-    end
-
-    % Plot OMNIS average
-    omnis_ins_metric_avg = mean(omnis_ins_metric, 1);
-    plot(omnis_ins_metric_avg, 'LineWidth', 2.5, 'LineStyle', '-', 'Color', colors(1,:), 'DisplayName', 'OMNIS');
 
     % Plot other algorithms
-    for alg_idx = 2:length(algorithms)
+    for alg_idx = 1:length(algorithms)
         alg_name = algorithms{alg_idx};
         alg_metric = eval([alg_name '_ins_' metric]);
         alg_metric_avg = mean(alg_metric, 1);
-        plot(alg_metric_avg, 'LineWidth', 2.5, 'LineStyle', '-', 'Color', colors(alg_idx,:), 'DisplayName', upper(alg_name));
+        plot(alg_metric_avg, 'LineWidth', 2.5, 'LineStyle', '-', 'Color', colors(alg_idx,:), 'DisplayName', algorithm_labels{alg_idx});
     end
 
     % Customize axes

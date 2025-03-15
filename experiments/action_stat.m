@@ -75,8 +75,10 @@ for i = 1:6
     % Set axis labels and titles
     xlabel('Action Pick Probability', 'FontSize', 14, 'FontName', 'Times New Roman');
     yticks(1:5);
-    yticklabels({'OMNIS', 'CTO', 'DTS', 'GDO', 'RSS'});  % Algorithm names
-    
+    set(gca, 'TickLabelInterpreter', 'tex');
+    yticklabels({'OMNIS\newline  -UCB', 'CTO', 'OMNIS\newline   -TS', 'GDO', 'RSS'});
+
+    yticklabels({'', '', '', '', ''});  % Algorithm names
     % Adjust X-axis range (max probability = 1)
     xlim([0, 1]);
     set(gca, 'FontSize', 14, 'FontName', 'Times New Roman');
