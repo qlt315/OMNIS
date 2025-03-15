@@ -12,7 +12,7 @@ seed_list = [0, 37, 42]
 seed_num = len(seed_list)
 config = Config(0)  # just roughly initialize to get the  number of MD and time slots.
 # Metrics to be recorded
-metrics = ["reward", "delay", "accuracy", "energy"]
+metrics = ["reward", "delay", "accuracy", "energy", "is_vio", "vio_degree"]
 algorithms = {
     "omnis": OMNIS,
     "cto": CTO,

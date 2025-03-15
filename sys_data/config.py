@@ -78,6 +78,7 @@ class Config:
         self.bcd_flag = 10e-5  # Convergence threshold for BCD
         self.bcd_max_iter = 30  # Maximum iterations for BCD
         self.average_metrics = {}  # Placeholder for aggregated performance metrics
+        self.std_metrics = {}
         self.rewards_history = {user: [] for user in self.users}  # History of rewards for users
 
         # Action and context definitions for Gaussian Process (GP) models

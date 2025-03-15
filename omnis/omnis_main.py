@@ -41,6 +41,7 @@ class OMNIS:
         # Performance metrics
         self.instant_metrics = config.instant_metrics
         self.average_metrics = config.average_metrics
+        self.std_metrics = config.std_metrics
         self.acc_data = config.acc_data
         self.channel_data = config.channel_data
         self.est_err = config.est_err
@@ -388,117 +389,113 @@ class OMNIS:
         """Apply moving average to smooth the data."""
         return np.convolve(data, np.ones(window_size) / window_size, mode='valid')
 
-    def show_reward(self):
-        """Smooth and plot the rewards history for each MD."""
+    def show_convergence(self):
+        """Smooth and plot the rewards, latency, energy, accuracy, is_vio, and vio_degree for each user."""
         window_size = 20
-        for user in self.users:
-            # Apply moving average to smooth the rewards for each user
-            self.instant_metrics[user]['reward'] = self.moving_average(self.instant_metrics[user]['reward'], window_size)
+        slots = np.arange(1, self.time_slot_num + 1)  # X-axis: Time slot index
 
-        # Set up a figure for plotting
-        plt.figure(figsize=(10, 6))
+        # Apply moving average to smooth the rewards for each user
+        for user in self.users:
+            self.instant_metrics[user]['reward'] = self.moving_average(self.instant_metrics[user]['reward'],
+                                                                       window_size)
+
+        # Set up a 3x2 grid for plotting
+        fig, axes = plt.subplots(3, 2, figsize=(12, 14))
 
         # Plot the rewards for each user over time slots
         for user in self.users:
-            plt.plot(self.instant_metrics[user]['reward'], label=f'User {user}')
-
-        # Add labels and title
-        plt.xlabel('Time Slots')
-        plt.ylabel('Reward')
-        plt.title('Reward vs Time Slot for Each User')
-        plt.legend()
-
-        # Show the plot
-        plt.show()
-
-    def show_metrics(self):
-        """Plot the latency, energy consumption, and accuracy for all users over time slots."""
-        slots = np.arange(1, self.time_slot_num + 1)  # X-axis: Time slot index
-
-        fig, axes = plt.subplots(3, 1, figsize=(10, 14))
+            axes[0, 0].plot(self.instant_metrics[user]['reward'], label=f'{user}')
+        axes[0, 0].set_ylabel('Reward')
+        axes[0, 0].set_xlabel('Time Slot')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True)
 
         # Plot latency for all users
         for user in self.users:
-            axes[0].plot(slots, self.instant_metrics[user]["delay"], label=f"User {user}")
-        axes[0].set_ylabel("Latency (ms)")
-        axes[0].set_xlabel("Time Slot")
-        axes[0].set_title("Latency Over Time Slots for All Users")
-        axes[0].legend()
-        axes[0].grid(True)
+            axes[0, 1].plot(slots, self.instant_metrics[user]["delay"], label=f"{user}")
+        axes[0, 1].set_ylabel("Latency [s]")
+        axes[0, 1].set_xlabel("Time Slot")
+        axes[0, 1].legend()
+        axes[0, 1].grid(True)
 
         # Plot energy consumption for all users
         for user in self.users:
-            axes[1].plot(slots, self.instant_metrics[user]["energy"], label=f"User {user}")
-        axes[1].set_ylabel("Energy (J)")
-        axes[1].set_xlabel("Time Slot")
-        axes[1].set_title("Energy Consumption Over Time Slots for All Users")
-        axes[1].legend()
-        axes[1].grid(True)
+            axes[1, 0].plot(slots, self.instant_metrics[user]["energy"], label=f"{user}")
+        axes[1, 0].set_ylabel("Energy [J]")
+        axes[1, 0].set_xlabel("Time Slot")
+        axes[1, 0].legend()
+        axes[1, 0].grid(True)
 
         # Plot accuracy for all users
         for user in self.users:
-            axes[2].plot(slots, self.instant_metrics[user]["accuracy"], label=f"User {user}")
-        axes[2].set_ylabel("Accuracy")
-        axes[2].set_xlabel("Time Slot")
-        axes[2].set_title("Accuracy Over Time Slots for All Users")
-        axes[2].legend()
-        axes[2].grid(True)
+            axes[1, 1].plot(slots, self.instant_metrics[user]["accuracy"], label=f"{user}")
+        axes[1, 1].set_ylabel("Accuracy")
+        axes[1, 1].set_xlabel("Time Slot")
+        axes[1, 1].legend()
+        axes[1, 1].grid(True)
 
+        # Plot is_vio for all users
+        for user in self.users:
+            axes[2, 0].plot(slots, self.instant_metrics[user]["is_vio"], label=f"{user}")
+        axes[2, 0].set_ylabel("Is Violation ")
+        axes[2, 0].set_xlabel("Time Slot")
+        axes[2, 0].legend()
+        axes[2, 0].grid(True)
+
+        # Plot vio_degree for all users
+        for user in self.users:
+            axes[2, 1].plot(slots, self.instant_metrics[user]["vio_degree"], label=f"{user}")
+        axes[2, 1].set_ylabel("Violation Excess")
+        axes[2, 1].set_xlabel("Time Slot")
+        axes[2, 1].legend()
+        axes[2, 1].grid(True)
+
+        # Adjust layout
         plt.tight_layout()
         plt.show()
 
-    def get_average_metrics(self):
-        """Calculate the average latency, energy consumption, accuracy, reward,
+    def get_average_and_std_metrics(self):
+        """Calculate the average and standard deviation of latency, energy consumption, accuracy, reward,
         the probability of violating delay and energy consumption constraints, and
         the number of violations across all time slots and users."""
 
-        total_latency = 0
-        total_energy = 0
-        total_accuracy = 0
-        total_reward = 0
+        metrics = ["delay", "energy", "accuracy", "reward", "is_vio", "vio_degree"]
+        metric_sums = {m: 0 for m in metrics}
+        metric_values = {m: [] for m in metrics}  # Store values for std calculation
 
-        total_vio_sum = 0  # Total number of violations across all time slots
-        total_vio_num = 0
-
-        # Iterate over all users
+        # Iterate over all users and time slots
         for user in self.users:
-
-            # Sum the metrics for all time slots for the current user
             for t in range(self.time_slot_num):
-                # Sum the total metrics
+                for m in metrics:
+                    value = self.instant_metrics[user][m][t]
+                    metric_sums[m] += value
+                    metric_values[m].append(value)
 
-                total_latency += self.instant_metrics[user]["delay"][t]
-                total_energy += self.instant_metrics[user]["energy"][t]
-                total_accuracy += self.instant_metrics[user]["accuracy"][t]
-                total_reward += self.instant_metrics[user]["reward"][t]
+        total_samples = self.time_slot_num * len(self.users)
 
-                total_vio_num += self.instant_metrics[user]["is_vio"][t]
-                total_vio_sum += self.instant_metrics[user]["vio_degree"][t]
+        # Compute averages
+        self.average_metrics = {
+            "latency": float(metric_sums["delay"] / total_samples),
+            "energy": float(metric_sums["energy"] / total_samples),
+            "accuracy": float(metric_sums["accuracy"] / total_samples),
+            "reward": float(metric_sums["reward"] / total_samples),
+            "vio_prob": float(metric_sums["is_vio"] / total_samples),
+            "vio_sum": float(metric_sums["vio_degree"] / total_samples),
+        }
 
-        # Compute the average values, dividing by the total number of samples (time slots * users)
-        avg_latency = total_latency / (self.time_slot_num * len(self.users))
-        avg_energy = total_energy / (self.time_slot_num * len(self.users))
-        avg_accuracy = total_accuracy / (self.time_slot_num * len(self.users))
-        avg_reward = total_reward / (self.time_slot_num * len(self.users))
+        # Compute standard deviations
+        self.std_metrics = {
+            "latency": float(np.std(metric_values["delay"], ddof=1)),
+            "energy": float(np.std(metric_values["energy"], ddof=1)),
+            "accuracy": float(np.std(metric_values["accuracy"], ddof=1)),
+            "reward": float(np.std(metric_values["reward"], ddof=1)),
+            "vio_prob": float(np.std(metric_values["is_vio"], ddof=1)),
+            "vio_sum": float(np.std(metric_values["vio_degree"], ddof=1)),
+        }
 
-        # Compute the violation probability
-        vio_prob = total_vio_num / (self.time_slot_num * len(self.users))
-
-        # Compute the average number of violations per time slot
-        avg_vio_sum = total_vio_sum / (self.time_slot_num * len(self.users))
-
+        # Normalize action frequency
         self.action_freq = self.action_freq / self.time_slot_num
 
-        # Store the computed averages and new metrics in self.average_metrics
-        self.average_metrics = {
-            "name": self.name,
-            "latency": float(avg_latency),
-            "energy": float(avg_energy),
-            "accuracy": float(avg_accuracy),
-            "reward": float(avg_reward),
-            "vio_prob": float(vio_prob),
-            "vio_sum": float(avg_vio_sum)
-        }
     
     def get_instant_metrics(self,task_dic, total_overhead_dic, reward_dic, acc_dic):
         for user in self.users:
@@ -625,7 +622,7 @@ class OMNIS:
 
             # Update the GP
             self.update_gp(context_dic, model_selection_dic,reward_dic)
-        self.get_average_metrics()
+        self.get_average_and_std_metrics()
 
 
 if __name__ == "__main__":
@@ -633,7 +630,8 @@ if __name__ == "__main__":
     config = Config(seed)
     omnis = OMNIS(config)
     omnis.simulation()
-    print(omnis.average_metrics)
-    print(omnis.action_freq)
-    omnis.show_reward()
-    omnis.show_metrics()
+    print("aver info:", omnis.average_metrics)
+    print("std info:", omnis.std_metrics)
+    print("action freq info:", omnis.action_freq)
+    omnis.show_convergence()
+
