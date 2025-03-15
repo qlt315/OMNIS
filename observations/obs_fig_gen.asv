@@ -6,6 +6,7 @@
 % acc_snr_10 = zeros(rate_num,model_num);
 % data_size = zeros(rate_num,model_num);
 
+load('acc_payload_data.mat');
 
 
 % Define SNR values and corresponding accuracy matrices
@@ -14,10 +15,9 @@ acc_matrices = {acc_snr_3, acc_snr_5, acc_snr_7, acc_snr_10};
 
 % Define model labels and markers
 model_labels = {'STD-12', 'BOX-12', 'STD-6', 'BOX-6', 'STD-3', 'BOX-3', 'ENT-12', 'ENT-6', 'ENT-3'};  % Added Entropy model
-markers = {'o', 's', 'd', '^', 'v', 'p', 'x', '*', 'h'}; % Expanded to 9 markers
+markers = {'o', 's', 'd', '^', 'v', 'p', 'x'}; % Added a marker for Entropy model
 
-
-% Define colors: STD (Blue shades), BOX (Green shades), and Entropy (Red shades)
+% Define colors: STD (Blue shades), BOX (Green shades), and Entropy (Red)
 colors = [  % RGB values
     0, 0.2, 1;    % STD-12 (Deep Blue)
     0, 0.6, 0.2;  % BOX-12 (Deep Green)
@@ -25,11 +25,8 @@ colors = [  % RGB values
     0, 0.8, 0.4;  % BOX-6 (Medium Green)
     0.4, 0.7, 1;  % STD-3 (Light Blue)
     0.2, 1, 0.6;  % BOX-3 (Light Green)
-    0.8, 0, 0;    % ENT-3 (Deep Red)
-    1, 0.4, 0.4;  % ENT-6 (Medium Red)
-    1, 0.7, 0.7;  % ENT-12 (Light Red)
+    1, 0, 0       % EnT-3 (Red)
 ];
-
 
 % Create figure with tight layout
 figure;
@@ -61,7 +58,7 @@ end
 
 % Create a shared legend and position it between the first and second row
 lgd = legend(model_labels, 'FontSize', 12, 'FontName', 'Times New Roman', ...
-             'NumColumns', ceil(length(model_labels) / 2), 'Location', 'northoutside'); % 2-row legend
+             'NumColumns', 3, 'Location', 'northoutside'); % Place legend at the top
 
 % Move the legend between the first and second row
 lgd.Layout.Tile = 'north'; % Assign legend to the top space of the tiled layout
