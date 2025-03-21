@@ -19,7 +19,7 @@ class Config:
 
         # Fixed data sizes for each model (in bytes)
         self.data_size = {
-            'Box3': 6e3, 'Box6': 13.62e3, 'Box12': 33.58e3,
+            'Box3': 6e3, 'Box6': 13.26e3, 'Box12': 33.58e3,
             'Standard3': 11.23e3, 'Standard6': 22.46e3, 'Standard12': 44.93e3
         }
 
