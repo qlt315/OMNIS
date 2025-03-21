@@ -197,7 +197,7 @@ class GDO:
         # Calculate first and second terms for all users in vectorized form
         first_term = omega_m_t_vector * head_flops_vector @ cp.inv_pos(f_m) / (cores * flops_per_cycle)
         second_term = omega_m_e_vector * power_coeff @ (f_m ** 2) / (cores * flops_per_cycle)
-        total_sum = cp.sum(first_term * 10e-9 + second_term)
+        total_sum = cp.sum(first_term * 1e-9 + second_term)
 
         # Define the objective function to minimize
         objective = cp.Minimize(total_sum)
@@ -304,7 +304,7 @@ class GDO:
             gpu_freq = self.md_params[user]['freq']  # GPU frequency for this user
 
             # Compute local processing delay
-            local_delay = head_flops * 10e-9 / (gpu_freq * num_cores * flops_per_cycle)
+            local_delay = head_flops * 1e-9 / (gpu_freq * num_cores * flops_per_cycle)
 
             # Compute local energy consumption
             local_energy = self.md_params[user]['power_coeff'] * gpu_freq ** 3 * local_delay
@@ -351,7 +351,7 @@ class GDO:
             gpu_freq_m = gpu_allocation_dic[user]  # GPU frequency for this user
 
             # Compute local processing delay
-            edge_delay = tail_flops_m * 10e-9 / (gpu_freq_m * num_cores_m * flops_per_cycle_m)
+            edge_delay = tail_flops_m * 1e-9 / (gpu_freq_m * num_cores_m * flops_per_cycle_m)
 
             # Compute local energy consumption
             edge_energy = self.md_params[user]['power_coeff'] * gpu_freq_m ** 3 * edge_delay

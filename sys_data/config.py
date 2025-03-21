@@ -10,6 +10,7 @@ class Config:
         # Basic configuration
         self.seed = seed
         np.random.seed(self.seed)  # Set random seed for reproducibility
+        self.time_slot_num = 150 # Number of time slots
 
         # Model configuration: Different quantization methods and channels
         self.models = [
@@ -33,10 +34,22 @@ class Config:
             'Standard3': 1.5e10, 'Standard6': 1.8e10, 'Standard12': 2.0e10
         }
 
+
+        # # Floating-point operations (FLOPs) for model processing
+        # self.head_flops = {
+        #     'Box3': 5e10, 'Box6': 1e10, 'Box12': 1.5e10,
+        #     'Standard3': 6e10, 'Standard6': 1.1e10, 'Standard12': 1.4e9
+        # }
+        # self.tail_flops = {
+        #     'Box3': 1.2e10, 'Box6': 1.3e10, 'Box12': 1.8e10,
+        #     'Standard3': 1.5e10, 'Standard6': 1.8e10, 'Standard12': 2.0e10
+        # }
+
+
         # User-specific configurations
-        self.time_slot_num = 150 # Number of time slots
         self.user_num = 5  # Number of users
         self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
+
 
         # Mobile device (MD) parameters for each user
         self.md_params = {user: {
@@ -49,6 +62,7 @@ class Config:
 
         # Edge server (ES) parameters
         self.es_params = {'freq': 1.5, 'cores': 2048, 'flops_per_cycle': 2, 'power_coeff': 0.7}
+
 
         # Channel coding rates and constraints
         self.available_coding_rate = [1, 1 / 2, 1 / 5]
