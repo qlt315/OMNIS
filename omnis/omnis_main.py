@@ -4,7 +4,7 @@ import random
 import cvxpy as cp
 import matplotlib.pyplot as plt
 from sys_data.config import Config
-
+import time
 
 class OMNIS:
     def __init__(self, config):
@@ -625,6 +625,7 @@ class OMNIS:
 
 
 if __name__ == "__main__":
+    start_time = time.time()  # Record start time
     seed = 0
     config = Config(seed)
     omnis = OMNIS(config)
@@ -632,5 +633,7 @@ if __name__ == "__main__":
     print("aver info:", omnis.average_metrics)
     print("std info:", omnis.std_metrics)
     print("action freq info:", omnis.action_freq)
-    omnis.show_convergence()
+    end_time = time.time()  # Record end time
+    print(f"Total execution time: {end_time - start_time:.2f} seconds")
+    # omnis.show_convergence()
 

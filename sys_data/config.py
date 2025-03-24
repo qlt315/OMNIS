@@ -47,7 +47,7 @@ class Config:
 
 
         # User-specific configurations
-        self.user_num = 10  # Number of users
+        self.user_num = 8  # Number of users
         self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
 
         # Mobile device (MD) parameters for each user

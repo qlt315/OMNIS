@@ -22,9 +22,9 @@ for i = 1:length(metrics)
     eval_snr = eval([metric,'_diff_snr']);
     eval_user = eval([metric, '_diff_user_num']);
     
-    % Compute the improvement of OMNIS-UCB compared to CTO (second row compared to the first row)
-    diff_snr = eval_snr(2, :) - eval_snr(1, :);
-    diff_user = eval_user(2, :) - eval_user(1, :);
+    % Compute the improvement of OMNIS-UCB compared to CTO (first row compared to the last row)
+    diff_snr = eval_snr(5, :) - eval_snr(1, :);
+    diff_user = eval_user(5, :) - eval_user(1, :);
     
     % Calculate the percentage improvement for SNR and User number
     if ismember(metric, maximize_metrics)

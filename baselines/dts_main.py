@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from scipy.special import erf
 import random
 import cvxpy as cp
@@ -626,6 +627,7 @@ class DTS:
 
 
 if __name__ == "__main__":
+    start_time = time.time()  # Record start time
     seed = 42
     config = Config(seed)
     dts = DTS(config)
@@ -633,4 +635,7 @@ if __name__ == "__main__":
     print("aver info:", dts.average_metrics)
     print("std info:", dts.std_metrics)
     print("action freq info:", dts.action_freq)
+    end_time = time.time()  # Record end time
+    print(f"Total execution time: {end_time - start_time:.2f} seconds")
     dts.show_convergence()
+

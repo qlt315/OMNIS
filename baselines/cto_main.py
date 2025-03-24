@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from scipy.special import erf
 import random
 import cvxpy as cp
@@ -640,6 +641,7 @@ class CTO:
         self.get_average_and_std_metrics()
 
 if __name__ == "__main__":
+    start_time = time.time()  # Record start time
     seed = 42
     config = Config(seed)
     cto = CTO(config)
@@ -647,4 +649,8 @@ if __name__ == "__main__":
     print("aver info:", cto.average_metrics)
     print("std info:", cto.std_metrics)
     print("action freq info:", cto.action_freq)
+
+    end_time = time.time()  # Record end time
+    print(f"Total execution time: {end_time - start_time:.2f} seconds")
+
     cto.show_convergence()
