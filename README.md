@@ -89,3 +89,19 @@ OMNIS/
 
 
 
+## Contributing
+We welcome contributions to improve OMNIS. To contribute:
+1. Fork the repository.
+2. Create a feature branch:
+   ```bash
+   git checkout -b feature-name
+   ```
+3. Commit your changes and push to your fork.
+4. Open a pull request detailing the changes.
+
+---
+
+## Acknowledgments
+
+
+The multi-agent MAB optimization scheme is developed based on https://github.com/jaayala/contextual_bayesian_optimization
