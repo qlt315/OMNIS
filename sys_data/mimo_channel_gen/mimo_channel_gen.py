@@ -140,7 +140,7 @@ for t in range(time_slot_num):
     H_t = update_channel(H_t)
 
 # Save channel data
-np.save("sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data.npy", channel_data)
+np.save("sys_data/mimo_channel_gen/mimo_channel_data.npy", channel_data)
 print("MIMO channel data saved as 'mimo_channel_data.npy'")
 
 # Verify SNR distribution

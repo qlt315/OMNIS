@@ -142,7 +142,7 @@ def main():
             H_t, small_scale_fading_prev = update_channel(H_t, user_snr_dB, noise_power, small_scale_fading_prev)
 
         # Save channel data for this specific SNR value as an NPZ file
-        np.save(f"sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data_snr_{snr_value}.npy", channel_data)
+        np.save(f"sys_data/mimo_channel_gen/mimo_channel_data_snr_{snr_value}.npy", channel_data)
         print(f"MIMO channel data for SNR = {snr_value} saved as 'mimo_channel_data_snr_{snr_value}.npy'")
 
         # Verify SNR distribution
