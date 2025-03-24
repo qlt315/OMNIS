@@ -8,7 +8,7 @@ from baselines.gdo_main import GDO
 from baselines.rss_main import RSS
 
 # Define different user numbers for evaluation
-user_num_list = [2, 3, 4, 5, 6, 7, 8, 9]
+user_num_list = [2, 3, 4, 5, 6, 7, 8]
 num_user_cases = len(user_num_list)
 seed_list = [0, 37, 42]  # Define the list of seeds to average over
 seed_num = len(seed_list)
