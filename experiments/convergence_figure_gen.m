@@ -6,8 +6,8 @@ metrics = {'reward', 'delay', 'accuracy', 'energy', 'is_vio', 'vio_degree'}; % U
 metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Acc. [%]', 'Avg. Energy [J]', 'Avg. Violation Prob.', ' Avg. Violation Excess'}; % Labels for the metrics
 algorithms = {'omnis', 'cto', 'dts', 'gdo', 'rss'}; % List of algorithms
 algorithm_labels = {'OMNIS-UCB', 'CTO', 'OMNIS-TS', 'GDO', 'RSS'}; % Labels for the algorithms
-user_num = 3; % Number of users
-time_slot_num = 150; % Number of time slots
+
+
 
 % Define colors for each algorithm
 colors = lines(length(algorithms)); % Generate distinct colors for each algorithm
@@ -35,10 +35,10 @@ for metric_idx = 1:length(metrics)
         
         % Apply smoothing to the average metric data (choose one method)
         % alg_metric_smooth = smoothdata(alg_metric_avg, 'movmean', 5); % Apply moving average (window size = 5)
-        alg_metric_smooth = sgolayfilt(alg_metric_avg, 3, 9); % Apply Savitzky-Golay filter (3rd order, window size = 9)
+        alg_metric_smooth = sgolayfilt(alg_metric_avg, 3, 49); % Apply Savitzky-Golay filter (3rd order, window size = 9)
         
         % Plot the smoothed metric data
-        plot(alg_metric_smooth, 'LineWidth', 2.5, 'LineStyle', '-', 'Color', colors(alg_idx,:), 'DisplayName', algorithm_labels{alg_idx});
+        plot(alg_metric_avg, 'LineWidth', 2.5, 'LineStyle', '-', 'Color', colors(alg_idx,:), 'DisplayName', algorithm_labels{alg_idx});
     end
 
     % Customize axes for better readability

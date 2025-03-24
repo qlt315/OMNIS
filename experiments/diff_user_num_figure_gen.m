@@ -2,7 +2,7 @@
 data = load('results/eval_diff_user_num.mat');
 
 % Define user counts and algorithm names
-user_counts = [1, 2, 3, 4, 5, 6, 7, 8]; % User count values
+user_counts = [2, 3, 4, 5, 6, 7]; % User count values
 algorithms = {'OMNIS-UCB', 'CTO', 'OMNIS-TS', 'GDO', 'RSS'}; % 5 algorithms
 metrics = {'reward', 'latency', 'energy', 'accuracy', 'vio_prob', 'vio_sum'}; % 6 performance metrics
 metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Energy [J]', 'Avg. Acc. [%]', 'Avg. Violation Prob.', ' Avg. Violation Excess'}; % Labels
@@ -45,8 +45,8 @@ for metric_idx = 1:length(metrics)
     ylabel(metric_labels{metric_idx}, 'FontSize', 14, 'FontName', 'Times New Roman');
 
     % Set x-axis ticks to show user counts 1 to 8
-    xticks(1:8);
-    xlim([1,8]);
+    xticks(2:7);
+    xlim([2,7]);
 
     % Enable grid and adjust grid color for better visibility
     grid on;

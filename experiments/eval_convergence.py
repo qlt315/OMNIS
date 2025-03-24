@@ -8,7 +8,7 @@ from baselines.gdo_main import GDO
 from baselines.rss_main import RSS
 
 # Define the random seed list, number of users, and number of time slots
-seed_list = [0, 37, 42]
+seed_list = [0,37,42]
 seed_num = len(seed_list)
 config = Config(0)  # just roughly initialize to get the  number of MD and time slots.
 # Metrics to be recorded

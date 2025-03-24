@@ -47,6 +47,9 @@ for seed_idx, seed in enumerate(seed_list):
             # Initialize and run the algorithm
             algorithm = alg_cls(config)
             algorithm.simulation()
+            print("aver info:", algorithm.average_metrics)
+            # print("std info:", algorithm.std_metrics)
+            # print("action freq info:", algorithm.action_freq)
 
             # Store the results for each metric and each algorithm, averaging over all seeds
             for metric, save_metric in zip(metric_names, metric_save_names):

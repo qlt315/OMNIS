@@ -69,8 +69,8 @@ class OMNIS:
             task_dic = {
                 user: {
                     "delay_constraint": self.fixed_delay[user] + np.random.uniform(-0.001, 0.001),
-                    "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.1, 0.1),
-                    "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.05, 0.05),
+                    "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.001, 0.001),
+                    "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.001, 0.001),
                 }
                 for user in self.users
             }
@@ -126,9 +126,9 @@ class OMNIS:
         """Compute the reward of MDs based on accuracy and penalty terms."""
         reward_dic = {}
         for user in self.users:
-            reward_dic[user] = (acc_dic[user] + task_dic[user]["delay_weight"] * erf(
+            reward_dic[user] = (acc_dic[user] + 1.5 * task_dic[user]["delay_weight"] * erf(
                 task_dic[user]["delay_constraint"] - total_overhead_dic[user]["delay"])
-                                + task_dic[user]["energy_weight"] * erf(
+                                + 1.5 * task_dic[user]["energy_weight"] * erf(
                         task_dic[user]["energy_constraint"] - total_overhead_dic[user]["energy"]))
 
         return reward_dic
@@ -356,7 +356,6 @@ class OMNIS:
 
             # Compute local processing delay
             edge_delay = tail_flops_m * 1e-9 / (gpu_freq_m * num_cores_m * flops_per_cycle_m)
-
             # Compute local energy consumption
             edge_energy = self.md_params[user]['power_coeff'] * gpu_freq_m ** 3 * edge_delay
 
@@ -370,10 +369,10 @@ class OMNIS:
 
     def get_total_overhead(self, local_overhead_dic, trans_overhead_dic, edge_overhead_dic):
         total_overhead_dic = {}  # Dictionary to store delay and energy consumption for each user
-        # print("local overhead", local_overhead_dic)
-        # print("trans overhead", trans_overhead_dic)
-        # print("edge overhead", edge_overhead_dic)
         for user in self.users:
+            # print("local delay", local_overhead_dic[user]['delay'])
+            # print("trans delay", trans_overhead_dic[user]['delay'])
+            # print("edge delay", edge_overhead_dic[user]['delay'])
             total_delay = local_overhead_dic[user]['delay'] + trans_overhead_dic[user]['delay'] + \
                           edge_overhead_dic[user]['delay']
             total_energy = local_overhead_dic[user]['energy'] + trans_overhead_dic[user]['energy'] + \
@@ -626,7 +625,7 @@ class OMNIS:
 
 
 if __name__ == "__main__":
-    seed = 42
+    seed = 0
     config = Config(seed)
     omnis = OMNIS(config)
     omnis.simulation()

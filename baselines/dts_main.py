@@ -73,9 +73,9 @@ class DTS:
 
             task_dic = {
                 user: {
-                    "delay_constraint": self.fixed_delay[user] + np.random.uniform(-0.001, 0.001),
-                    "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.1, 0.1),
-                    "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.05, 0.05),
+                    "delay_constraint": self.fixed_delay[user]+ np.random.uniform(-0.001, 0.001),
+                    "energy_constraint": self.fixed_energy[user]+ np.random.uniform(-0.001, 0.001),
+                    "energy_weight": self.fixed_energy_weight[user]+ np.random.uniform(-0.001, 0.001),
                 }
                 for user in self.users
             }
@@ -131,9 +131,9 @@ class DTS:
         """Compute the reward of MDs based on accuracy and penalty terms."""
         reward_dic = {}
         for user in self.users:
-            reward_dic[user] = (acc_dic[user] + task_dic[user]["delay_weight"] * erf(
+            reward_dic[user] = (acc_dic[user] + 1.5 * task_dic[user]["delay_weight"] * erf(
                 task_dic[user]["delay_constraint"] - total_overhead_dic[user]["delay"])
-                                + task_dic[user]["energy_weight"] * erf(
+                                + 1.5 * task_dic[user]["energy_weight"] * erf(
                         task_dic[user]["energy_constraint"] - total_overhead_dic[user]["energy"]))
 
         return reward_dic

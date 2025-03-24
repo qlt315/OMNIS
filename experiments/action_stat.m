@@ -1,106 +1,110 @@
-% Set up the colormap
-cmap = lines(5);  % Default MATLAB color map (5 colors for 5 algorithms)
-color_matrix = [];
-for i = 1:5
-    color_matrix = [color_matrix; cmap(i, :); cmap(i, :) * 0.7; cmap(i, :) * 0.4];  % Light and dark variations for each bar
+% Load data
+load("results/action_freq_snr.mat");  % Shape: 3×num_seeds×5×6
+load("results/action_freq_user_num.mat");  % Shape: 3×num_seeds×5×6
+
+% Define models in MATLAB struct format
+models = struct('name', {}, 'quant_method', {}, 'quant_channel', {});
+quant_methods = {'Box-', 'Box-', 'Box-', 'Standard-', 'Standard-', 'Standard-'};
+quant_channels = [3, 6, 12, 3, 6, 12];
+
+for i = 1:length(quant_methods)
+    models(i).name = sprintf('%s%d', quant_methods{i}, quant_channels(i));
+    models(i).quant_method = quant_methods{i};
+    models(i).quant_channel = quant_channels(i);
 end
 
-% Plotting the results
+% Set up colormap
+cmap = lines(5);  % Default MATLAB colormap (5 colors for 5 algorithms)
+color_matrix = [];
+for i = 1:5
+    color_matrix = [color_matrix; cmap(i, :); cmap(i, :) * 0.7; cmap(i, :) * 0.4];  % Light and dark variations
+end
+
+% SNR and MD labels
+snr_values = [2, 4, 6];
+md_values = [2, 4, 6];
+
+% Plotting the results (6 subplots: 3 for SNR, 3 for MD count)
 figure('Position', [100, 100, 1600, 800]);  % Set figure size
+
+% Adjust the subplot position to reduce space between rows and keep horizontal distance
 for i = 1:6
-    % Adjust position for more compact arrangement between rows
+    % Determine whether we are plotting SNR or MD
     if i <= 3
-        % First row (SNR-related plots)
-        ax = axes('Position', [0.1 + (mod(i-1, 3) * 0.3), 0.5, 0.25, 0.4]);  % Adjust position and size
+        condition_idx = i;  % SNR index (1,2,3)
+        data = squeeze(action_freq_snr(condition_idx, :, :));  % Shape: 5×6
+        condition_label = sprintf('SNR = %d', snr_values(i));
     else
-        % Second row (User-related plots)
-        ax = axes('Position', [0.1 + (mod(i-4, 3) * 0.3), 0.05, 0.25, 0.4]);  % Adjust position and size
+        condition_idx = i - 3;  % MD index (1,2,3)
+        data = squeeze(action_freq_user_num(condition_idx, :, :));  % Shape: 5×6
+        condition_label = sprintf('MD Count = %d', md_values(condition_idx));
     end
+    
+    % Find top-3 actions for each algorithm
+    top3_data = cell(1, 5);
+    for alg = 1:5
+        [~, sorted_indices] = sort(data(alg, :), 'descend');
+        top3_data{alg} = sorted_indices(1:3);
+    end
+    
+    % Create subplot with adjusted position (tight position between rows and proper horizontal spacing)
+    row = floor((i-1) / 3) + 1; % Calculate the row number
+    col = mod(i-1, 3) + 1; % Calculate the column number
+    ax = subplot(2, 3, i, 'Position', [0.02 + (col-1)*0.33, 0.55 - (row-1)*0.44, 0.28, 0.4]);
+
     hold on;
     
-    % Choose data based on SNR or Users
-    if i <= 3
-        data = squeeze(action_freq_snr(i, :, :));  % Use SNR-based data
-        top3_data = top3_snr;
-    else
-        data = squeeze(action_freq_user_num(i-3, :, :));  % Use Users-based data
-        top3_data = top3_user;
-    end
-    
-    % Prepare a cell array to hold results for all algorithms
+    % Prepare a cell array to hold top-3 results
     top_3_results = cell(5, 1);
     
-    % Plot each bar for 5 algorithms (5 bars per subplot)
+    % Plot each algorithm (5 bars per subplot)
     for alg = 1:5
-        % Extract data for the algorithm and sort for top 3 actions
-        selected_data = squeeze(data(alg, :));  % Get the action selection probabilities for the current algorithm
-        if i <= 3
-            top_3_values = selected_data(top3_snr{i, alg}(1:3));  % Top 3 actions based on the sorted order
-        else
-            top_3_values = selected_data(top3_user{i-3, alg}(1:3));  % Top 3 actions based on the sorted order
-        end
+        top_3_indices = top3_data{alg};
+        top_3_values = data(alg, top_3_indices);
         
-        % Store the top 3 actions and their values for later output
-        if i<=3
-            top_3_results{alg} = [top_3_results{alg}; models(top3_snr{i, alg}(1:3)), num2cell(top_3_values)];  % Save actions and values
-        else
-            top_3_results{alg} = [top_3_results{alg}; models(top3_user{i-3, alg}(1:3)), num2cell(top_3_values)];  % Save actions and values
-        end
+        % Store top 3 actions and probabilities
+        top_3_names = reshape({models(top_3_indices).name}, [], 1);
+        top_3_results{alg} = [top_3_names; num2cell(top_3_values')];
         
-        b = barh(alg, top_3_values, 'stacked', 'BarWidth', 0.6);  % Plot stacked bar
-        % Assign colors to the 3 stacked parts
-        set(b(1), 'FaceColor', color_matrix((alg-1)*3+1, :));
-        set(b(2), 'FaceColor', color_matrix((alg-1)*3+2, :));
-        set(b(3), 'FaceColor', color_matrix((alg-1)*3+3, :));
-        
-        % Annotate each bar with the action name, ensuring spaced-out placement
+        % Plot stacked bars
+        b = barh(alg, top_3_values, 'stacked', 'BarWidth', 0.6);
         for j = 1:3
-            if i<= 3
-                action_idx = top3_snr{i, alg}(j);  % Get index of the top 3 action
-            else
-                action_idx = top3_user{i-3, alg}(j);  % Get index of the top 3 action
-            end
-            action_name = models{action_idx};  % Get action name from the model list
-            
-            % Adjust the x-position to avoid overlap, and set y-position based on the algorithm
-            text_position_x = top_3_values(j) + 0.05;  % Offset the x-position from the bars
-            text_position_y = alg + 0.2 * (j-2);  % Adjust the y-position based on action number (spacing)
-            
-            % Display action name with adjusted positions
-            text(text_position_x, text_position_y, action_name, 'FontSize', 14, 'FontName', 'Times New Roman', ...
-                'HorizontalAlignment', 'left', 'VerticalAlignment', 'middle');
+            set(b(j), 'FaceColor', color_matrix((alg-1)*3+j, :));
+        end
+        
+        % Annotate each bar
+        for j = 1:3
+            action_name = models(top_3_indices(j)).name;
+            text(top_3_values(j) + 0.05, alg + 0.2 * (j-2), action_name, ...
+                'FontSize', 14, 'FontName', 'Times New Roman', 'HorizontalAlignment', 'left');
         end
     end
     
-    % Set axis labels and titles
+    % Set axis labels
     xlabel('Action Pick Probability', 'FontSize', 14, 'FontName', 'Times New Roman');
     yticks(1:5);
-    set(gca, 'TickLabelInterpreter', 'tex');
     yticklabels({'OMNIS\newline  -UCB', 'CTO', 'OMNIS\newline   -TS', 'GDO', 'RSS'});
-
-    yticklabels({'', '', '', '', ''});  % Algorithm names
-    % Adjust X-axis range (max probability = 1)
     xlim([0, 1]);
-    set(gca, 'FontSize', 14, 'FontName', 'Times New Roman');
     
-    % Enable grid and other settings
+    % Set grid
+    set(gca, 'FontSize', 14, 'FontName', 'Times New Roman');
     grid on;
     hold off;
 
-    % Grid visibility improvement
-    ax.GridColor = [0.2 0.2 0.2];  % Darker grid color
-    ax.GridAlpha = 0.6;  % Increase grid opacity
-    ax.Box = 'on';  % Display border
-    
-    % Output the top 3 actions and probabilities for each algorithm
-    disp(['Results for subplot: ', titles{i}]);
+    % Improve grid visibility
+    ax.GridColor = [0.2 0.2 0.2];
+    ax.GridAlpha = 0.6;
+    ax.Box = 'on';
+
+    % Output top-3 results
+    disp(['Results for ', condition_label]);
     for alg = 1:5
-        disp(['Algorithm: ', alg_names{alg}]);
+        disp(['Algorithm: ', num2str(alg)]);
         disp('Top 3 Actions and Probabilities:');
         disp(top_3_results{alg});
         disp('--------------------------------');
     end
 end
 
-% Apply tightfig to remove extra whitespace
+% Apply tight figure layout
 tightfig;

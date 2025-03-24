@@ -8,7 +8,7 @@ from baselines.gdo_main import GDO
 from baselines.rss_main import RSS
 
 # Define different user numbers for evaluation
-user_num_list = [1, 2, 3, 4, 5, 6, 7, 8]
+user_num_list = [2, 3, 4, 5, 6, 7, 8, 9]
 num_user_cases = len(user_num_list)
 seed_list = [0, 37, 42]  # Define the list of seeds to average over
 seed_num = len(seed_list)
@@ -41,11 +41,14 @@ for seed_idx, seed in enumerate(seed_list):
             # Reinitialize config for each algorithm to avoid shared state
             config = Config(seed)
             config.update_users(user_num)
+            print("fix delay:",config.fixed_delay)
 
             # Initialize and run the algorithm
             algorithm = alg_cls(config)
             algorithm.simulation()
-
+            print("aver info:", algorithm.average_metrics)
+            # print("std info:", algorithm.std_metrics)
+            # print("action freq info:", algorithm.action_freq)
             # Store the results for each metric and each algorithm, averaging over all seeds
             for metric, save_metric in zip(metric_names, metric_save_names):
                 eval_results[save_metric][alg_idx, user_idx] += algorithm.average_metrics[metric]
