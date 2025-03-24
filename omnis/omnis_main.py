@@ -5,6 +5,8 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 from sys_data.config import Config
 import time
+from omnis.causal.causal_model import CausalModel
+from omnis.metrics.qos_metrics import QoSMetrics
 
 class OMNIS:
     def __init__(self, config):
@@ -62,6 +64,9 @@ class OMNIS:
         self.beta_const_val = config.beta_const_val
         self.optimizers = config.optimizers
         self.utility = config.utility
+
+        self.causal_model = CausalModel()
+        self.qos_metrics = QoSMetrics()
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
@@ -622,6 +627,16 @@ class OMNIS:
             # Update the GP
             self.update_gp(context_dic, model_selection_dic,reward_dic)
         self.get_average_and_std_metrics()
+        self.save_experiment_results()
+
+    def save_experiment_results(self):
+        """Save QoS metrics and generate plots."""
+        metrics = {
+            "average_metrics": self.average_metrics,
+            "std_metrics": self.std_metrics,
+            "action_freq": self.action_freq
+        }
+        self.qos_metrics.save_results(metrics)
 
 
 if __name__ == "__main__":
