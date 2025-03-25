@@ -35,7 +35,7 @@ for snr_idx, snr in enumerate(snr_list):
         avg_action_freq = np.zeros(action_num)  # Initialize an array to accumulate action frequencies for each seed
         for seed_idx, seed in enumerate(seed_list):
             config = Config(seed)
-            channel_data_filename = f"sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data_snr_{snr}.npy"
+            channel_data_filename = f"sys_data/mimo_channel_gen/mimo_channel_data_snr_{snr}.npy"
             config.channel_data = np.load(channel_data_filename)
 
             print(f"Running {alg_name} with seed {seed}...")
