@@ -6,7 +6,7 @@ from baselines.cto_main import CTO
 from baselines.dts_main import DTS
 from baselines.gdo_main import GDO
 from baselines.rss_main import RSS
-from sys_data.trans_sys_sim.mimo_channel_gen.mimo_channel_gen_fix_snr import snr_values
+from sys_data.mimo_channel_gen.mimo_channel_gen_fix_snr import snr_values
 
 # Initialize parameters
 snr_list = snr_values
@@ -41,7 +41,7 @@ for seed_idx, seed in enumerate(seed_list):
 
             # Reinitialize Config for each algorithm to avoid shared state issues
             config = Config(seed)
-            channel_data_filename = f"sys_data/trans_sys_sim/mimo_channel_gen/mimo_channel_data_snr_{snr}.npy"
+            channel_data_filename = f"sys_data/mimo_channel_gen/mimo_channel_data_snr_{snr}.npy"
             config.channel_data = np.load(channel_data_filename)
 
             # Initialize and run the algorithm
