@@ -86,6 +86,8 @@ OMNIS/
 
 4. The system configurations and hyperparameters are managed via the ``config.py`` file. Modify it to adjust simulation settings before running experiments. When running `eval_user_num.py`, make sure the maximum evaluation user number in the variable `user_num_list` of `eval_user_num.py` less or equal to the variable `self.user_num` of `config.py`.
 
+5. This repository does not include the training and evaluation code of the multi-branch dynamic split neural network. It only provides an interface between the neural network evaluation data and the optimization framework. If you have any questions regarding neural network details, please contact Ian Andrew Harshbarger (iharshba@uci.edu). 
+
 
 
 ## Contributing
