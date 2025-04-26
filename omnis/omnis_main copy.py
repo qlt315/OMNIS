@@ -6,16 +6,14 @@ import matplotlib.pyplot as plt
 import time
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor
 
 # Add project root to Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Local imports
 from sys_data.config import Config
-from omnis.contextual_bandit import ContextualBandit
-from omnis.causal_model import CausalModel
+from contextual_bandit import ContextualBandit
+from causal_model import CausalModel
 
 class OMNIS:
     def __init__(self, config):
@@ -84,15 +82,6 @@ class OMNIS:
                 causal_model=CausalModel()  # Each user gets their own causal model
             ) for user in self.users
         }
-
-        # Cache frequently accessed data
-        self._user_array = np.array(self.users)
-        self._model_indices = {m['name']: i for i, m in enumerate(self.models)}
-        self._coding_rates = np.array(self.available_coding_rate)
-        
-        # Pre-compute common values
-        self._cores_array = np.array([self.md_params[u]['cores'] for u in self.users])
-        self._freq_array = np.array([self.md_params[u]['freq'] for u in self.users])
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
@@ -256,26 +245,27 @@ class OMNIS:
         return bandwidth_allocation_dic
 
     def gpu_resource_allocation(self, task_dic, model_selection_dic):
-        """Optimized GPU resource allocation"""
-        # Pre-compute common values
-        user_array = np.array(self.users)
-        omega_m_t = np.array([task_dic[u]['delay_constraint'] for u in user_array])
-        omega_m_e = np.array([task_dic[u]['energy_constraint'] for u in user_array])
-        head_flops = np.array([self.head_flops[model_selection_dic[u]["model"]] 
-                              for u in user_array])
-        
-        # Use sparse matrices for optimization
-        from scipy.sparse import diags
-        constraint_matrix = diags([1] * self.user_num)
+        """
+        Solve for the optimal GPU frequency allocation `f_m^e(t)`.
+        """
+        gpu_allocation_dict = {}
 
         # CVXPY problem definition
         f_m = cp.Variable(self.user_num)  # GPU frequency for M MDs
         # Constraints
         constraints = [0 <= f_m, f_m <= self.es_params['freq'], cp.sum(f_m) <= self.es_params['freq']]
 
+        omega_m_t_vector = np.array([task_dic[user]['delay_constraint'] for user in self.users])
+        omega_m_e_vector = np.array([task_dic[user]['energy_constraint'] for user in self.users])
+        cores = self.es_params['cores']  # Same for all users
+        head_flops_vector = np.array([self.head_flops[model_selection_dic[user]["model"]] for user in self.users])
+        flops_per_cycle = self.es_params['flops_per_cycle']  # Same for all users
+        freq = self.es_params['freq']
+        power_coeff = self.es_params['power_coeff']  # Same for all users
+
         # Calculate first and second terms for all users in vectorized form
-        first_term = (omega_m_t @ cp.inv_pos(f_m) * head_flops / (self.es_params['cores'] * self.es_params['flops_per_cycle']))
-        second_term = (omega_m_e * self.es_params['power_coeff'] @ (f_m ** 2) / (self.es_params['cores'] * self.es_params['flops_per_cycle']))
+        first_term = omega_m_t_vector * head_flops_vector @ cp.inv_pos(f_m) / (cores * flops_per_cycle)
+        second_term = omega_m_e_vector * power_coeff @ (f_m ** 2) / (cores * flops_per_cycle)
         total_sum = cp.sum(first_term * 1e-9 + second_term)
 
         # Define the objective function to minimize
@@ -284,9 +274,10 @@ class OMNIS:
         # Solve the optimization problem
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=cp.SCS)
-
-        gpu_allocation_dict = {user: f_m.value[idx] for idx, user in enumerate(self.users)}
-
+        # Save the optimal GPU frequencies for each user to the dictionary
+        for idx, user in enumerate(self.users):
+            gpu_allocation_dict[user] = f_m.value[idx]
+        # Return the dictionary containing the optimal GPU frequencies for all users
         return gpu_allocation_dict
 
     def coding_rate_selection(self, task_dic, snr_dic, trans_rate_dic, model_selection_dic,
@@ -442,23 +433,21 @@ class OMNIS:
         return edge_overhead_dic  # Return dictionary with local overhead for all users
 
     def get_total_overhead(self, local_overhead_dic, trans_overhead_dic, edge_overhead_dic):
-        """Vectorized overhead calculation"""
-        users = self._user_array
-        
-        # Convert to arrays for vectorization
-        local_delays = np.array([local_overhead_dic[u]['delay'] for u in users])
-        local_energy = np.array([local_overhead_dic[u]['energy'] for u in users])
-        trans_delays = np.array([trans_overhead_dic[u]['delay'] for u in users])
-        trans_energy = np.array([trans_overhead_dic[u]['energy'] for u in users])
-        edge_delays = np.array([edge_overhead_dic[u]['delay'] for u in users])
-        edge_energy = np.array([edge_overhead_dic[u]['energy'] for u in users])
-        
-        # Vectorized computation
-        total_delays = local_delays + trans_delays + edge_delays
-        total_energy = local_energy + trans_energy + edge_energy
-        
-        return {u: {'delay': d, 'energy': e} 
-                for u, d, e in zip(users, total_delays, total_energy)}
+        total_overhead_dic = {}  # Dictionary to store delay and energy consumption for each user
+        for user in self.users:
+            # print("local delay", local_overhead_dic[user]['delay'])
+            # print("trans delay", trans_overhead_dic[user]['delay'])
+            # print("edge delay", edge_overhead_dic[user]['delay'])
+            total_delay = local_overhead_dic[user]['delay'] + trans_overhead_dic[user]['delay'] + \
+                          edge_overhead_dic[user]['delay']
+            total_energy = local_overhead_dic[user]['energy'] + trans_overhead_dic[user]['energy'] + \
+                           edge_overhead_dic[user]['energy']
+            # Store delay and energy in the result dictionary for the user
+            total_overhead_dic[user] = {
+                "delay": total_delay,
+                "energy": total_energy
+            }
+        return total_overhead_dic
 
     def moving_average(self, data, window_size):
         """Apply moving average to smooth the data."""
@@ -613,22 +602,10 @@ class OMNIS:
 
 
     def simulation(self):
-        """Vectorized main simulation loop"""
-        # Pre-allocate arrays for common calculations
-        user_array = np.array(self.users)
-        snr_cache = {}
-        trans_rate_cache = {}
-
-        # Vectorized initialization
-        local_overheads = np.zeros((self.time_slot_num, len(self.users), 2))  # delay, energy
-        edge_overheads = np.zeros_like(local_overheads)
-        trans_overheads = np.zeros_like(local_overheads)
-        
+        """main loop for simulation"""
         for t in range(self.time_slot_num):
-            # Batch process SNR and transmission rates
+            # Estimate the achievable rate
             snr_dic, trans_rate_dic = self.get_trans_rate(t)
-            snr_cache[t] = snr_dic
-            trans_rate_cache[t] = trans_rate_dic
 
             # Task generation
             task_dic = self.generate_tasks(t)
@@ -711,20 +688,6 @@ class OMNIS:
             self.update_gp(context_dic, model_selection_dic,reward_dic)
         self.get_average_and_std_metrics()
 
-    def get_overhead_parallel(self, model_selection_dic, task_dic):
-        """Parallel overhead computation"""
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            local_future = executor.submit(self.get_local_overhead, model_selection_dic)
-            edge_future = executor.submit(self.get_edge_overhead, model_selection_dic, 
-                                        self._cached_gpu_alloc)
-            trans_future = executor.submit(self.get_trans_overhead, 
-                                         self._cached_trans_rate,
-                                         model_selection_dic,
-                                         self._cached_bandwidth)
-            
-            return (local_future.result(), 
-                    edge_future.result(), 
-                    trans_future.result())
 
 if __name__ == "__main__":
     start_time = time.time()  # Record start time
