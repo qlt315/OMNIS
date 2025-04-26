@@ -1,10 +1,16 @@
+import os
+import sys
+
+# Add project root to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from sys_data.config import Config
 import numpy as np
 import time
 from scipy.special import erf
 import random
 import cvxpy as cp
 import matplotlib.pyplot as plt
-from sys_data.config import Config
 from omnis import cbo
 from sklearn.gaussian_process.kernels import WhiteKernel, Matern
 seed = 42
