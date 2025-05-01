@@ -1,21 +1,21 @@
-import os
-import sys
-
-# Add project root to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import numpy as np
 import time
 from scipy.special import erf
 import random
 import cvxpy as cp
 import matplotlib.pyplot as plt
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sys_data.config import Config
 import omnis.util as util  # Assuming UtilityFunction is part of util module
+from omnis.causal_model import CausalModel
+from omnis.causal_inference import CausalInference
+import networkx as nx
 
 
 class DTS:
-    def __init__(self,config):
+    def __init__(self, config):
         """Initialize system parameters including models, devices, and users."""
         # Basic information
         self.name = "dts"
@@ -74,6 +74,32 @@ class DTS:
         self.utility = util.UtilityFunction(kind="ts",
                                             beta_kind=self.beta_function,
                                             beta_const=self.beta_const_val)
+        self.setup_causal_model()
+
+    def setup_causal_model(self):
+        """Initialize causal model components"""
+        # Create causal graph
+        G = nx.DiGraph()
+
+        # Add nodes for key variables
+        nodes = ['SNR', 'Model', 'CodingRate', 'Accuracy', 'Delay', 'Energy']
+        G.add_nodes_from(nodes)
+
+        # Add edges representing causal relationships
+        edges = [
+            ('SNR', 'Accuracy'),
+            ('SNR', 'Delay'),
+            ('Model', 'Accuracy'),
+            ('Model', 'Delay'),
+            ('Model', 'Energy'),
+            ('CodingRate', 'Accuracy'),
+            ('CodingRate', 'Delay')
+        ]
+        G.add_edges_from(edges)
+
+        # Initialize causal inference and model
+        self.causal_inference = CausalInference(G)
+        self.causal_model = CausalModel()
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
@@ -107,23 +133,37 @@ class DTS:
         return context_dic
 
     def model_selection(self, context_dic):
-        """Select the best model for each user using UCB-based Gaussian Process (GP)."""
-
-        model_selection_dic = {}  # Dictionary to store the best model for each user
+        """Enhanced model selection with causal modeling"""
+        model_selection_dic = {}
 
         for user_idx, user in enumerate(self.users):
             context_m = context_dic[user]
             optimizer_m = self.optimizers[user]
+            
+            # Use suggest method without causal effects
             action_m = optimizer_m.suggest(context_m, self.utility)
             selected_model_m = action_m['model']
-            self.action_freq[user_idx, selected_model_m] +=1
+            self.action_freq[user_idx, selected_model_m] += 1
+            
             model_selection_dic[user] = {
-                "model": self.models[selected_model_m]["name"],  # Best model name
+                "model": self.models[selected_model_m]["name"]
             }
-        return model_selection_dic  # Return the best model for all users
+
+            # Add observation to causal model
+            if hasattr(self, 'causal_model'):
+                observation = {
+                    "SNR": context_m.get('transmission_rate', 0),
+                    "Action": selected_model_m,
+                    "Accuracy": 0,  # Will be updated later
+                    "Delay": 0,     # Will be updated later
+                    "Energy": 0     # Will be updated later
+                }
+                self.causal_model.add_observation(observation)
+
+        return model_selection_dic
 
     def update_gp(self, context_dic, model_selection_dic, reward_dic):
-        """Update the GP model with new observations."""
+        """Update GP and causal model with new observations"""
         for user in self.users:
             optimizer_m = self.optimizers[user]
             context_m = context_dic[user]
@@ -131,8 +171,19 @@ class DTS:
             action_m = next((index for index, model in enumerate(self.models) if model['name'] == model_m), None)
             action_dic_m = {'model': action_m}
             reward_m = reward_dic[user]
+
+            # Update GP
             optimizer_m.register(context_m, action_dic_m, reward_m)
 
+            # Update causal model with actual outcomes
+            if hasattr(self, 'causal_model'):
+                self.causal_model.observations[-1].update({
+                    "Accuracy": self.instant_metrics[user]["accuracy"][-1],
+                    "Delay": self.instant_metrics[user]["delay"][-1],
+                    "Energy": self.instant_metrics[user]["energy"][-1]
+                })
+
+        return
 
     def get_reward(self, task_dic, acc_dic, total_overhead_dic):
         """Compute the reward of MDs based on accuracy and penalty terms."""

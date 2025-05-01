@@ -1,18 +1,18 @@
-import os
-import sys
-
-# Add project root to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sys_data.config import Config
 import numpy as np
 import time
 from scipy.special import erf
 import random
 import cvxpy as cp
 import matplotlib.pyplot as plt
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from sys_data.config import Config
 from omnis import cbo
 from sklearn.gaussian_process.kernels import WhiteKernel, Matern
+import networkx as nx
+from omnis.causal_inference import CausalInference
+from omnis.causal_model import CausalModel
 seed = 42
 np.random.seed(seed)
 
@@ -93,7 +93,29 @@ class CTO:
         self.beta_const_val = config.beta_const_val
         self.optimizer = cbo.ContextualBayesianOptimization(all_actions_dict=self.action,contexts=self.contexts,kernel=self.kernel)
         self.utility = config.utility
+        self.setup_causal_model()
 
+    def setup_causal_model(self):
+        """Initialize causal model components"""
+        G = nx.DiGraph()
+        
+        # Add nodes for key variables
+        nodes = ['SNR', 'Model', 'CodingRate', 'Accuracy', 'Delay', 'Energy']
+        G.add_nodes_from(nodes)
+        
+        edges = [
+            ('SNR', 'Accuracy'),
+            ('SNR', 'Delay'), 
+            ('Model', 'Accuracy'),
+            ('Model', 'Delay'),
+            ('Model', 'Energy'),
+            ('CodingRate', 'Accuracy'),
+            ('CodingRate', 'Delay')
+        ]
+        G.add_edges_from(edges)
+        
+        self.causal_inference = CausalInference(G)
+        self.causal_model = CausalModel()
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed."""

@@ -1,15 +1,9 @@
-import os
-import sys
-
-# Add project root to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from sys_data.config import Config
 import numpy as np
 from scipy.special import erf
 import random
 import cvxpy as cp
 import matplotlib.pyplot as plt
+from sys_data.config import Config
 
 
 class GDO:
