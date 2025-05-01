@@ -58,20 +58,22 @@ class ContextualBayesianOptimization():
     def context_to_array(self, context):
         return self._space.context_to_array(context)
 
-    def suggest(self, context, utility_function):
-        """Most promissing point to probe next"""
+    def suggest(self, context, utility_function, causal_effects=None):
+        """Most promising point to probe next"""
         assert len(context) == self._space.context_dim
         context = self._space.context_to_array(context)
+        
         if len(self._space) < self.init_random:
             return self._space.array_to_action(self._space.random_sample())
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            # print("self._space.context_action", self._space.context_action)
-            # print("self._space.reward", self._space.reward)
             self._gp.fit(self._space.context_action, self._space.reward)
 
-        # Finding argmax of the acquisition function.
+        # Incorporate causal effects if available
+        if causal_effects is not None:
+            utility_function.causal_effects = causal_effects
+
         suggestion = acq_max(
             ac=utility_function.utility,
             gp=self._gp,

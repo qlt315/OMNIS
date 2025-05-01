@@ -15,7 +15,9 @@ sys.path.append(project_root)
 # Local imports
 from sys_data.config import Config
 from omnis.contextual_bandit import ContextualBandit
+from omnis.causal_inference import CausalInference
 from omnis.causal_model import CausalModel
+import networkx as nx
 
 class OMNIS:
     def __init__(self, config):
@@ -93,6 +95,29 @@ class OMNIS:
         # Pre-compute common values
         self._cores_array = np.array([self.md_params[u]['cores'] for u in self.users])
         self._freq_array = np.array([self.md_params[u]['freq'] for u in self.users])
+        self.setup_causal_model()
+
+    def setup_causal_model(self):
+        """Initialize causal model components"""
+        G = nx.DiGraph()
+        
+        # Add nodes for key variables
+        nodes = ['SNR', 'Model', 'CodingRate', 'Accuracy', 'Delay', 'Energy']
+        G.add_nodes_from(nodes)
+        
+        edges = [
+            ('SNR', 'Accuracy'),
+            ('SNR', 'Delay'),
+            ('Model', 'Accuracy'), 
+            ('Model', 'Delay'),
+            ('Model', 'Energy'),
+            ('CodingRate', 'Accuracy'),
+            ('CodingRate', 'Delay')
+        ]
+        G.add_edges_from(edges)
+        
+        self.causal_inference = CausalInference(G)
+        self.causal_model = CausalModel()
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed."""
