@@ -151,17 +151,32 @@ class CTO:
         return context_dict
 
     def model_selection(self, context_dic):
-        """Select the best model for each user using UCB-based Gaussian Process (GP)."""
-
-        model_selection_dic = {}  # Dictionary to store the best model for each user
-        action_dic = self.optimizer.suggest(context_dic, self.utility)
-        for user_idx, user in enumerate(self.users):
-            selected_model_m = action_dic[f'{user}_model']
+        """Enhanced model selection with causal effects"""
+        model_selection_dic = {}
+        action_dic = {}
+        
+        for user in self.users:
+            # Get causal effects
+            snr = context_dic[f"{user}_transmission_rate"]
+            causal_effects = self.causal_model.estimate_effect(snr)
+            
+            # Incorporate causal knowledge into selection
+            if causal_effects is not None:
+                action = self.optimizer.suggest(
+                    context_dic, 
+                    self.utility,
+                    additional_weights=causal_effects
+                )
+            else:
+                action = self.optimizer.suggest(context_dic, self.utility)
+                
+            selected_model = action[f'{user}_model']
             model_selection_dic[user] = {
-                "model": self.models[selected_model_m]["name"],  # Best model name
+                "model": self.models[selected_model]["name"]
             }
-            self.action_freq[user_idx, selected_model_m] +=1
-        return action_dic, model_selection_dic  # Return the best model for all users
+            action_dic[f'{user}_model'] = selected_model
+            
+        return action_dic, model_selection_dic
 
     def update_gp(self, context_dic, action_dic, reward_dic):
         """Update the GP model with new observations."""

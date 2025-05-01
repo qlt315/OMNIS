@@ -133,32 +133,40 @@ class DTS:
         return context_dic
 
     def model_selection(self, context_dic):
-        """Enhanced model selection with causal modeling"""
+        """Enhanced model selection with Thompson Sampling"""
         model_selection_dic = {}
 
         for user_idx, user in enumerate(self.users):
             context_m = context_dic[user]
             optimizer_m = self.optimizers[user]
             
-            # Use suggest method without causal effects
-            action_m = optimizer_m.suggest(context_m, self.utility)
-            selected_model_m = action_m['model']
-            self.action_freq[user_idx, selected_model_m] += 1
+            # Get causal effects
+            snr = context_m.get('transmission_rate', 0)
+            causal_effects = self.causal_model.estimate_effect(snr)
             
+            # Thompson Sampling with causal priors
+            if causal_effects is not None:
+                alpha = causal_effects + 1
+                beta_param = np.ones_like(causal_effects)
+                samples = beta.rvs(alpha, beta_param)
+                selected_model_m = np.argmax(samples)
+            else:
+                action_m = optimizer_m.suggest(context_m, self.utility)
+                selected_model_m = action_m['model']
+                
+            self.action_freq[user_idx, selected_model_m] += 1
             model_selection_dic[user] = {
                 "model": self.models[selected_model_m]["name"]
             }
-
-            # Add observation to causal model
-            if hasattr(self, 'causal_model'):
-                observation = {
-                    "SNR": context_m.get('transmission_rate', 0),
-                    "Action": selected_model_m,
-                    "Accuracy": 0,  # Will be updated later
-                    "Delay": 0,     # Will be updated later
-                    "Energy": 0     # Will be updated later
-                }
-                self.causal_model.add_observation(observation)
+            
+            # Add observation
+            self.causal_model.add_observation({
+                "SNR": snr,
+                "Action": selected_model_m,
+                "Accuracy": 0,  # Updated later
+                "Delay": 0,
+                "Energy": 0
+            })
 
         return model_selection_dic
 
