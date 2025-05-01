@@ -1,21 +1,15 @@
-import numpy as np
-import time
 import os
 import sys
+import numpy as np
 import scipy.io as sio
-import random
-from concurrent.futures import ThreadPoolExecutor
 
-# Add project root and omnis directory to Python path
+# Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
-sys.path.append(os.path.join(project_root, 'omnis'))
 
-# Local imports
 from sys_data.config import Config
+
 from omnis.omnis_main import OMNIS
-from omnis.contextual_bandit import ContextualBandit 
-from omnis.causal_model import CausalModel
 from baselines.cto_main import CTO
 from baselines.dts_main import DTS
 from baselines.gdo_main import GDO

@@ -1,14 +1,12 @@
-import numpy as np
-import scipy.io as sio
-import time
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor
+import numpy as np
+import scipy.io as sio
 
 # Add project root to Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 
-# Local imports
 from sys_data.config import Config
 from omnis.omnis_main import OMNIS
 from baselines.cto_main import CTO
