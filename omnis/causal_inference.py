@@ -3,9 +3,23 @@ import numpy as np
 
 class CausalInference:
     def __init__(self, G):
-        """Initialize causal inference with a directed graph structure"""
+        """Initialize enhanced causal graph"""
         self.G = G
+        self.edge_weights = {}
+        self.initialize_edge_weights()
         self.data = []
+        
+    def initialize_edge_weights(self):
+        """Initialize causal edge strengths"""
+        key_edges = [
+            ('SNR', 'Accuracy', 1.0),
+            ('Model', 'Accuracy', 0.8),
+            ('CodingRate', 'Accuracy', 0.6),
+            ('SNR', 'Delay', 0.7),
+            ('Model', 'Energy', 0.9)
+        ]
+        for src, dst, weight in key_edges:
+            self.edge_weights[(src, dst)] = weight
         
     def add_observation(self, observation):
         """Add new observation to the causal model"""
