@@ -156,6 +156,16 @@ class Config:
         # Track action selection frequencies
         self.action_freq = np.zeros([self.user_num, len(self.models)])
 
+        # Add distribution configuration
+        self.distribution = 'laplace'  # or 'gaussian'
+        self.laplace_scale = 2.0
+
+        # Update optimizer configuration
+        self.optimizer_params = {
+            'distribution': self.distribution,
+            'laplace_scale': self.laplace_scale
+        }
+
 
     def update_users(self, new_user_num):
         """Update user number and reinitialize dependent variables."""
