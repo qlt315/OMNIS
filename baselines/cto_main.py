@@ -7,12 +7,13 @@ import matplotlib.pyplot as plt
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from sys_data.config import Config
-from omnis import cbo
+from scipy.stats import laplace
 from sklearn.gaussian_process.kernels import WhiteKernel, Matern
 import networkx as nx
 from omnis.causal_inference import CausalInference
 from omnis.causal_model import CausalModel
+from sys_data.config import Config
+from omnis import cbo
 seed = 42
 np.random.seed(seed)
 
@@ -682,6 +683,49 @@ class CTO:
             self.update_gp(context_dic, action_dic, reward_dic)
 
         self.get_average_and_std_metrics()
+
+
+class LaplacianCTO(CTO):
+    def __init__(self, config):
+        super().__init__(config)
+        # Modify kernel for Laplacian characteristics
+        self.kernel = (WhiteKernel(noise_level=1) + 
+                      Matern(nu=1.0, length_scale=self.length_scale))  # nu=1.0 for more peaked responses
+        
+        # Laplace parameters
+        self.loc = 0.0
+        self.scale = 2.0  # Controls spread of distribution
+        
+    def model_selection(self, context_dic):
+        """Enhanced model selection with Laplacian sampling"""
+        model_selection_dic = {}
+        action_dic = {}
+        
+        for user in self.users:
+            snr = context_dic[f"{user}_transmission_rate"]
+            causal_effects = self.causal_model.estimate_effect(snr)
+            
+            # Use Laplace distribution for sampling
+            if causal_effects is not None:
+                noise = laplace.rvs(loc=self.loc, scale=self.scale, size=len(causal_effects))
+                modified_effects = causal_effects + noise
+                
+                action = self.optimizer.suggest(
+                    context_dic,
+                    self.utility,
+                    additional_weights=modified_effects
+                )
+            else:
+                action = self.optimizer.suggest(context_dic, self.utility)
+                
+            selected_model = action[f'{user}_model']
+            model_selection_dic[user] = {
+                "model": self.models[selected_model]["name"]
+            }
+            action_dic[f'{user}_model'] = selected_model
+            
+        return action_dic, model_selection_dic
+
 
 if __name__ == "__main__":
     start_time = time.time()  # Record start time

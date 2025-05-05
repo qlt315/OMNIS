@@ -1,6 +1,7 @@
 import numpy as np
 import time
 from scipy.special import erf
+from scipy.stats import laplace
 import random
 import cvxpy as cp
 import matplotlib.pyplot as plt
@@ -76,6 +77,9 @@ class DTS:
                                             beta_const=self.beta_const_val)
         self.setup_causal_model()
 
+        # Laplacian noise parameter
+        self.laplace_scale = 2.0  # Controls noise magnitude
+
     def setup_causal_model(self):
         """Initialize causal model components"""
         # Create causal graph
@@ -133,40 +137,31 @@ class DTS:
         return context_dic
 
     def model_selection(self, context_dic):
-        """Enhanced model selection with Thompson Sampling"""
+        """Enhanced model selection with Laplacian noise"""
         model_selection_dic = {}
 
         for user_idx, user in enumerate(self.users):
             context_m = context_dic[user]
             optimizer_m = self.optimizers[user]
             
-            # Get causal effects
+            # Get causal effects with Laplacian noise
             snr = context_m.get('transmission_rate', 0)
             causal_effects = self.causal_model.estimate_effect(snr)
             
-            # Thompson Sampling with causal priors
             if causal_effects is not None:
-                alpha = causal_effects + 1
-                beta_param = np.ones_like(causal_effects)
-                samples = beta.rvs(alpha, beta_param)
-                selected_model_m = np.argmax(samples)
-            else:
-                action_m = optimizer_m.suggest(context_m, self.utility)
-                selected_model_m = action_m['model']
-                
+                # Add Laplacian noise to effects
+                noise = laplace.rvs(loc=0, scale=self.laplace_scale, 
+                                  size=len(causal_effects))
+                causal_effects += noise
+            
+            action_m = optimizer_m.suggest(context_m, self.utility, 
+                                         additional_weights=causal_effects)
+            selected_model_m = action_m['model']
+            
             self.action_freq[user_idx, selected_model_m] += 1
             model_selection_dic[user] = {
                 "model": self.models[selected_model_m]["name"]
             }
-            
-            # Add observation
-            self.causal_model.add_observation({
-                "SNR": snr,
-                "Action": selected_model_m,
-                "Accuracy": 0,  # Updated later
-                "Delay": 0,
-                "Energy": 0
-            })
 
         return model_selection_dic
 
