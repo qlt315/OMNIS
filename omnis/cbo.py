@@ -1,15 +1,18 @@
 import warnings
 from omnis.action_space import ActionSpace
 from omnis.util import acq_max
+from scipy.stats import laplace
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 
 
 class ContextualBayesianOptimization():
-    def __init__(self, all_actions_dict, contexts, kernel, noise=1e-6, points=[], rewards=[], init_random=3):
+    def __init__(self, all_actions_dict, contexts, kernel, noise=1e-6, points=[], rewards=[], init_random=3, distribution='gaussian'):
         
         self._space = ActionSpace(all_actions_dict, contexts)
         self.init_random = init_random
+        self.distribution = distribution
+        self.laplace_scale = 2.0  # Laplace distribution scale parameter
         
         if len(points) > 0:
             gp_hyp = GaussianProcessRegressor(
@@ -58,10 +61,10 @@ class ContextualBayesianOptimization():
     def context_to_array(self, context):
         return self._space.context_to_array(context)
 
-    def suggest(self, context, utility_function, causal_effects=None):
-        """Most promising point to probe next"""
-        assert len(context) == self._space.context_dim
-        context = self._space.context_to_array(context)
+    def suggest(self, context_dict, utility_function, causal_effects=None, additional_weights=None):
+        """Enhanced suggestion with optional Laplacian noise"""
+        assert len(context_dict) == self._space.context_dim
+        context = self._space.context_to_array(context_dict)
         
         if len(self._space) < self.init_random:
             return self._space.array_to_action(self._space.random_sample())
@@ -74,6 +77,15 @@ class ContextualBayesianOptimization():
         if causal_effects is not None:
             utility_function.causal_effects = causal_effects
 
+        if self.distribution == 'laplace':
+            noise = laplace.rvs(loc=0, scale=self.laplace_scale, 
+                              size=len(self._space.context_action))
+            # Add Laplacian noise to GP predictions
+            mean, std = self._gp.predict(self._space.context_action, return_std=True)
+            mean += noise
+        else:
+            mean, std = self._gp.predict(self._space.context_action, return_std=True)
+            
         suggestion = acq_max(
             ac=utility_function.utility,
             gp=self._gp,

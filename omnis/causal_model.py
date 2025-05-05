@@ -1,7 +1,7 @@
 # omnis/causal_model.py
 import numpy as np
 import networkx as nx
-from scipy.stats import beta
+from scipy.stats import beta, laplace
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -74,6 +74,12 @@ class CausalModel:
                 counts[action] = np.sum(action_mask)
         
         counts[counts == 0] = 1
+
+        if self.distribution == 'laplace':
+            # Add Laplacian noise to effects
+            noise = laplace.rvs(loc=0, scale=self.laplace_scale, size=len(effects))
+            effects += noise
+            
         return effects / counts
 
     def add_observation(self, observation):
