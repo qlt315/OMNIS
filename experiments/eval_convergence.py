@@ -10,7 +10,7 @@ sys.path.append(project_root)
 from sys_data.config import Config
 
 from omnis.omnis_main import OMNIS
-from baselines.cto_main import CTO
+from baselines.cto_main import CTO, LaplacianCTO
 from baselines.dts_main import DTS
 from baselines.gdo_main import GDO
 from baselines.rss_main import RSS
@@ -77,3 +77,18 @@ averaged_results = {key: results[key] for key in results}
 sio.savemat("experiments/results/eval_convergence.mat", averaged_results)
 
 print("Seed-averaged data successfully saved to experiments/results/eval_convergence.mat")
+
+def compare_distributions():
+    config = Config(seed)
+    
+    # Regular CTO
+    cto_gaussian = CTO(config)
+    cto_gaussian.simulation()
+    
+    # Laplacian CTO
+    cto_laplace = LaplacianCTO(config)
+    cto_laplace.simulation()
+    
+    # Compare results
+    print("Gaussian CTO metrics:", cto_gaussian.average_metrics)
+    print("Laplacian CTO metrics:", cto_laplace.average_metrics)
