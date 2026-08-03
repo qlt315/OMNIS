@@ -18,6 +18,7 @@ class CTO:
         self.name = "cto"
         self.seed = config.seed
         np.random.seed(self.seed)  # Ensure reproducibility
+        random.seed(self.seed)
 
         # Computation-related parameters
         self.models = config.models
@@ -50,6 +51,8 @@ class CTO:
         self.acc_data = config.acc_data
         self.channel_data = config.channel_data
         self.est_err = config.est_err
+        # Std of the per-task accuracy observation noise (0 disables)
+        self.acc_noise_std = getattr(config, 'acc_noise_std', 0.0)
         self.action_freq = config.action_freq
 
         # BCD (Block Coordinate Descent) algorithm parameters
@@ -163,15 +166,19 @@ class CTO:
         error_matrix = self.est_err * true_channel * random_noise
         estimated_channel = true_channel + error_matrix
 
+        num_rx_antennas = estimated_channel.shape[1]
         trans_rate_dic = {user: 0 for user in self.users}  # Initialize transmission rate to 0
         snr_dic = {user: 0 for user in self.users}  # Initialize snr to 0
 
         for user_idx, user in enumerate(self.users):
             # Compute SNR: SNR_m = ||H_m||^2 / sigma^2
-            snr_m = np.linalg.norm(estimated_channel[user_idx, :, :], 'fro') ** 2 / self.noise_power
+            channel_m = estimated_channel[user_idx, :, :]
+            snr_m = np.linalg.norm(channel_m, 'fro') ** 2 / self.noise_power
             snr_dic[user] = snr_m
-            # Compute transmission rate using Shannon Capacity Formula
-            rate_m = np.log2(1 + snr_m)  # bits per second per Hz
+            # Achievable MIMO rate: log2 det(I + H H^H / sigma^2) [bits/s/Hz]
+            sign, logabsdet = np.linalg.slogdet(
+                np.eye(num_rx_antennas) + (channel_m @ channel_m.conj().T) / self.noise_power)
+            rate_m = max(logabsdet / np.log(2), 1e-6) if sign > 0 else 1e-6
             # Store the transmission rate for the user
             trans_rate_dic[user] = rate_m
 
@@ -180,21 +187,23 @@ class CTO:
     def allocate_bandwidth(self, task_dic, model_selection_dic, trans_rate_dic, ldpc_rate_dic):
         """Allocate bandwidth based on the optimization strategy."""
         # Prepare d'_m(t) values for each user
-        bandwidth_allocation_dic = {}
         d_prime_dic = {}
         for user in self.users:
             chosen_model_m = model_selection_dic[user]["model"]
-            coded_data_size_m = self.data_size[chosen_model_m] * ldpc_rate_dic[user]
+            coded_data_size_m = self.data_size[chosen_model_m] / ldpc_rate_dic[user]
             rate_m = trans_rate_dic[user]
-            p_m = self.md_params[user]['power_coeff']
-            omega_m_t = task_dic[user]['delay_constraint']
-            omega_m_e = task_dic[user]['energy_constraint']
+            p_m = self.md_params[user]['trans_power']
+            omega_m_t = task_dic[user]['delay_weight']
+            omega_m_e = task_dic[user]['energy_weight']
 
             d_prime_dic[user] = coded_data_size_m * (omega_m_t + p_m * omega_m_e) / rate_m
 
-            # Compute the optimal bandwidth allocation b_m*(t) based on the formula
-            total_d_prime = sum(np.sqrt(d) for d in d_prime_dic.values())
-            bandwidth_allocation_dic[user] = self.total_bandwidth * np.sqrt(d_prime_dic[user]) / total_d_prime
+        # Compute the optimal bandwidth allocation b_m*(t) = B * sqrt(d'_m) / sum(sqrt(d'_j))
+        total_sqrt_d_prime = sum(np.sqrt(d) for d in d_prime_dic.values())
+        bandwidth_allocation_dic = {
+            user: self.total_bandwidth * np.sqrt(d_prime_dic[user]) / total_sqrt_d_prime
+            for user in self.users
+        }
 
         return bandwidth_allocation_dic
 
@@ -209,28 +218,37 @@ class CTO:
         # Constraints
         constraints = [0 <= f_m, f_m <= self.es_params['freq'], cp.sum(f_m) <= self.es_params['freq']]
 
-        omega_m_t_vector = np.array([task_dic[user]['delay_constraint'] for user in self.users])
-        omega_m_e_vector = np.array([task_dic[user]['energy_constraint'] for user in self.users])
+        omega_m_t_vector = np.array([task_dic[user]['delay_weight'] for user in self.users])
+        omega_m_e_vector = np.array([task_dic[user]['energy_weight'] for user in self.users])
         cores = self.es_params['cores']  # Same for all users
-        head_flops_vector = np.array([self.head_flops[model_selection_dic[user]["model"]] for user in self.users])
+        tail_flops_vector = np.array([self.tail_flops[model_selection_dic[user]["model"]] for user in self.users])
         flops_per_cycle = self.es_params['flops_per_cycle']  # Same for all users
         freq = self.es_params['freq']
         power_coeff = self.es_params['power_coeff']  # Same for all users
 
         # Calculate first and second terms for all users in vectorized form
-        first_term = omega_m_t_vector * head_flops_vector @ cp.inv_pos(f_m) / (cores * flops_per_cycle)
+        first_term = omega_m_t_vector * tail_flops_vector @ cp.inv_pos(f_m) / (cores * flops_per_cycle)
         second_term = omega_m_e_vector * power_coeff @ (f_m ** 2) / (cores * flops_per_cycle)
         total_sum = cp.sum(first_term * 1e-9 + second_term)
 
         # Define the objective function to minimize
         objective = cp.Minimize(total_sum)
 
-        # Solve the optimization problem
+        # Solve the optimization problem, falling back to an equal split if the solver fails
         problem = cp.Problem(objective, constraints)
-        problem.solve(solver=cp.SCS)
-        # Save the optimal GPU frequencies for each user to the dictionary
-        for idx, user in enumerate(self.users):
-            gpu_allocation_dict[user] = f_m.value[idx]
+        try:
+            problem.solve(solver=cp.SCS)
+            if f_m.value is None:
+                raise ValueError("SCS returned no solution")
+        except Exception:
+            problem.solve(solver=cp.ECOS)
+        if f_m.value is None:
+            for user in self.users:
+                gpu_allocation_dict[user] = self.es_params['freq'] / self.user_num
+        else:
+            # Save the optimal GPU frequencies for each user to the dictionary
+            for idx, user in enumerate(self.users):
+                gpu_allocation_dict[user] = f_m.value[idx]
         # Return the dictionary containing the optimal GPU frequencies for all users
         return gpu_allocation_dict
 
@@ -300,14 +318,12 @@ class CTO:
             snr_values = df_filtered["SNR"].values
             acc_values = df_filtered["Accuracy"].values
 
-            # Ensure SNR is within bounds
-            if snr_dic[user] < snr_values.min():
-                snr_dic[user] = snr_values.min()  # Set to lower bound if below minimum
-            elif snr_dic[user] > snr_values.max():
-                snr_dic[user] = snr_values.max()  # Set to upper bound if above maximum
+            # The accuracy data is indexed by SNR in dB, while snr_dic holds linear-scale SNR
+            snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
+            snr_db = np.clip(snr_db, snr_values.min(), snr_values.max())
 
             # Interpolate accuracy for the given SNR
-            acc_m = np.interp(snr_dic[user], snr_values, acc_values)
+            acc_m = np.interp(snr_db, snr_values, acc_values)
             acc_dic[user] = acc_m
 
         return acc_dic
@@ -376,8 +392,8 @@ class CTO:
             # Compute local processing delay
             edge_delay = tail_flops_m * 1e-9 / (gpu_freq_m * num_cores_m * flops_per_cycle_m)
 
-            # Compute local energy consumption
-            edge_energy = self.md_params[user]['power_coeff'] * gpu_freq_m ** 3 * edge_delay
+            # Compute edge energy consumption with the ES power coefficient
+            edge_energy = self.es_params['power_coeff'] * gpu_freq_m ** 3 * edge_delay
 
             # Store delay and energy in the result dictionary for the user
             edge_overhead_dic[user] = {
@@ -632,6 +648,13 @@ class CTO:
                 # Update iteration counter and last objective function value for the next iteration
                 bcd_iter += 1
                 bcd_obj_last = bcd_obj
+
+            # Realize the per-task accuracy (curve mean + observation noise)
+            if self.acc_noise_std > 0:
+                acc_dic = {
+                    user: float(np.clip(acc + np.random.normal(0.0, self.acc_noise_std), 0.0, 1.0))
+                    for user, acc in acc_dic.items()
+                }
 
             # Calculate the reward for MDs and update the GP
             reward_dic = self.get_reward(task_dic, acc_dic, total_overhead_dic)

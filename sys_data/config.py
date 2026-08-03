@@ -153,6 +153,20 @@ class Config:
 
         self.utility = util.UtilityFunction(kind="ucb", beta_kind=self.beta_function, beta_const=self.beta_const_val)
 
+        # Algorithm selection: 'ucb' (conference version) or 'causal' (journal extension)
+        self.algo = 'causal'
+        # Std of the per-task accuracy observation noise, simulating per-image
+        # accuracy fluctuations around the pre-computed accuracy curves (0 disables)
+        self.acc_noise_std = 0.02
+        # Causal MAB settings
+        self.causal_acq = 'ucb'            # Acquisition function: 'ucb' or 'ts'
+        self.causal_use_prior = True       # Use the offline causal prior mean
+        self.causal_shared = True          # Pool the accuracy mechanism GP across MDs
+        self.causal_prior_snr_step = 10    # Coarseness of the offline prior SNR grid
+        # Residual GP hyperparameters over (snr_db, quant_flag, channels, coding_rate)
+        self.causal_gp_length_scales = [2.0, 0.75, 2.0, 0.35]
+        self.causal_gp_signal_var = 2.5e-3
+
         # Track action selection frequencies
         self.action_freq = np.zeros([self.user_num, len(self.models)])
 
