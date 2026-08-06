@@ -56,6 +56,7 @@ class DTS:
         self.acc_noise_std = getattr(config, 'acc_noise_std', 0.0)
         self.action_freq = config.action_freq
         self.decision_time = 0.0
+        self.bcd_time = 0.0
         self.update_time = 0.0
 
         # BCD (Block Coordinate Descent) algorithm parameters
@@ -83,6 +84,8 @@ class DTS:
         self.arrival_rate = getattr(config, 'arrival_rate', {user: 0.7 for user in self.users})
         self.energy_budget = getattr(config, 'energy_budget', {user: 0.45 for user in self.users})
         self.lyapunov_v = getattr(config, 'lyapunov_v', 1.0)
+        self.reward_w_acc = getattr(config, 'reward_w_acc', 1.0)
+        self.reward_qos_coef = getattr(config, 'reward_qos_coef', 1.5)
         self.dpp_bit_scale = getattr(config, 'dpp_bit_scale', 2.2e4)
         self.dpp_energy_scale = getattr(config, 'dpp_energy_scale', 0.45)
         self.backlog = {user: 0.0 for user in self.users}
@@ -254,14 +257,17 @@ class DTS:
 
 
     def get_reward(self, task_dic, acc_dic, total_overhead_dic):
-        """Compute the reward of MDs based on accuracy and penalty terms."""
+        """Utility: w_acc * accuracy + qos_coef * delay/energy erf terms."""
+        w_acc = getattr(self, "reward_w_acc", 1.0)
+        qos = getattr(self, "reward_qos_coef", 1.5)
         reward_dic = {}
         for user in self.users:
-            reward_dic[user] = (acc_dic[user] + 1.5 * task_dic[user]["delay_weight"] * erf(
-                task_dic[user]["delay_constraint"] - total_overhead_dic[user]["delay"])
-                                + 1.5 * task_dic[user]["energy_weight"] * erf(
-                        task_dic[user]["energy_constraint"] - total_overhead_dic[user]["energy"]))
-
+            reward_dic[user] = (
+                w_acc * acc_dic[user]
+                + qos * task_dic[user]["delay_weight"] * erf(
+                    task_dic[user]["delay_constraint"] - total_overhead_dic[user]["delay"])
+                + qos * task_dic[user]["energy_weight"] * erf(
+                    task_dic[user]["energy_constraint"] - total_overhead_dic[user]["energy"]))
         return reward_dic
 
     def get_trans_rate(self, time_slot):
@@ -400,7 +406,7 @@ class DTS:
                 drift = self.dpp_drift(user, model_name_u, mcs, total_energy, snr_db=snr_db)
                 if (service_delay <= task_dic[user]['delay_constraint']
                         and total_energy <= task_dic[user]['energy_constraint']):
-                    score = self.lyapunov_v * acc_dic[user] + drift
+                    score = self.lyapunov_v * getattr(self, "reward_w_acc", 1.0) * acc_dic[user] + drift
                     bler = self.mcs_table.bler(model_name_u, mcs, snr_db)
                     entry = (mcs, score, bler, self.mcs_table.se[mcs])
                     if bler <= bler_t:
@@ -408,7 +414,7 @@ class DTS:
                     else:
                         over.append(entry)
                 else:
-                    score = (self.lyapunov_v * (acc_dic[user]
+                    score = (self.lyapunov_v * (getattr(self, "reward_w_acc", 1.0) * acc_dic[user]
                              + task_dic[user]['delay_weight']
                              * erf(task_dic[user]['delay_constraint'] - service_delay)
                              + task_dic[user]['energy_weight']
@@ -713,8 +719,7 @@ class DTS:
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
 
             # The ES performs BCD-based optimization
-            # Initialize variables for the BCD (Block Coordinate Descent) algorithm
-
+            t_bcd = time.time()
             bcd_obj_last = float('inf')  # Previous objective function value (used for convergence check)
             bcd_iter = 1  # Iteration counter
 
@@ -777,6 +782,7 @@ class DTS:
                 # Update iteration counter and last objective function value for the next iteration
                 bcd_iter += 1
                 bcd_obj_last = bcd_obj
+            self.bcd_time += time.time() - t_bcd
 
             # Record the realized PHY diagnostics
             for user in self.users:

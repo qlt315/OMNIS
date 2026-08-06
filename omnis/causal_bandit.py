@@ -12,7 +12,7 @@ class CausalMAB:
     (mechanism autonomy), so observations from all MDs are pooled. Each MD
     composes the GP-UCB accuracy estimate with its own analytic, context-
     specific QoS penalty terms into a reward-aligned score matching
-    ``get_reward``: V*(acc_ucb + QoS_erf) + drift. Arms are scored by
+    ``get_reward``: V*(w_acc·acc_ucb + QoS_erf) + drift. Arms are scored by
     marginalizing the ES MCS-selection policy through a mechanistic forward
     simulation (avoiding post-treatment bias).
 
@@ -23,7 +23,7 @@ class CausalMAB:
 
     def __init__(self, scm, length_scales, signal_var, noise_var, beta,
                  penalty_gain=1.5, acquisition='ucb', use_prior=True, shared=True,
-                 lyapunov_v=1.0, drift_gain=1.0):
+                 lyapunov_v=1.0, drift_gain=1.0, w_acc=1.0):
         self.scm = scm
         self.beta = beta
         self.penalty_gain = penalty_gain
@@ -35,6 +35,7 @@ class CausalMAB:
         # causal bandit more queue-sensitive (drains backlog harder at some
         # accuracy cost); tunable to move along the accuracy-backlog Pareto front.
         self.drift_gain = drift_gain
+        self.w_acc = w_acc
         self._gp_args = dict(
             prior_mean_fn=self._prior_at,
             length_scales=length_scales,
@@ -155,7 +156,7 @@ class CausalMAB:
             for arm_idx in range(arms_per_user):
                 model_idx, cell_id, snr_db = arm_meta[arm_idx]
                 _, sojourn_hat, energy_hat = overhead_hats[arm_idx]
-                reward_hat = (scores[u_idx][arm_idx]
+                reward_hat = (self.w_acc * scores[u_idx][arm_idx]
                               + self.penalty_gain * task['delay_weight']
                               * erf(task['delay_constraint'] - sojourn_hat)
                               + self.penalty_gain * task['energy_weight']

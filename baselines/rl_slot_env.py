@@ -1,4 +1,4 @@
-"""Shared multi-cell slot loop for online RL baselines (DQN / MAPPO).
+"""Shared multi-cell slot loop for online RL baselines (DQN / PPO / MAPPO).
 
 Hooks:
   select_actions(...)  -> model_selection_dic, cell_dic
@@ -14,6 +14,7 @@ import numpy as np
 from scipy.special import erf
 
 from baselines.rss_main import RSS
+from baselines.rl_nets import RunningMeanStd
 
 
 class OnlineRLBaseline(RSS):
@@ -28,8 +29,12 @@ class OnlineRLBaseline(RSS):
         self.global_state_dim = self.user_num * self.local_obs_dim
         self.dpp_reward = getattr(config, "rl_dpp_reward", True)
         self.eval_mode = getattr(config, "rl_eval", False)
+        self.reward_norm = getattr(config, "rl_reward_norm", True)
+        self.log_every = getattr(config, "rl_log_every", 50)
+        self._rew_rms = RunningMeanStd()
         self.train_rewards = []
         self.decision_time = 0.0
+        self.bcd_time = 0.0
         self.update_time = 0.0
         self.static_model_dic = {}
         self.static_cell_rank_dic = {}
@@ -73,6 +78,12 @@ class OnlineRLBaseline(RSS):
             cell_dic[user] = cand_cells_dic[user][cell_rank]
         return model_selection_dic, cell_dic
 
+    def normalize_team_r(self, team_r: float) -> float:
+        if not self.reward_norm or self.eval_mode:
+            return team_r
+        self._rew_rms.update(team_r)
+        return self._rew_rms.normalize(team_r)
+
     def select_actions(self, cand_cells_dic, task_dic, sinr_db_all_dic, t):
         raise NotImplementedError
 
@@ -100,6 +111,7 @@ class OnlineRLBaseline(RSS):
             }
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
 
+            t_bcd = time.time()
             bcd_obj_last = float("inf")
             bcd_iter = 1
             phy_choice_dic = {}
@@ -151,6 +163,7 @@ class OnlineRLBaseline(RSS):
                     break
                 bcd_iter += 1
                 bcd_obj_last = bcd_obj
+            self.bcd_time += time.time() - t_bcd
 
             for user in self.users:
                 self.instant_metrics[user]["mcs"].append(phy_choice_dic[user])
@@ -166,7 +179,6 @@ class OnlineRLBaseline(RSS):
                 }
             reward_dic = self.get_reward(task_dic, acc_dic, total_overhead_dic)
 
-            # Pre-update queues for DPP targets (same as bandit drift scoring)
             dpp_targets = {}
             for user in self.users:
                 snr_db_u = 10 * np.log10(max(snr_dic[user], 1e-12))
@@ -211,14 +223,16 @@ class OnlineRLBaseline(RSS):
                     u: self.local_obs(u, task_dic[u], cand_cells_dic, sinr_db_all_dic)
                     for u in self.users
                 }
-                team_r = float(np.mean(list(dpp_targets.values()))) if self.dpp_reward \
+                team_r_raw = float(np.mean(list(dpp_targets.values()))) if self.dpp_reward \
                     else float(np.mean(list(reward_dic.values())))
+                team_r = self.normalize_team_r(team_r_raw)
                 slot_info = {
                     "t": t,
                     "done": 1.0 if t == self.time_slot_num - 1 else 0.0,
                     "dpp_targets": dpp_targets,
                     "reward_dic": reward_dic,
                     "team_r": team_r,
+                    "team_r_raw": team_r_raw,
                     "next_global": next_state,
                     "next_local": next_local,
                     "task_dic": task_dic,

@@ -107,8 +107,14 @@ class Config:
         self.energy_budget = {user: 1.10 for user in self.users}
         self.arrival_rate_origin = self.arrival_rate
         self.energy_budget_origin = self.energy_budget
-        # Lyapunov penalty weight V: trades time-average reward against queue drift
-        self.lyapunov_v = 1.0
+        # Lyapunov weight V: trades time-average utility against queue drift.
+        # Larger V → accuracy/QoS matter more relative to backlog/energy queues.
+        self.lyapunov_v = 1.5
+        # Utility = w_acc * acc + qos_coef * (delay/energy erf terms)
+        self.reward_w_acc = 2.0
+        self.reward_qos_coef = 1.5
+        # Causal: <1 softens queue pressure so accuracy gets more weight in arm scores
+        self.causal_drift_gain = 0.75
         # Normalization scales so the drift terms are O(1) against the reward
         self.dpp_bit_scale = float(np.mean(list(self.data_size.values())))  # ~2.2e4 bits
         self.dpp_energy_scale = 0.80  # J
@@ -194,38 +200,56 @@ class Config:
         self.gdo_price_radio = 1.0
         self.gdo_price_compute = 1.0
         self.gdo_offer_scale = 1.0
-        # Shared RL flags
+        # Shared RL flags (aligned across DQN / PPO / MAPPO)
         self.rl_dpp_reward = True
         self.rl_eval = False
-        # Centralized branching DQN
+        self.rl_hidden = 64
+        self.rl_gamma = 0.99
+        self.rl_reward_norm = True
+        self.rl_log_every = 50
+        # Centralized branching Double-DQN
         self.dqn_pretrain_slots = 400
         self.dqn_model_path = "figures/dqn_pretrained.pt"
         self.dqn_eval = False
         self.dqn_dpp_reward = True
-        self.dqn_gamma = 0.95
-        self.dqn_batch_size = 32
-        self.dqn_buffer_size = 8000
-        self.dqn_lr = 1e-3
-        self.dqn_target_sync = 20
+        self.dqn_gamma = 0.99
+        self.dqn_batch_size = 64
+        self.dqn_buffer_size = 6000
+        self.dqn_lr = 5e-4
+        self.dqn_target_sync = 40
         self.dqn_eps_start = 1.0
         self.dqn_eps_end = 0.05
         self.dqn_eps_decay_slots = 300
-        self.dqn_train_every = 1
-        self.dqn_grad_steps = 4
-        self.dqn_hidden = 128
-        # MAPPO (CTDE)
+        self.dqn_train_every = 2
+        self.dqn_grad_steps = 1
+        self.dqn_hidden = 64
+        # Centralized branching PPO (global-state actor + critic)
+        self.ppo_eval = False
+        self.ppo_dpp_reward = True
+        self.ppo_gamma = 0.99
+        self.ppo_gae_lambda = 0.95
+        self.ppo_clip_eps = 0.2
+        self.ppo_entropy_coef = 0.02
+        self.ppo_value_coef = 0.5
+        self.ppo_lr = 3e-4
+        self.ppo_hidden = 64
+        self.ppo_rollout_len = 16
+        self.ppo_epochs = 2
+        self.ppo_minibatch_size = 64
+        self.ppo_max_grad_norm = 0.5
+        # MAPPO (CTDE): local actors + central critic
         self.mappo_eval = False
         self.mappo_dpp_reward = True
-        self.mappo_gamma = 0.95
+        self.mappo_gamma = 0.99
         self.mappo_gae_lambda = 0.95
         self.mappo_clip_eps = 0.2
-        self.mappo_entropy_coef = 0.01
+        self.mappo_entropy_coef = 0.02
         self.mappo_value_coef = 0.5
         self.mappo_lr = 3e-4
-        self.mappo_hidden = 128
-        self.mappo_rollout_len = 32
-        self.mappo_epochs = 4
-        self.mappo_minibatch_size = 64
+        self.mappo_hidden = 64
+        self.mappo_rollout_len = 16
+        self.mappo_epochs = 2
+        self.mappo_minibatch_size = 128
         self.mappo_max_grad_norm = 0.5
 
         # Track action selection frequencies [user, model, cell_rank]

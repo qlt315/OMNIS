@@ -1,9 +1,10 @@
-"""MAPPO baseline: multi-agent PPO with CTDE.
+"""Centralized branching PPO baseline.
 
-  - Actor (decentralized execution): π(a_i | o_i), parameter-shared across MDs
-  - Critic (centralized training): V(s_global)
-  - Team reward R = mean_u (V·r_u + drift_u) — same objective as bandits / DQN / PPO
-  - On-policy rollouts with GAE + clipped PPO; compact net for wall-time
+Fully centralized (vs MAPPO CTDE):
+  - Actor π(a_1..a_U | s_global) factored as ∏_i π_i(a_i | s) with shared trunk
+  - Critic V(s_global)
+  - Team reward = mean Lyapunov objective (same as DQN / MAPPO / bandits)
+  - On-policy GAE + clipped PPO; small net / short rollouts for wall-time
 """
 
 from __future__ import annotations
@@ -13,67 +14,55 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from baselines.rl_nets import Critic, LocalActor
+from baselines.rl_nets import BranchingActor, Critic
 from baselines.rl_slot_env import OnlineRLBaseline
 from sys_data.config import Config
 
 
-class MAPPO(OnlineRLBaseline):
+class PPO(OnlineRLBaseline):
     def __init__(self, config):
-        if hasattr(config, "mappo_eval"):
-            config.rl_eval = bool(config.mappo_eval)
-        if hasattr(config, "mappo_dpp_reward"):
-            config.rl_dpp_reward = bool(config.mappo_dpp_reward)
+        if hasattr(config, "ppo_eval"):
+            config.rl_eval = bool(config.ppo_eval)
+        if hasattr(config, "ppo_dpp_reward"):
+            config.rl_dpp_reward = bool(config.ppo_dpp_reward)
         super().__init__(config)
-        self.name = "mappo"
+        self.name = "ppo"
 
-        self.gamma = getattr(config, "mappo_gamma", getattr(config, "rl_gamma", 0.99))
-        self.gae_lambda = getattr(config, "mappo_gae_lambda", 0.95)
-        self.clip_eps = getattr(config, "mappo_clip_eps", 0.2)
-        self.entropy_coef = getattr(config, "mappo_entropy_coef", 0.02)
-        self.value_coef = getattr(config, "mappo_value_coef", 0.5)
-        self.lr = getattr(config, "mappo_lr", 3e-4)
-        self.hidden = getattr(config, "mappo_hidden", getattr(config, "rl_hidden", 64))
-        self.rollout_len = getattr(config, "mappo_rollout_len", 16)
-        self.ppo_epochs = getattr(config, "mappo_epochs", 2)
-        self.minibatch_size = getattr(config, "mappo_minibatch_size", 128)
-        self.max_grad_norm = getattr(config, "mappo_max_grad_norm", 0.5)
+        self.gamma = getattr(config, "ppo_gamma", getattr(config, "rl_gamma", 0.99))
+        self.gae_lambda = getattr(config, "ppo_gae_lambda", 0.95)
+        self.clip_eps = getattr(config, "ppo_clip_eps", 0.2)
+        self.entropy_coef = getattr(config, "ppo_entropy_coef", 0.02)
+        self.value_coef = getattr(config, "ppo_value_coef", 0.5)
+        self.lr = getattr(config, "ppo_lr", 3e-4)
+        self.hidden = getattr(config, "ppo_hidden", getattr(config, "rl_hidden", 64))
+        self.rollout_len = getattr(config, "ppo_rollout_len", 16)
+        self.ppo_epochs = getattr(config, "ppo_epochs", 2)
+        self.minibatch_size = getattr(config, "ppo_minibatch_size", 64)
+        self.max_grad_norm = getattr(config, "ppo_max_grad_norm", 0.5)
 
         torch.manual_seed(self.seed)
         self.device = torch.device("cpu")
-        self.actor = LocalActor(self.local_obs_dim, self.n_actions_local, self.hidden).to(self.device)
+        self.actor = BranchingActor(
+            self.global_state_dim, self.user_num, self.n_actions_local, self.hidden
+        ).to(self.device)
         self.critic = Critic(self.global_state_dim, self.hidden).to(self.device)
         self.opt = optim.Adam(
             list(self.actor.parameters()) + list(self.critic.parameters()), lr=self.lr)
 
         self._buf = {
-            "obs": [], "state": [], "actions": [], "logp": [],
-            "rew": [], "val": [], "done": [],
+            "state": [], "actions": [], "logp": [], "rew": [], "val": [], "done": [],
         }
         self._pending = None
 
     def select_actions(self, cand_cells_dic, task_dic, sinr_db_all_dic, t):
-        local = np.stack([
-            self.local_obs(u, task_dic[u], cand_cells_dic, sinr_db_all_dic)
-            for u in self.users
-        ], axis=0)
         state = self.global_state(task_dic, cand_cells_dic, sinr_db_all_dic)
-
-        obs_t = torch.from_numpy(local)
         state_t = torch.from_numpy(state)
         with torch.no_grad():
-            dist = self.actor.dist(obs_t)
-            if self.eval_mode:
-                actions = dist.probs.argmax(dim=-1)
-            else:
-                actions = dist.sample()
-            logp = dist.log_prob(actions)
+            actions, logp = self.actor.sample(state_t, deterministic=self.eval_mode)
             value = self.critic(state_t)
-
         actions_np = actions.cpu().numpy().astype(np.int64)
         actions_by_user = {u: int(actions_np[i]) for i, u in enumerate(self.users)}
         self._pending = {
-            "obs": local,
             "state": state,
             "actions": actions_np,
             "logp": logp.cpu().numpy().astype(np.float32),
@@ -94,7 +83,6 @@ class MAPPO(OnlineRLBaseline):
         return adv, adv + values
 
     def _ppo_update(self, last_value):
-        obs = np.stack(self._buf["obs"], axis=0)
         state = np.stack(self._buf["state"], axis=0)
         actions = np.stack(self._buf["actions"], axis=0)
         old_logp = np.stack(self._buf["logp"], axis=0)
@@ -105,36 +93,27 @@ class MAPPO(OnlineRLBaseline):
         adv, ret = self._gae(rewards, values, dones, last_value)
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
 
-        T, U, obs_dim = obs.shape
-        obs_f = obs.reshape(T * U, obs_dim)
-        act_f = actions.reshape(T * U)
-        logp_f = old_logp.reshape(T * U)
-        adv_f = np.repeat(adv, U)
-
+        T, U = actions.shape
+        # Flatten (t, i) for actor; critic stays on slot states
         state_t = torch.tensor(state, dtype=torch.float32)
+        act_t = torch.tensor(actions, dtype=torch.int64)
+        old_logp_t = torch.tensor(old_logp, dtype=torch.float32)
+        adv_t = torch.tensor(np.repeat(adv, U).reshape(T, U), dtype=torch.float32)
         ret_t = torch.tensor(ret, dtype=torch.float32)
-        obs_t = torch.tensor(obs_f, dtype=torch.float32)
-        act_t = torch.tensor(act_f, dtype=torch.int64)
-        old_logp_t = torch.tensor(logp_f, dtype=torch.float32)
-        adv_t = torch.tensor(adv_f, dtype=torch.float32)
 
-        n = obs_t.shape[0]
-        idx = np.arange(n)
+        idx = np.arange(T)
         for _ in range(self.ppo_epochs):
             np.random.shuffle(idx)
-            for start in range(0, n, self.minibatch_size):
-                mb = idx[start:start + self.minibatch_size]
-                dist = self.actor.dist(obs_t[mb])
-                new_logp = dist.log_prob(act_t[mb])
-                entropy = dist.entropy().mean()
+            for start in range(0, T, max(1, self.minibatch_size // max(U, 1))):
+                mb = idx[start:start + max(1, self.minibatch_size // max(U, 1))]
+                new_logp, entropy = self.actor.evaluate(state_t[mb], act_t[mb])
                 ratio = torch.exp(new_logp - old_logp_t[mb])
                 surr1 = ratio * adv_t[mb]
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * adv_t[mb]
                 policy_loss = -torch.min(surr1, surr2).mean()
-                slot_ids = mb // U
-                v_pred = self.critic(state_t[slot_ids])
-                value_loss = nn.functional.mse_loss(v_pred, ret_t[slot_ids])
-                loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy
+                value_loss = nn.functional.mse_loss(self.critic(state_t[mb]), ret_t[mb])
+                loss = (policy_loss + self.value_coef * value_loss
+                        - self.entropy_coef * entropy.mean())
                 self.opt.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(
@@ -148,7 +127,6 @@ class MAPPO(OnlineRLBaseline):
     def learn_after_slot(self, slot_info):
         if self._pending is None:
             return
-        self._buf["obs"].append(self._pending["obs"])
         self._buf["state"].append(self._pending["state"])
         self._buf["actions"].append(self._pending["actions"])
         self._buf["logp"].append(self._pending["logp"])
@@ -169,7 +147,7 @@ class MAPPO(OnlineRLBaseline):
 
         if t % self.log_every == 0:
             raw = slot_info.get("team_r_raw", slot_info["team_r"])
-            print(f'  [mappo {"eval" if self.eval_mode else "train"}] '
+            print(f'  [ppo {"eval" if self.eval_mode else "train"}] '
                   f'slot={t} team_r={raw:.4f}')
 
 
@@ -178,7 +156,7 @@ if __name__ == "__main__":
     config = Config(seed)
     config.update_users(6)
     config.time_slot_num = 40
-    agent = MAPPO(config)
+    agent = PPO(config)
     agent.simulation()
     print("aver info:", agent.average_metrics)
     print("action freq:", agent.action_freq)

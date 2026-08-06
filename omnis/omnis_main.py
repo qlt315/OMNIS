@@ -49,8 +49,9 @@ class OMNIS:
         self.average_metrics = config.average_metrics
         self.std_metrics = config.std_metrics
 
-        # Wall-clock time spent on arm selection and on learning updates [s]
+        # Wall-clock: MD decision + ES BCD + learning update [s]
         self.decision_time = 0.0
+        self.bcd_time = 0.0
         self.update_time = 0.0
         self.channel_data = config.channel_data
         self.est_err = config.est_err
@@ -81,6 +82,8 @@ class OMNIS:
         self.arrival_rate = getattr(config, 'arrival_rate', {user: 0.7 for user in self.users})
         self.energy_budget = getattr(config, 'energy_budget', {user: 0.45 for user in self.users})
         self.lyapunov_v = getattr(config, 'lyapunov_v', 1.0)
+        self.reward_w_acc = getattr(config, 'reward_w_acc', 1.0)
+        self.reward_qos_coef = getattr(config, 'reward_qos_coef', 1.5)
         self.dpp_bit_scale = getattr(config, 'dpp_bit_scale', 2.2e4)
         self.dpp_energy_scale = getattr(config, 'dpp_energy_scale', 0.45)
         # Per-user uplink bit queue Q_m and virtual energy queue Z_m
@@ -104,11 +107,13 @@ class OMNIS:
                 signal_var=config.causal_gp_signal_var,
                 noise_var=noise_var,
                 beta=self.beta_const_val,
+                penalty_gain=self.reward_qos_coef,
                 acquisition=config.causal_acq,
                 use_prior=config.causal_use_prior,
                 shared=config.causal_shared,
                 lyapunov_v=self.lyapunov_v,
                 drift_gain=getattr(config, 'causal_drift_gain', 1.0),
+                w_acc=self.reward_w_acc,
             )
         # Persistence-based prediction of the ES allocation (last observed values)
         self._last_bandwidth = {}
@@ -340,14 +345,17 @@ class OMNIS:
 
 
     def get_reward(self, task_dic, acc_dic, total_overhead_dic):
-        """Compute the reward of MDs based on accuracy and penalty terms."""
+        """Utility: w_acc * accuracy + qos_coef * delay/energy erf terms."""
+        w_acc = getattr(self, "reward_w_acc", 1.0)
+        qos = getattr(self, "reward_qos_coef", 1.5)
         reward_dic = {}
         for user in self.users:
-            reward_dic[user] = (acc_dic[user] + 1.5 * task_dic[user]["delay_weight"] * erf(
-                task_dic[user]["delay_constraint"] - total_overhead_dic[user]["delay"])
-                                + 1.5 * task_dic[user]["energy_weight"] * erf(
-                        task_dic[user]["energy_constraint"] - total_overhead_dic[user]["energy"]))
-
+            reward_dic[user] = (
+                w_acc * acc_dic[user]
+                + qos * task_dic[user]["delay_weight"] * erf(
+                    task_dic[user]["delay_constraint"] - total_overhead_dic[user]["delay"])
+                + qos * task_dic[user]["energy_weight"] * erf(
+                    task_dic[user]["energy_constraint"] - total_overhead_dic[user]["energy"]))
         return reward_dic
 
     def get_trans_rate(self, time_slot):
@@ -497,7 +505,7 @@ class OMNIS:
 
                 if (service_delay <= task_dic[user]['delay_constraint']
                         and total_energy <= task_dic[user]['energy_constraint']):
-                    score = self.lyapunov_v * acc_dic[user] + drift
+                    score = self.lyapunov_v * getattr(self, "reward_w_acc", 1.0) * acc_dic[user] + drift
                     bler = self.mcs_table.bler(model_name_u, mcs, snr_db)
                     entry = (mcs, score, bler, self.mcs_table.se[mcs])
                     if bler <= bler_t:
@@ -505,7 +513,7 @@ class OMNIS:
                     else:
                         over.append(entry)
                 else:
-                    score = (self.lyapunov_v * (acc_dic[user]
+                    score = (self.lyapunov_v * (getattr(self, "reward_w_acc", 1.0) * acc_dic[user]
                              + task_dic[user]['delay_weight']
                              * erf(task_dic[user]['delay_constraint'] - service_delay)
                              + task_dic[user]['energy_weight']
@@ -825,6 +833,7 @@ class OMNIS:
 
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
 
+            t_bcd = time.time()
             bcd_obj_last = float('inf')
             bcd_iter = 1
 
@@ -878,6 +887,7 @@ class OMNIS:
 
                 bcd_iter += 1
                 bcd_obj_last = bcd_obj
+            self.bcd_time += time.time() - t_bcd
 
             for user in self.users:
                 self.instant_metrics[user]["mcs"].append(phy_choice_dic[user])
