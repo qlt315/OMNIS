@@ -105,7 +105,7 @@ class OMNIS:
                 length_scales=config.causal_gp_length_scales,
                 signal_var=config.causal_gp_signal_var,
                 noise_var=noise_var,
-                beta=self.beta_const_val,
+                beta=getattr(config, 'causal_beta', self.beta_const_val),
                 penalty_gain=self.reward_qos_coef,
                 acquisition=config.causal_acq,
                 use_prior=config.causal_use_prior,

@@ -11,12 +11,21 @@ def acq_max(ac, gp, all_discr_actions, context, max_candidates=None, rng=None,
     for large discrete spaces). rng decouples the subsampling draws from the
     global numpy RNG so downstream randomness (tasks, noise) is unaffected.
 
+    When ``all_discr_actions`` is None, ``rng`` plus ``max_candidates`` must be
+    provided together with ``action_sampler(k, rng) -> (k, action_dim)`` via the
+    optional keyword (see ``acq_max_sample``). Prefer calling ``acq_max_sample``
+    for on-the-fly pools.
+
     score_scale/score_offset implement the Lyapunov drift-plus-penalty scoring:
     the acquisition value is rescaled by the penalty weight V (score_scale) and
     the per-action analytic drift term is added (score_offset) before argmax.
     When score_offset is given together with subsampling, it must be indexed by
     the candidate position (caller passes offsets for the sampled subset).
     """
+    if all_discr_actions is None:
+        raise ValueError(
+            "all_discr_actions is None; use acq_max_sample() for on-the-fly pools")
+
     if max_candidates is not None and len(all_discr_actions) > max_candidates:
         rng = np.random if rng is None else rng
         idx = rng.choice(len(all_discr_actions), max_candidates, replace=False)
@@ -35,8 +44,21 @@ def acq_max(ac, gp, all_discr_actions, context, max_candidates=None, rng=None,
     return x_max
 
 
-import numpy as np
-import warnings
+def acq_max_sample(ac, gp, context, action_sampler, max_candidates, rng=None,
+                   score_scale=1.0, score_offset=None):
+    """Argmax acquisition over an on-the-fly pool of ``max_candidates`` actions.
+
+    ``action_sampler(k, rng)`` returns a ``(k, action_dim)`` array. Used when the
+    joint discrete space is too large to materialize (CTO with U users).
+    """
+    rng = np.random if rng is None else rng
+    actions = action_sampler(int(max_candidates), rng)
+    context_action = np.concatenate(
+        [np.tile(context, (len(actions), 1)), actions], axis=1)
+    ys = ac(context_action, gp=gp) * score_scale
+    if score_offset is not None:
+        ys = ys + np.asarray(score_offset)
+    return actions[ys.argmax()]
 
 
 class UtilityFunction(object):

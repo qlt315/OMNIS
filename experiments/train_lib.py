@@ -127,7 +127,8 @@ def configure(name, seed, slots, users):
     c = Config(seed)
     c.time_slot_num = slots
     c.update_users(users)
-    c.cto_max_candidates = 2000
+    # CTO knobs (cto_max_candidates, cto_gp_burn_in) come from Config — keep
+    # full joint GP cost; do not override to a light candidate pool here.
     if name in ("causal", "ucb"):
         c.algo = name
     if name == "dqn":
@@ -309,7 +310,7 @@ def resolve_algos(names):
     return ordered
 
 
-def run_training(algos, slots=200, users=6, seeds=(0, 1, 2, 3, 4), out="figures"):
+def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures"):
     """Run listed algos over seeds; merge CSVs + series under ``out`` (no plots)."""
     names = resolve_algos(algos)
     cls_map = dict(ALGOS)
@@ -344,8 +345,9 @@ def cli_main(default_algos=None):
         "--algos", nargs="+", default=default_algos,
         metavar="NAME",
         help=f"schemes to run (default: script-specific or all). Choices: {', '.join(ALGO_NAMES)}")
-    p.add_argument("--slots", type=int, default=200)
-    p.add_argument("--users", type=int, default=6)
+    # Overnight hard defaults (match sys_data/config.py stress scenario).
+    p.add_argument("--slots", type=int, default=300)
+    p.add_argument("--users", type=int, default=10)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     p.add_argument("--out", default="figures")
     args = p.parse_args()

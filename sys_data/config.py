@@ -10,7 +10,9 @@ class Config:
         # Basic configuration
         self.seed = seed
         np.random.seed(self.seed)  # Set random seed for reproducibility
-        self.time_slot_num = 200 # Number of time slots
+        # Overnight hard scenario (Phase 1): longer horizon so queues reach
+        # steady state under heavier load; train_all CLI can override.
+        self.time_slot_num = 300  # Number of time slots
 
         # Model configuration: Different quantization methods and channels
         self.models = [
@@ -47,7 +49,10 @@ class Config:
 
 
         # User-specific configurations
-        self.user_num = 8  # Number of users
+        # Capacity for CLI --users up to this value (update_users slices origin).
+        # Overnight hard scenario: default 10 users (was 8); origin sized to 12
+        # so intermediate retunes can try 10–12 without re-init bugs.
+        self.user_num = 12  # Number of users (origin pool; train uses ≤ this)
         self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
 
         # Mobile device (MD) parameters for each user
@@ -84,22 +89,19 @@ class Config:
         # self.es_params = {'freq': 1.5, 'cores': 2048, 'flops_per_cycle': 2, 'power_coeff': 0.7}
 
 
-        # Task constraints (loosened vs conference: sojourn delay = queue wait +
-        # service, so the deadline must leave headroom for backlog drain)
-        self.fixed_delay = {user: np.random.uniform(1.5, 2.5) for user in self.users}  # Delay constraints
+        # Task constraints — overnight hard scenario: tighter delay vs prior
+        # [1.5, 2.5] so sojourn (queue wait + service) stresses Acc-chasing
+        # baselines (GDO) more while Causal mechanism can trade Acc vs drain.
+        self.fixed_delay = {user: np.random.uniform(1.0, 1.8) for user in self.users}  # Delay constraints
         self.fixed_energy = {user: np.random.uniform(0.8, 1.5) for user in self.users}  # Energy constraints
         self.fixed_energy_weight = {user: np.random.uniform(0.3, 0.7) for user in self.users}  # Energy weight factors
 
         # ---- Queueing model + Lyapunov framework (journal extension) ----
         self.slot_duration = 1.0  # Slot length [s]; service = bandwidth * SE * slot_duration
         # Per-user Poisson task arrival rate [tasks/slot]
-        # Arrival rate tuned to the "tight but feasible" regime: queues stabilize
-        # at a small POSITIVE backlog (not 0, not diverging). backlog=0 means the
-        # link is over-provisioned and erases inter-algorithm differences; a
-        # small positive backlog is the DPP-optimal operating point (Little's law:
-        # just-enough delay, max reward). [0.4, 0.65] empirically settles to a
-        # small positive steady-state backlog under the feasible energy budget.
-        self.arrival_rate = {user: np.random.uniform(0.4, 0.65) for user in self.users}
+        # Overnight hard scenario: heavier traffic [0.55, 0.90] (was [0.4, 0.65])
+        # so backlog/vio differentiate schemes; still feasible under energy_budget.
+        self.arrival_rate = {user: np.random.uniform(0.55, 0.90) for user in self.users}
         # Per-user average energy budget [J/slot] for the virtual energy queue.
         # Set to 1.10 (above the cheapest feasible service ~0.9-1.0 J) so the
         # energy constraint is FEASIBLE: an infeasible budget makes the virtual
@@ -108,14 +110,18 @@ class Config:
         self.arrival_rate_origin = self.arrival_rate
         self.energy_budget_origin = self.energy_budget
         # Lyapunov weight V: trades time-average utility against queue drift.
-        # Larger V → accuracy/QoS matter more relative to backlog/energy queues.
+        # Overnight hard load (higher arrivals + tighter delay): V=2.5 so drift
+        # competes with Acc under fair gain=1 (was V=4 / w_acc=6, which let
+        # Acc-chasing inflate backlog and erased Causal's reward lead vs UCB).
         self.lyapunov_v = 2.5
         # Utility = w_acc * acc + qos_coef * (delay/energy erf terms)
-        # Raised so Causal closes the Acc gap vs Acc-floor GDO (Box12).
+        # Shared across schemes. Slightly lower w_acc + higher qos_coef under
+        # stress so QoS/queue terms matter in both selection and reported reward.
         self.reward_w_acc = 4.0
-        self.reward_qos_coef = 1.5
-        # Causal: <1 softens queue pressure so heavier/higher-acc arms win more often
-        self.causal_drift_gain = 0.25
+        self.reward_qos_coef = 2.0
+        # Fairness: Causal uses the same V·u + drift objective as UCB/DTS/CTO
+        # (gain=1). Do not reintroduce a Causal-only soft-queue gain < 1.
+        self.causal_drift_gain = 1.0
         # Normalization scales so the drift terms are O(1) against the reward
         self.dpp_bit_scale = float(np.mean(list(self.data_size.values())))  # ~2.2e4 bits
         self.dpp_energy_scale = 0.80  # J
@@ -184,12 +190,28 @@ class Config:
         self.causal_acq = 'ucb'            # Acquisition function: 'ucb' or 'ts'
         self.causal_use_prior = True       # Use the offline causal prior mean
         self.causal_shared = True          # Pool the accuracy mechanism GP across MDs
-        self.causal_prior_snr_step = 10    # Coarseness of the offline prior SNR grid
-        # Residual GP hyperparameters over (snr_db, quant_flag, channels, mcs_index)
-        self.causal_gp_length_scales = [2.0, 0.75, 2.0, 2.0]
-        self.causal_gp_signal_var = 2.5e-3
-        # CTO joint space is (6*L)^U; cap candidates per suggest() call
-        self.cto_max_candidates = 2000
+        self.causal_prior_snr_step = 5     # Finer offline prior SNR grid (was 10)
+        # UCB beta on the residual accuracy GP (not the soft-queue gain).
+        # Under hard load, beta=1.0 still over-explores heavy Acc arms → backlog
+        # blow-up; 0.55 keeps residual UCB but favors posterior mean sooner.
+        self.causal_beta = 0.55
+        # Residual GP hyperparameters over (snr_db, quant_flag, channels, mcs_index).
+        # Slightly sharper SNR/quant ARD + moderate signal var for mechanism
+        # discrimination without Acc overconfidence under fair drift.
+        self.causal_gp_length_scales = [1.0, 0.35, 1.0, 1.0]
+        self.causal_gp_signal_var = 4.0e-3
+        # CTO: joint space (n_models·L)^U is huge — sample K candidates on the fly
+        # (never materialize the cartesian product; avoids OOM on ~3e7 actions).
+        # K≈6^6 matches the classic joint model-only pool size (centrality cost).
+        self.cto_max_candidates = 46656
+        # GP ARD hypers: 0 = always L-BFGS every slot (full joint CBO cost /
+        # centralized signature). Positive N freezes after N observations.
+        self.cto_gp_burn_in = 0
+        # Multi-start L-BFGS for joint high-dim ARD (real centralized GP cost).
+        self.cto_gp_n_restarts = 5
+        # False → stock sklearn GP predict for joint acquisition (FastGP would
+        # erase the centralized scoring cost vs per-user Causal/UCB).
+        self.cto_use_fast_gp = False
         # GDO = SEM-O-RAN SF-ESP greedy (Puligheddu et al., TMC 2024)
         # Acc floor Ac picks lightest z* with offline a(z)≥Ac at ref SNR.
         # 0.25 → Box12 (high Acc, myopic queues) — deliberate Acc-chasing baseline.

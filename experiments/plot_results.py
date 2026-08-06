@@ -423,8 +423,50 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
         except OSError:
             pass
 
+    # Per-metric mean bar charts (across seeds; error bars = seed std)
+    bar_specs = [
+        ("reward", "reward_bar.png", "Mean Lyapunov reward", "Reward (mean ± std)"),
+        ("acc", "accuracy_bar.png", "Mean accuracy (mAP)", "Accuracy (mean ± std)"),
+        ("delay", "delay_bar.png", "Mean delay [s]", "Delay (mean ± std)"),
+        ("energy", "energy_bar.png", "Mean energy [J]", "Energy (mean ± std)"),
+        ("backlog", "backlog_bar.png", "Mean backlog [bits]", "Queue backlog (mean ± std)"),
+        ("vio", "violation_bar.png", "Violation rate", "Constraint violation (mean ± std)"),
+    ]
+    bar_paths = []
+    for field, fname, ylabel, title in bar_specs:
+        means, stds = [], []
+        for name in names:
+            sub = [r for r in rows if r["name"] == name and field in r]
+            if not sub:
+                means.append(np.nan)
+                stds.append(0.0)
+                continue
+            vals = np.asarray([r[field] for r in sub], dtype=float)
+            means.append(float(vals.mean()))
+            stds.append(float(vals.std(ddof=1)) if len(vals) > 1 else 0.0)
+        means = np.asarray(means, dtype=float)
+        stds = np.asarray(stds, dtype=float)
+        if np.all(np.isnan(means)):
+            continue
+        fig, ax = plt.subplots(figsize=(8.0, 4.6))
+        colors = [COLORS.get(n, "#333") for n in names]
+        ax.bar(x, means, yerr=stds, color=colors, capsize=3,
+               error_kw={"elinewidth": 1.0, "capthick": 1.0})
+        ax.set_xticks(x)
+        ax.set_xticklabels([LABELS.get(n, n) for n in names], rotation=18, ha="right")
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        ax.grid(True, axis="y", alpha=0.3)
+        fig.tight_layout()
+        path = os.path.join(out_dir, fname)
+        fig.savefig(path, dpi=160)
+        plt.close(fig)
+        bar_paths.append(path)
+
     print(f"wrote plots -> {out_dir}/")
     print(f"runtime stack -> {runtime_path}", flush=True)
+    if bar_paths:
+        print(f"mean bars -> {len(bar_paths)} files (*_bar.png)", flush=True)
 
     if not no_mat:
         mat = mat_path or os.path.join(out_dir, "plot_data.mat")

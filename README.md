@@ -63,12 +63,15 @@ Outputs under `--out` / `--indir` (default `figures/`):
 - `perseed.csv` / `summary.csv` — reward, acc, delay, energy, backlog, vio, ms/slot
   (incl. `decision_ms`, `comm_ms`, `bcd_ms`; new runs fold update into `decision_ms`)
 - `series/{name}_seed{k}.npz` — time series for curves
-- plots from `plot_results.py`: `reward.png`, `accuracy.png`, `delay.png`, `energy.png`,
-  `backlog.png`, `violation.png`, and one stacked `runtime.png`
-  (**decision** = algo compute, **interaction** = control-plane RTT+bytes via
-  `comm_model.py`, **BCD** = resource allocation). Old CSVs without `comm_*`
-  derive interaction at plot time. Optional `--users` overrides Config.user_num
-  for that derivation.
+- plots from `plot_results.py`:
+  - series: `reward.png`, `reward_sliding.png`, `accuracy.png`, `delay.png`,
+    `energy.png`, `backlog.png`, `violation.png`
+  - mean bars (across seeds, ± std): `reward_bar.png`, `accuracy_bar.png`,
+    `delay_bar.png`, `energy_bar.png`, `backlog_bar.png`, `violation_bar.png`
+  - one stacked `runtime.png` (**decision** = algo compute, **interaction** =
+    control-plane RTT+bytes via `comm_model.py`, **BCD** = resource allocation).
+    Old CSVs without `comm_*` derive interaction at plot time. Optional `--users`
+    overrides Config.user_num for that derivation.
 - `plot_data.mat` — MATLAB export (`algo_names`, `summary.*`, `series.<algo>.*`,
   plus flat `decision_ms` / `comm_ms` / `bcd_ms` / …)
 
@@ -89,9 +92,18 @@ Outputs under `--out` / `--indir` (default `figures/`):
 ## Important Notes
 1. Prefer running with the working directory set to the repo root and `PYTHONPATH=.`.
 2. Ensure SINR traces cover at least `config.time_slot_num` slots and enough UEs for `config.user_num`.
-3. Hyperparameters live in `sys_data/config.py`.
+3. Hyperparameters live in `sys_data/config.py`. Fair Causal uses `causal_drift_gain=1.0`
+   (same `V·u+drift` objective as other schemes); shared knobs (`lyapunov_v`,
+   `reward_w_acc`) and Causal method strengths (`causal_beta`, GP length scales /
+   prior) may be retuned — do not reintroduce a Causal-only soft-queue gain.
+   CTO intentionally retains full joint CBO cost: `cto_gp_burn_in=0` re-fits
+   ARD hypers every slot (`cto_gp_n_restarts` multi-start L-BFGS),
+   `cto_max_candidates` (default 46656 ≈ 6^6) scores a large on-the-fly joint
+   pool with stock sklearn GP predict (`cto_use_fast_gp=False`) — never
+   materializing `(n_models·L)^U` (avoids OOM). FastGP remains for per-user
+   Causal/UCB. Positive `cto_gp_burn_in` freezes hypers after N (optional).
 4. This repository does not include training code for the multi-branch dynamic split DNN; it interfaces to evaluation tables. For DNN details, contact Ian Andrew Harshbarger (iharshba@uci.edu).
-5. Runtime plots report one stacked bar: **decision** (algo compute) + **interaction** (control-plane) + **BCD**.
+5. Runtime plots report one stacked bar: **decision** (algo compute) + **interaction** (control-plane) + **BCD**. Metric mean bars are separate `*_bar.png` files.
 
 ## Contributing
 We welcome contributions to improve OMNIS. To contribute:

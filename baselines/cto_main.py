@@ -101,12 +101,19 @@ class CTO:
         self.noise = config.noise
         self.beta_function = config.beta_function
         self.beta_const_val = config.beta_const_val
-        self.optimizer = cbo.ContextualBayesianOptimization(
-            all_actions_dict=self.action, contexts=self.contexts, kernel=self.kernel)
-        self.utility = config.utility
-        # Optional cap on the joint-action candidates evaluated per suggest()
-        # call (None = exhaustive; the fast GP predictor makes this affordable)
+        # Joint space is (n_models * L)^U — never materialize; sample K on the fly.
+        # GP hypers: cto_gp_burn_in<=0 keeps full L-BFGS ARD every slot (joint CBO
+        # cost); positive N freezes after burn-in. Stock sklearn predict (not FastGP)
+        # so scoring K joint candidates retains centralized wall time. No sleep().
         self.max_candidates = getattr(config, 'cto_max_candidates', None)
+        self.gp_burn_in = int(getattr(config, 'cto_gp_burn_in', 0))
+        self.gp_n_restarts = int(getattr(config, 'cto_gp_n_restarts', 5))
+        self.use_fast_gp = bool(getattr(config, 'cto_use_fast_gp', False))
+        self.optimizer = cbo.ContextualBayesianOptimization(
+            all_actions_dict=self.action, contexts=self.contexts, kernel=self.kernel,
+            gp_burn_in=self.gp_burn_in, n_restarts_optimizer=self.gp_n_restarts,
+            use_fast_gp=self.use_fast_gp)
+        self.utility = config.utility
 
         # Queueing model + Lyapunov framework (journal extension)
         self.slot_duration = getattr(config, 'slot_duration', 1.0)
@@ -179,19 +186,39 @@ class CTO:
         model_key_idx = {user: action_keys.index(f'{user}_model') for user in self.users}
         cell_key_idx = {user: action_keys.index(f'{user}_cell_rank') for user in self.users}
 
-        def joint_drift(context_action):
-            action_cols = context_action[:, self.context_dim:]
-            drifts = np.zeros(len(context_action))
-            for i in range(len(context_action)):
-                for user in self.users:
-                    model_idx = int(action_cols[i, model_key_idx[user]])
-                    cell_rank = int(action_cols[i, cell_key_idx[user]])
+        # Drift is additive over users and independent of other users' arms.
+        # Precompute the U × n_models × L table once per slot, then gather —
+        # math-equivalent to the per-candidate nested loop, but O(U·M·L) MCS /
+        # overhead calls instead of O(K·U).
+        n_models = len(self.models)
+        L = self.top_l_cells
+        n_users = len(self.users)
+        drift_table = np.zeros((n_users, n_models, L), dtype=np.float64)
+        for ui, user in enumerate(self.users):
+            task_u = task_dic[user]
+            for model_idx in range(n_models):
+                model_name = self.models[model_idx]["name"]
+                for cell_rank in range(L):
                     cell_id = cand_cells_dic[user][cell_rank]
                     snr_db = sinr_db_all_dic[user][cell_id]
-                    model_name = self.models[model_idx]["name"]
-                    mcs_hat = self.forward_sim_mcs(user, snr_db, model_name, task_dic[user])
-                    _, _, energy_hat = self.predict_md_overheads(user, None, model_name, mcs_hat, snr_db=snr_db)
-                    drifts[i] += self.dpp_drift(user, model_name, mcs_hat, energy_hat, snr_db=snr_db)
+                    mcs_hat = self.forward_sim_mcs(user, snr_db, model_name, task_u)
+                    _, _, energy_hat = self.predict_md_overheads(
+                        user, None, model_name, mcs_hat, snr_db=snr_db)
+                    drift_table[ui, model_idx, cell_rank] = self.dpp_drift(
+                        user, model_name, mcs_hat, energy_hat, snr_db=snr_db)
+
+        user_model_cols = np.array(
+            [model_key_idx[u] for u in self.users], dtype=np.int64)
+        user_cell_cols = np.array(
+            [cell_key_idx[u] for u in self.users], dtype=np.int64)
+
+        def joint_drift(context_action):
+            action_cols = context_action[:, self.context_dim:]
+            drifts = np.zeros(len(context_action), dtype=np.float64)
+            for ui in range(n_users):
+                m = np.asarray(action_cols[:, user_model_cols[ui]], dtype=np.int64)
+                c = np.asarray(action_cols[:, user_cell_cols[ui]], dtype=np.int64)
+                drifts += drift_table[ui, m, c]
             return drifts
 
         dpp_utility = DppUtility(self.utility, self.lyapunov_v, joint_drift)
