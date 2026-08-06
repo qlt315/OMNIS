@@ -1,9 +1,14 @@
-"""Strictly centralized online Double DQN (branching / multi-head).
+"""Centralized joint-action Double DQN (CTO-aligned).
 
-  - Global state (concat of all MD features)
-  - Team reward R = mean_u (V·r_u + drift_u), optionally running-normalized
-  - Branching Q-heads (Tavakoli et al.): shared trunk + U discrete heads
-  - Double DQN targets; light update schedule for lower wall time
+Matches CTO's decision structure:
+  - One learner sees the **global state**
+  - One **joint action** a = (a_1, …, a_U) over all MDs
+  - One **team reward** R = mean_u (V·r_u + drift_u)
+  - Joint space A^U is intractable (18^6); like CTO we score a random
+    candidate pool of size ``dqn_max_candidates`` (default = cto_max_candidates)
+
+Differs from the previous branching DQN (factored heads), which was centralized
+only in state/reward, not in the joint action.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from baselines.rl_nets import BranchingQNet
+from baselines.rl_nets import JointQNet
 from baselines.rl_slot_env import OnlineRLBaseline
 from sys_data.config import Config
 
@@ -44,20 +49,24 @@ class DQN(OnlineRLBaseline):
         self.hidden = getattr(config, "dqn_hidden", getattr(config, "rl_hidden", 64))
         self.pretrain_slots = getattr(config, "dqn_pretrain_slots", 400)
         self.model_path = getattr(config, "dqn_model_path", "figures/dqn_pretrained.pt")
+        # Same candidate budget as CTO's joint suggest()
+        self.max_candidates = int(getattr(
+            config, "dqn_max_candidates",
+            getattr(config, "cto_max_candidates", 2000) or 2000))
 
         torch.manual_seed(self.seed)
         self.device = torch.device("cpu")
-        self.q = BranchingQNet(
+        self.q = JointQNet(
             self.global_state_dim, self.user_num, self.n_actions_local, self.hidden
         ).to(self.device)
-        self.q_tgt = BranchingQNet(
+        self.q_tgt = JointQNet(
             self.global_state_dim, self.user_num, self.n_actions_local, self.hidden
         ).to(self.device)
         self.q_tgt.load_state_dict(self.q.state_dict())
         self.opt = optim.Adam(self.q.parameters(), lr=self.lr)
         self.buffer = deque(maxlen=self.buffer_size)
         self._step = 0
-        self._pending = None
+        self._pending = None  # (global_state, joint_actions[U])
 
         if self.eval_mode:
             self._load_pretrained()
@@ -94,40 +103,68 @@ class DQN(OnlineRLBaseline):
         frac = min(1.0, t / float(self.eps_decay_slots))
         return self.eps_start + frac * (self.eps_end - self.eps_start)
 
+    def _sample_joint_candidates(self, k):
+        """Random joint actions in {0..A-1}^U, same role as CTO max_candidates."""
+        return np.random.randint(
+            0, self.n_actions_local, size=(k, self.user_num), dtype=np.int64)
+
+    def _best_joint_action(self, state_np, k=None):
+        """Argmax_a Q(s, a) over a pool of K joint candidates (batched)."""
+        k = k or self.max_candidates
+        cands = self._sample_joint_candidates(k)  # [K, U]
+        s = torch.from_numpy(np.asarray(state_np, dtype=np.float32)).unsqueeze(0)
+        s_rep = s.expand(k, -1)
+        a = torch.from_numpy(cands)
+        with torch.no_grad():
+            q = self.q(s_rep, a)  # [K]
+            idx = int(q.argmax().item())
+        return cands[idx].copy(), float(q[idx].item())
+
     def select_actions(self, cand_cells_dic, task_dic, sinr_db_all_dic, t):
         s = self.global_state(task_dic, cand_cells_dic, sinr_db_all_dic)
         eps = self._epsilon(t)
         if random.random() < eps:
-            actions = [random.randrange(self.n_actions_local) for _ in self.users]
+            actions = self._sample_joint_candidates(1)[0]
         else:
-            with torch.no_grad():
-                qv = self.q(torch.from_numpy(s).unsqueeze(0))
-                actions = qv.argmax(dim=2).squeeze(0).tolist()
-        actions_by_user = {u: actions[i] for i, u in enumerate(self.users)}
-        self._pending = (s, np.asarray(actions, dtype=np.int64))
+            actions, _ = self._best_joint_action(s, self.max_candidates)
+        actions_by_user = {u: int(actions[i]) for i, u in enumerate(self.users)}
+        self._pending = (s, actions.astype(np.int64))
         return self.pack_selections(actions_by_user, cand_cells_dic)
+
+    def _max_next_q(self, s2, k=None):
+        """Double-DQN style max over joint candidates: online selects, target evals."""
+        k = k or self.max_candidates
+        B = s2.shape[0]
+        # Sample K candidates per batch item: [B, K, U]
+        cands = np.random.randint(
+            0, self.n_actions_local, size=(B, k, self.user_num), dtype=np.int64)
+        a = torch.from_numpy(cands)  # [B, K, U]
+        s_rep = s2.unsqueeze(1).expand(-1, k, -1).reshape(B * k, -1)
+        a_flat = a.reshape(B * k, self.user_num)
+        with torch.no_grad():
+            q_online = self.q(s_rep, a_flat).reshape(B, k)
+            best = q_online.argmax(dim=1)  # [B]
+            # gather corresponding actions for target
+            gather_idx = best.view(B, 1, 1).expand(-1, 1, self.user_num)
+            a_best = a.gather(1, gather_idx).squeeze(1)  # [B, U]
+            q_tgt = self.q_tgt(s2, a_best)  # [B]
+        return q_tgt.unsqueeze(1)
 
     def _train_step(self):
         if len(self.buffer) < self.batch_size:
             return
         batch = random.sample(self.buffer, self.batch_size)
         s = torch.tensor(np.stack([b[0] for b in batch]), dtype=torch.float32)
-        a = torch.tensor(np.stack([b[1] for b in batch]), dtype=torch.int64)
+        a = torch.tensor(np.stack([b[1] for b in batch]), dtype=torch.int64)  # [B, U]
         r = torch.tensor([b[2] for b in batch], dtype=torch.float32).unsqueeze(1)
         s2 = torch.tensor(np.stack([b[3] for b in batch]), dtype=torch.float32)
         done = torch.tensor([b[4] for b in batch], dtype=torch.float32).unsqueeze(1)
 
-        q_all = self.q(s)
-        q_sa = q_all.gather(2, a.unsqueeze(2)).squeeze(2)
-        q_team = q_sa.mean(dim=1, keepdim=True)
+        q_sa = self.q(s, a).unsqueeze(1)  # [B, 1] joint Q
         with torch.no_grad():
-            # Double DQN: online net selects, target net evaluates
-            next_online = self.q(s2)
-            next_a = next_online.argmax(dim=2)  # [B, U]
-            next_tgt = self.q_tgt(s2).gather(2, next_a.unsqueeze(2)).squeeze(2)
-            max_next_team = next_tgt.mean(dim=1, keepdim=True)
-            target = r + self.gamma * (1.0 - done) * max_next_team
-        loss = nn.functional.mse_loss(q_team, target)
+            max_next = self._max_next_q(s2, self.max_candidates)
+            target = r + self.gamma * (1.0 - done) * max_next
+        loss = nn.functional.mse_loss(q_sa, target)
         self.opt.zero_grad()
         loss.backward()
         nn.utils.clip_grad_norm_(self.q.parameters(), 5.0)
@@ -153,15 +190,18 @@ class DQN(OnlineRLBaseline):
         t = slot_info["t"]
         if t % self.log_every == 0:
             raw = slot_info.get("team_r_raw", r)
-            print(f'  [dqn] slot={t} team_r={raw:.4f} eps={self._epsilon(t):.3f}')
+            print(f'  [dqn-joint] slot={t} team_r={raw:.4f} '
+                  f'eps={self._epsilon(t):.3f} K={self.max_candidates}')
 
 
 if __name__ == "__main__":
     seed = 0
     config = Config(seed)
     config.update_users(6)
-    config.time_slot_num = 40
+    config.time_slot_num = 20
+    config.dqn_max_candidates = 500
     agent = DQN(config)
     agent.simulation()
     print("aver info:", agent.average_metrics)
+    print("decision_ms/slot", 1000 * agent.decision_time / config.time_slot_num)
     print("action freq:", agent.action_freq)

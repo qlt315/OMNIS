@@ -12,14 +12,16 @@ OMNIS/
 │── baselines/                      # RSS, DTS, CTO, GDO, DQN, PPO, MAPPO
 │── omnis/                          # Simulator, causal MAB, PHY helpers
 │── experiments/
-│   ├── train_lib.py                # Shared runner (metrics + plots)
-│   ├── train_all.py                # All schemes → figures/
-│   └── train_*.py                  # Per-scheme trainers
+│   ├── train_lib.py                # Shared runner (data only)
+│   ├── train_all.py                # Selected / all schemes → figures/
+│   ├── train_*.py                  # Per-scheme trainers
+│   ├── comm_model.py               # Control-plane bytes / RTT → comm_ms
+│   └── plot_results.py             # Plot from saved CSVs + series/
 │── phy_sim/                        # Sionna PHY; see phy_sim/README.md
 │── sys_data/
 │   ├── config.py                   # Config
 │   └── acc_data/                   # Optional seed curves for phy_sim/synth_acc
-│── figures/                        # train_*.py output
+│── figures/                        # train output + plots
 │── observations/                   # Observation figure scripts
 ```
 
@@ -42,16 +44,33 @@ PYTHONPATH=. python3 experiments/train_dqn.py --slots 80 --seeds 0 --out figures
 # same flags for: train_ucb / train_dts / train_gdo / train_rss / train_ppo / train_mappo / train_cto
 ```
 
-### 3. Train all schemes
+### 3. Train selected / all schemes
 ```bash
+# all schemes
 PYTHONPATH=. python3 experiments/train_all.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures
+# subset (merges into existing perseed.csv; does not wipe other algos)
 PYTHONPATH=. python3 experiments/train_all.py --algos causal ucb gdo dqn ppo mappo --out figures
+PYTHONPATH=. python3 experiments/train_all.py --algos cto --out figures
 ```
 
-Outputs under `--out` (default `figures/`):
-- `summary.csv` / `perseed.csv` — reward, acc, delay, energy, backlog, vio, ms/slot (decision+BCD+update)
-- `reward.png`, `accuracy.png`, `delay.png`, `energy.png`, `backlog.png`, `violation.png`
-- `runtime.png` (stacked decision/BCD/update), `runtime_log.png`
+### 4. Plot (separate; skips missing algos)
+```bash
+PYTHONPATH=. python3 experiments/plot_results.py --indir figures
+PYTHONPATH=. python3 experiments/plot_results.py --indir figures --algos causal ucb cto
+```
+
+Outputs under `--out` / `--indir` (default `figures/`):
+- `perseed.csv` / `summary.csv` — reward, acc, delay, energy, backlog, vio, ms/slot
+  (incl. `decision_ms`, `comm_ms`, `bcd_ms`; new runs fold update into `decision_ms`)
+- `series/{name}_seed{k}.npz` — time series for curves
+- plots from `plot_results.py`: `reward.png`, `accuracy.png`, `delay.png`, `energy.png`,
+  `backlog.png`, `violation.png`, and one stacked `runtime.png`
+  (**decision** = algo compute, **interaction** = control-plane RTT+bytes via
+  `comm_model.py`, **BCD** = resource allocation). Old CSVs without `comm_*`
+  derive interaction at plot time. Optional `--users` overrides Config.user_num
+  for that derivation.
+- `plot_data.mat` — MATLAB export (`algo_names`, `summary.*`, `series.<algo>.*`,
+  plus flat `decision_ms` / `comm_ms` / `bcd_ms` / …)
 
 ## Algorithms
 
@@ -63,7 +82,7 @@ Outputs under `--out` (default `figures/`):
 | **cto** | Centralized joint GP-UCB |
 | **gdo** | SF-ESP greedy |
 | **rss** | Static random arms |
-| **dqn** | Centralized branching Double-DQN |
+| **dqn** | Centralized **joint-action** Double-DQN (candidate pool like CTO) |
 | **ppo** | Centralized branching PPO |
 | **mappo** | Multi-agent PPO (CTDE) |
 
@@ -72,7 +91,7 @@ Outputs under `--out` (default `figures/`):
 2. Ensure SINR traces cover at least `config.time_slot_num` slots and enough UEs for `config.user_num`.
 3. Hyperparameters live in `sys_data/config.py`.
 4. This repository does not include training code for the multi-branch dynamic split DNN; it interfaces to evaluation tables. For DNN details, contact Ian Andrew Harshbarger (iharshba@uci.edu).
-5. Runtime plots report **decision + BCD + update** wall time per slot.
+5. Runtime plots report one stacked bar: **decision** (algo compute) + **interaction** (control-plane) + **BCD**.
 
 ## Contributing
 We welcome contributions to improve OMNIS. To contribute:

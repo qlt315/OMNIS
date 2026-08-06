@@ -1,0 +1,33 @@
+=== causal seed=0 ===
+    reward=3.2767 acc=0.2211 delay=0.890 energy=0.780 backlog=9885 vio=0.206 ms/slot=78.57 (dec=22.35 bcd=51.36 upd=4.86) wall=16s
+=== causal seed=1 ===
+    reward=2.6231 acc=0.2258 delay=0.848 energy=1.089 backlog=10996 vio=0.337 ms/slot=71.65 (dec=21.10 bcd=46.96 upd=3.59) wall=14s
+=== causal seed=2 ===
+    reward=3.4724 acc=0.2196 delay=0.783 energy=0.556 backlog=10380 vio=0.028 ms/slot=72.45 (dec=21.83 bcd=47.45 upd=3.17) wall=15s
+=== causal seed=3 ===
+    reward=2.6721 acc=0.2255 delay=0.837 energy=1.060 backlog=11499 vio=0.320 ms/slot=67.71 (dec=20.42 bcd=44.69 upd=2.61) wall=14s
+=== causal seed=4 ===
+    reward=3.0242 acc=0.2220 delay=0.765 energy=0.935 backlog=10810 vio=0.309 ms/slot=71.77 (dec=21.54 bcd=46.96 upd=3.27) wall=14s
+=== ucb seed=0 ===
+    reward=2.8256 acc=0.2115 delay=0.919 energy=0.706 backlog=8418 vio=0.148 ms/slot=280.86 (dec=236.17 bcd=44.63 upd=0.05) wall=56s
+=== ucb seed=1 ===
+    reward=2.3026 acc=0.1988 delay=0.882 energy=0.873 backlog=8346 vio=0.224 ms/slot=279.60 (dec=237.94 bcd=41.60 upd=0.05) wall=56s
+=== ucb seed=2 ===
+    reward=2.8199 acc=0.2157 delay=0.951 energy=0.552 backlog=10512 vio=0.092 ms/slot=272.62 (dec=226.29 bcd=46.29 upd=0.05) wall=55s
+=== ucb seed=3 ===
+    reward=2.3023 acc=0.2024 delay=0.890 energy=0.804 backlog=9121 vio=0.106 ms/slot=304.09 (dec=262.03 bcd=42.00 upd=0.05) wall=61s
+=== ucb seed=4 ===
+    reward=2.3786 acc=0.1969 delay=0.827 energy=0.787 backlog=7931 vio=0.185 ms/slot=289.33 (dec=247.81 bcd=41.47 upd=0.05) wall=58s
+=== dts seed=0 ===
+    reward=2.6951 acc=0.2164 delay=1.113 energy=0.802 backlog=10517 vio=0.272 ms/slot=296.38 (dec=250.21 bcd=46.12 upd=0.05) wall=59s
+=== dts seed=1 ===
+    reward=1.9232 acc=0.2111 delay=1.289 energy=1.068 backlog=10872 vio=0.458 ms/slot=277.78 (dec=236.47 bcd=41.26 upd=0.05) wall=56s
+=== dts seed=2 ===
+    reward=2.9300 acc=0.2123 delay=0.938 energy=0.570 backlog=9148 vio=0.114 ms/slot=292.30 (dec=244.81 bcd=47.44 upd=0.05) wall=58s
+=== dts seed=3 ===
+    reward=1.8171 acc=0.2114 delay=1.231 energy=1.019 backlog=10962 vio=0.397 ms/slot=252.83 (dec=213.59 bcd=39.19 upd=0.05) wall=51s
+=== dts seed=4 ===
+    reward=2.1978 acc=0.2110 delay=1.165 energy=0.916 backlog=10235 vio=0.422 ms/slot=279.48 (dec=237.99 bcd=41.43 upd=0.05) wall=56s
+=== gdo seed=0 ===
+    reward=2.0654 acc=0.2623 delay=2.136 energy=0.691 backlog=26164 vio=0.304 ms/slot=44.15 (dec=0.11 bcd=44.04 upd=0.00) wall=9s
+=== gdo seed=1 ===

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Train / evaluate the dqn scheme. Writes figures/ CSVs and plots."""
+"""Train / evaluate the dqn scheme. Writes/merges CSVs + series under --out (no plots; use plot_results.py)."""
 import os
 import sys
 

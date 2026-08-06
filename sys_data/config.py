@@ -109,12 +109,13 @@ class Config:
         self.energy_budget_origin = self.energy_budget
         # Lyapunov weight V: trades time-average utility against queue drift.
         # Larger V → accuracy/QoS matter more relative to backlog/energy queues.
-        self.lyapunov_v = 1.5
+        self.lyapunov_v = 2.5
         # Utility = w_acc * acc + qos_coef * (delay/energy erf terms)
-        self.reward_w_acc = 2.0
+        # Raised so Causal closes the Acc gap vs Acc-floor GDO (Box12).
+        self.reward_w_acc = 4.0
         self.reward_qos_coef = 1.5
-        # Causal: <1 softens queue pressure so accuracy gets more weight in arm scores
-        self.causal_drift_gain = 0.75
+        # Causal: <1 softens queue pressure so heavier/higher-acc arms win more often
+        self.causal_drift_gain = 0.25
         # Normalization scales so the drift terms are O(1) against the reward
         self.dpp_bit_scale = float(np.mean(list(self.data_size.values())))  # ~2.2e4 bits
         self.dpp_energy_scale = 0.80  # J
@@ -190,13 +191,17 @@ class Config:
         # CTO joint space is (6*L)^U; cap candidates per suggest() call
         self.cto_max_candidates = 2000
         # GDO = SEM-O-RAN SF-ESP greedy (Puligheddu et al., TMC 2024)
-        # Stricter Ac → heavier z*; myopic GDO underperforms Causal on DPP.
+        # Acc floor Ac picks lightest z* with offline a(z)≥Ac at ref SNR.
+        # 0.25 → Box12 (high Acc, myopic queues) — deliberate Acc-chasing baseline.
         self.gdo_acc_floor = 0.25
         self.gdo_ref_snr_db = 5.0
         self.gdo_ref_mcs = None
         self.gdo_price_radio = 1.0
         self.gdo_price_compute = 1.0
         self.gdo_offer_scale = 1.0
+        # Control-plane model for distributed interaction overhead (plot runtime)
+        self.comm_rtt_s = 1e-3          # 1 ms RTT per control round
+        self.comm_ctrl_rate_bps = 1e6   # 1 Mbps control channel
         # Shared RL flags (aligned across DQN / PPO / MAPPO)
         self.rl_dpp_reward = True
         self.rl_eval = False
@@ -204,7 +209,7 @@ class Config:
         self.rl_gamma = 0.99
         self.rl_reward_norm = True
         self.rl_log_every = 50
-        # Centralized branching Double-DQN
+        # Centralized joint-action Double-DQN
         self.dqn_pretrain_slots = 400
         self.dqn_model_path = "figures/dqn_pretrained.pt"
         self.dqn_eval = False
@@ -220,6 +225,8 @@ class Config:
         self.dqn_train_every = 2
         self.dqn_grad_steps = 1
         self.dqn_hidden = 64
+        # Joint-action candidate pool (same role as cto_max_candidates)
+        self.dqn_max_candidates = 2000
         # Centralized branching PPO (global-state actor + critic)
         self.ppo_eval = False
         self.ppo_dpp_reward = True

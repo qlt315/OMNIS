@@ -1,5 +1,8 @@
 """Shared training / evaluation runner for OMNIS schemes.
 
+Writes (and merges) CSVs + per-seed series under ``--out``.
+Plotting is separate: ``experiments/plot_results.py``.
+
 Reported **reward** = mean Lyapunov objective V·utility + drift.
 Also logs accuracy, delay, energy, backlog, violation rate, and
 per-slot wall time = decision + BCD + update.
@@ -13,7 +16,6 @@ import os
 import time
 from collections import defaultdict
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from sys_data.config import Config
@@ -26,6 +28,11 @@ from baselines.ppo_main import PPO
 from baselines.mappo_main import MAPPO
 from baselines.cto_main import CTO
 
+try:
+    from comm_model import comm_ms_per_slot
+except ImportError:  # when imported as experiments.train_lib
+    from experiments.comm_model import comm_ms_per_slot
+
 ALGOS = [
     ("causal", OMNIS),
     ("ucb", OMNIS),
@@ -37,17 +44,18 @@ ALGOS = [
     ("mappo", MAPPO),
     ("cto", CTO),
 ]
+ALGO_NAMES = [a for a, _ in ALGOS]
 
-LABELS = {
-    "causal": "OMNIS-Causal", "ucb": "OMNIS-UCB",
-    "dqn": "DQN", "ppo": "PPO", "mappo": "MAPPO",
-    "gdo": "GDO", "rss": "RSS", "dts": "OMNIS-TS", "cto": "CTO",
-}
-COLORS = {
-    "causal": "#1f77b4", "ucb": "#ff7f0e", "dqn": "#2ca02c",
-    "ppo": "#bcbd22", "mappo": "#e377c2",
-    "gdo": "#d62728", "rss": "#9467bd", "dts": "#8c564b", "cto": "#17becf",
-}
+SERIES_KEYS = (
+    "rew_series", "cum_reward", "acc_series", "delay_series",
+    "energy_series", "backlog_series", "vio_series",
+)
+
+SCALAR_FIELDS = [
+    "name", "seed", "reward", "acc", "delay", "energy", "backlog", "vio",
+    "ms_per_slot", "decision_ms", "comm_ms", "bcd_ms", "update_ms",
+    "comm_uplink_B", "comm_downlink_B", "comm_rounds", "sec",
+]
 
 
 def mean_series(agent, key):
@@ -59,13 +67,6 @@ def mean_series(agent, key):
 def cumulative_mean(x):
     x = np.asarray(x, dtype=float)
     return np.cumsum(x) / np.arange(1, len(x) + 1)
-
-
-def sliding_mean(x, w=5):
-    x = np.asarray(x, dtype=float)
-    if len(x) < w:
-        return x.copy()
-    return np.convolve(x, np.ones(w) / w, mode="valid")
 
 
 def reward_series(agent):
@@ -94,16 +95,31 @@ def reward_series(agent):
     return obj
 
 
-def algo_ms_per_slot(agent, slots):
-    """Total algorithm time per slot [ms]: decision + BCD + update."""
+def algo_ms_per_slot(agent, slots, name=None):
+    """Per-slot times [ms]: decision (+update), BCD, and modeled communication."""
     dec = float(getattr(agent, "decision_time", 0.0))
     bcd = float(getattr(agent, "bcd_time", 0.0))
     upd = float(getattr(agent, "update_time", 0.0))
+    # "decision" bar = agent compute (selection + learning update)
+    decision_ms = 1000.0 * (dec + upd) / max(slots, 1)
+    bcd_ms = 1000.0 * bcd / max(slots, 1)
+    local_dim = int(getattr(agent, "local_obs_dim", 4 + agent.top_l_cells + 2))
+    comm = comm_ms_per_slot(
+        name or getattr(agent, "name", "rss"),
+        user_num=agent.user_num,
+        local_obs_dim=local_dim,
+        rtt_s=float(getattr(agent, "comm_rtt_s", 1e-3)),
+        ctrl_rate_bps=float(getattr(agent, "comm_ctrl_rate_bps", 1e6)),
+    )
     return {
-        "ms_per_slot": 1000.0 * (dec + bcd + upd) / max(slots, 1),
-        "decision_ms": 1000.0 * dec / max(slots, 1),
-        "bcd_ms": 1000.0 * bcd / max(slots, 1),
-        "update_ms": 1000.0 * upd / max(slots, 1),
+        "decision_ms": decision_ms,
+        "update_ms": 1000.0 * upd / max(slots, 1),  # kept for diagnostics
+        "bcd_ms": bcd_ms,
+        "comm_ms": float(comm["comm_ms"]),
+        "comm_uplink_B": float(comm["comm_uplink_B"]),
+        "comm_downlink_B": float(comm["comm_downlink_B"]),
+        "comm_rounds": float(comm["comm_rounds"]),
+        "ms_per_slot": decision_ms + bcd_ms + float(comm["comm_ms"]),
     }
 
 
@@ -133,11 +149,14 @@ def run_one(name, cls, seed, slots, users):
     c = configure(name, seed, slots, users)
     t0 = time.time()
     agent = cls(c)
+    # expose comm model knobs on agent for timing helper
+    agent.comm_rtt_s = getattr(c, "comm_rtt_s", 1e-3)
+    agent.comm_ctrl_rate_bps = getattr(c, "comm_ctrl_rate_bps", 1e6)
     agent.simulation()
     wall = time.time() - t0
     avg = agent.average_metrics
     obj = reward_series(agent)
-    timing = algo_ms_per_slot(agent, slots)
+    timing = algo_ms_per_slot(agent, slots, name=name)
     return {
         "name": name, "seed": seed,
         "reward": float(np.mean(obj)),
@@ -158,137 +177,100 @@ def run_one(name, cls, seed, slots, users):
     }
 
 
-def bandplot(ax, series_list, color, label, sliding=None, lw=1.8, alpha=0.15):
-    if not series_list:
-        return
-    L = min(len(s) for s in series_list)
-    arr = np.stack([s[:L] for s in series_list], axis=0)
-    if sliding:
-        arr = np.stack([sliding_mean(row, sliding) for row in arr], axis=0)
-        x = np.arange(arr.shape[1]) + sliding - 1
-    else:
-        x = np.arange(arr.shape[1])
-    m, sd = arr.mean(axis=0), (arr.std(axis=0, ddof=1) if arr.shape[0] > 1
-                               else np.zeros(arr.shape[1]))
-    ax.plot(x, m, color=color, lw=lw, label=label)
-    ax.fill_between(x, m - sd, m + sd, color=color, alpha=alpha)
+def series_dir(out_dir):
+    return os.path.join(out_dir, "series")
 
 
-def write_csvs(rows, out_dir, algo_names):
-    os.makedirs(out_dir, exist_ok=True)
-    fields = [
-        "name", "seed", "reward", "acc", "delay", "energy", "backlog", "vio",
-        "ms_per_slot", "decision_ms", "bcd_ms", "update_ms", "sec",
-    ]
-    perseed = os.path.join(out_dir, "perseed.csv")
-    with open(perseed, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+def save_series(out_dir, row):
+    """Persist per-seed time series for later plotting."""
+    d = series_dir(out_dir)
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, f"{row['name']}_seed{row['seed']}.npz")
+    payload = {k: np.asarray(row[k], dtype=np.float64) for k in SERIES_KEYS}
+    payload["seed"] = np.asarray([row["seed"]], dtype=np.int64)
+    np.savez_compressed(path, **payload)
+    return path
+
+
+def load_perseed_csv(path):
+    if not os.path.isfile(path):
+        return []
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def write_perseed_csv(path, rows):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=SCALAR_FIELDS, extrasaction="ignore")
         w.writeheader()
         for r in rows:
-            w.writerow({k: (f"{r[k]:.6g}" if isinstance(r[k], float) else r[k])
-                        for k in fields})
+            out = {}
+            for k in SCALAR_FIELDS:
+                v = r[k]
+                if isinstance(v, float):
+                    out[k] = f"{v:.6g}"
+                else:
+                    out[k] = v
+            w.writerow(out)
 
+
+def rebuild_summary(out_dir, rows):
+    """Write summary.csv from full per-seed rows (any subset of algos)."""
     agg = defaultdict(lambda: defaultdict(list))
     metrics = ["reward", "acc", "delay", "energy", "backlog", "vio",
-               "ms_per_slot", "decision_ms", "bcd_ms", "update_ms", "sec"]
+               "ms_per_slot", "decision_ms", "comm_ms", "bcd_ms", "update_ms",
+               "comm_uplink_B", "comm_downlink_B", "comm_rounds", "sec"]
+    names = []
     for r in rows:
+        name = r["name"]
+        if name not in names:
+            names.append(name)
         for m in metrics:
-            agg[r["name"]][m].append(float(r[m]))
+            if m in r:
+                agg[name][m].append(float(r[m]))
+
+    # Stable order: known ALGOS first, then any extras
+    ordered = [n for n in ALGO_NAMES if n in agg] + [
+        n for n in names if n not in ALGO_NAMES]
 
     summary = os.path.join(out_dir, "summary.csv")
     with open(summary, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["name", "metric", "mean", "std"])
-        for name in algo_names:
-            if name not in agg:
-                continue
+        for name in ordered:
             for m in metrics:
-                v = np.asarray(agg[name][m])
+                v = np.asarray(agg[name][m], dtype=float)
                 std = float(v.std(ddof=1)) if len(v) > 1 else 0.0
                 w.writerow([name, m, f"{v.mean():.6g}", f"{std:.6g}"])
-    return agg
+    return agg, ordered
 
 
-def plot_results(rows, algo_names, out_dir, slide=5):
+def merge_results(out_dir, new_rows):
+    """Merge new runs into perseed.csv (replace same name+seed), refresh summary."""
     os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "perseed.csv")
+    existing = load_perseed_csv(path)
+    replaced = {(r["name"], int(r["seed"])) for r in new_rows}
+    kept = [r for r in existing
+            if (r["name"], int(r["seed"])) not in replaced]
+    # normalize types for kept rows
+    merged = []
+    for r in kept:
+        merged.append({
+            "name": r["name"], "seed": int(r["seed"]),
+            **{k: float(r[k]) for k in SCALAR_FIELDS if k not in ("name", "seed")},
+        })
+    for r in new_rows:
+        merged.append({k: r[k] for k in SCALAR_FIELDS})
+        save_series(out_dir, r)
 
-    def series_of(name, key):
-        return [r[key] for r in rows if r["name"] == name]
-
-    # Reward
-    fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    for name in algo_names:
-        bandplot(ax, series_of(name, "cum_reward"), COLORS[name], LABELS[name])
-    ax.set_xlabel("Time slot"); ax.set_ylabel("Cumulative mean reward")
-    ax.set_title("Reward (Lyapunov objective)")
-    ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
-    fig.tight_layout()
-    fig.savefig(os.path.join(out_dir, "reward.png"), dpi=160); plt.close(fig)
-
-    fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    for name in algo_names:
-        bandplot(ax, series_of(name, "rew_series"), COLORS[name], LABELS[name],
-                 sliding=slide)
-    ax.set_xlabel("Time slot"); ax.set_ylabel(f"Mean reward (W={slide})")
-    ax.set_title("Per-slot reward")
-    ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
-    fig.tight_layout()
-    fig.savefig(os.path.join(out_dir, "reward_sliding.png"), dpi=160); plt.close(fig)
-
-    # Components
-    components = [
-        ("acc_series", "accuracy.png", "Mean accuracy (mAP)", "Accuracy"),
-        ("delay_series", "delay.png", "Mean delay [s]", "Delay"),
-        ("energy_series", "energy.png", "Mean energy [J]", "Energy"),
-        ("backlog_series", "backlog.png", "Mean backlog [bits]", "Queue backlog"),
-        ("vio_series", "violation.png", "Violation rate", "Constraint violation"),
-    ]
-    for key, fname, ylabel, title in components:
-        fig, ax = plt.subplots(figsize=(7.5, 4.5))
-        for name in algo_names:
-            bandplot(ax, series_of(name, key), COLORS[name], LABELS[name],
-                     sliding=slide if key != "backlog_series" else None)
-        ax.set_xlabel("Time slot"); ax.set_ylabel(ylabel)
-        ax.set_title(title)
-        ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
-        fig.tight_layout()
-        fig.savefig(os.path.join(out_dir, fname), dpi=160); plt.close(fig)
-
-    # Runtime: stacked decision / BCD / update
-    names = [n for n in algo_names if any(r["name"] == n for r in rows)]
-    if not names:
-        return
-    dec = [np.mean([r["decision_ms"] for r in rows if r["name"] == n]) for n in names]
-    bcd = [np.mean([r["bcd_ms"] for r in rows if r["name"] == n]) for n in names]
-    upd = [np.mean([r["update_ms"] for r in rows if r["name"] == n]) for n in names]
-    x = np.arange(len(names))
-    fig, ax = plt.subplots(figsize=(8.0, 4.6))
-    ax.bar(x, dec, label="decision", color="#4c78a8")
-    ax.bar(x, bcd, bottom=dec, label="BCD", color="#f58518")
-    bottom2 = [a + b for a, b in zip(dec, bcd)]
-    ax.bar(x, upd, bottom=bottom2, label="update", color="#54a24b")
-    ax.set_xticks(x)
-    ax.set_xticklabels([LABELS[n] for n in names], rotation=18, ha="right")
-    ax.set_ylabel("Wall time per slot [ms]")
-    ax.set_title("Runtime per slot (decision + BCD + update)")
-    ax.legend(fontsize=9)
-    ax.grid(True, axis="y", alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(os.path.join(out_dir, "runtime.png"), dpi=160); plt.close(fig)
-
-    # Log-scale total for readability across decades
-    totals = [d + b + u for d, b, u in zip(dec, bcd, upd)]
-    fig, ax = plt.subplots(figsize=(8.0, 4.6))
-    plot_t = [max(t, 1e-3) for t in totals]
-    ax.bar(x, plot_t, color=[COLORS[n] for n in names], alpha=0.9)
-    ax.set_yscale("log")
-    ax.set_xticks(x)
-    ax.set_xticklabels([LABELS[n] for n in names], rotation=18, ha="right")
-    ax.set_ylabel("Total algo time / slot [ms] (log)")
-    ax.set_title("Runtime per slot (log scale)")
-    ax.grid(True, axis="y", alpha=0.3, which="both")
-    fig.tight_layout()
-    fig.savefig(os.path.join(out_dir, "runtime_log.png"), dpi=160); plt.close(fig)
+    # Sort: algo order then seed
+    rank = {n: i for i, n in enumerate(ALGO_NAMES)}
+    merged.sort(key=lambda r: (rank.get(r["name"], 999), r["seed"]))
+    write_perseed_csv(path, merged)
+    agg, ordered = rebuild_summary(out_dir, merged)
+    return merged, agg, ordered
 
 
 def print_summary(agg, algo_names):
@@ -299,27 +281,43 @@ def print_summary(agg, algo_names):
     for name in algo_names:
         if name not in agg:
             continue
+
         def fmt(m, w=8):
             v = np.asarray(agg[name][m])
             s = float(v.std(ddof=1)) if len(v) > 1 else 0.0
             return f"{v.mean():{w}.3f}±{s:.2f}"
+
         print(f"{name:8} {fmt('reward',10)} {fmt('acc')} {fmt('delay')} "
               f"{fmt('energy')} {fmt('backlog',10)} {fmt('vio')} "
               f"{fmt('ms_per_slot',10)}")
 
 
-def run_training(algos, slots=200, users=6, seeds=(0, 1, 2, 3, 4),
-                 out="figures", slide=5):
-    """Run listed algos over seeds; write CSV + plots under ``out``."""
-    want = set(algos)
-    algo_list = [(n, c) for n, c in ALGOS if n in want]
-    if not algo_list:
-        raise SystemExit(f"unknown algos {algos}; choose from {[a for a, _ in ALGOS]}")
-    names = [n for n, _ in algo_list]
+def resolve_algos(names):
+    """Validate and order algo names; raise on unknown."""
+    if not names:
+        return list(ALGO_NAMES)
+    unknown = [n for n in names if n not in ALGO_NAMES]
+    if unknown:
+        raise SystemExit(
+            f"unknown algos {unknown}; choose from {ALGO_NAMES}")
+    # preserve user order, dedupe
+    seen, ordered = set(), []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            ordered.append(n)
+    return ordered
+
+
+def run_training(algos, slots=200, users=6, seeds=(0, 1, 2, 3, 4), out="figures"):
+    """Run listed algos over seeds; merge CSVs + series under ``out`` (no plots)."""
+    names = resolve_algos(algos)
+    cls_map = dict(ALGOS)
     os.makedirs(out, exist_ok=True)
 
     rows = []
-    for name, cls in algo_list:
+    for name in names:
+        cls = cls_map[name]
         for seed in seeds:
             print(f"=== {name} seed={seed} ===", flush=True)
             r = run_one(name, cls, seed, slots, users)
@@ -327,28 +325,30 @@ def run_training(algos, slots=200, users=6, seeds=(0, 1, 2, 3, 4),
                   f"delay={r['delay']:.3f} energy={r['energy']:.3f} "
                   f"backlog={r['backlog']:.0f} vio={r['vio']:.3f} "
                   f"ms/slot={r['ms_per_slot']:.2f} "
-                  f"(dec={r['decision_ms']:.2f} bcd={r['bcd_ms']:.2f} "
-                  f"upd={r['update_ms']:.2f}) wall={r['sec']:.0f}s",
+                  f"(dec={r['decision_ms']:.2f} comm={r['comm_ms']:.2f} "
+                  f"bcd={r['bcd_ms']:.2f}) wall={r['sec']:.0f}s",
                   flush=True)
             rows.append(r)
 
-    agg = write_csvs(rows, out, names)
-    plot_results(rows, names, out, slide=slide)
-    print_summary(agg, names)
-    print(f"wrote plots/CSVs -> {out}/")
+    _, agg, ordered = merge_results(out, rows)
+    print_summary(agg, ordered)
+    print(f"wrote/merged CSVs + series -> {out}/")
+    print(f"plot with: PYTHONPATH=. python3 experiments/plot_results.py --indir {out}")
     return rows
 
 
 def cli_main(default_algos=None):
-    p = argparse.ArgumentParser(description="Train / evaluate OMNIS schemes")
-    p.add_argument("--algos", nargs="+", default=default_algos,
-                   help="scheme names (default: all or script-specific)")
+    p = argparse.ArgumentParser(
+        description="Train / evaluate OMNIS schemes (writes data only; use plot_results.py to plot)")
+    p.add_argument(
+        "--algos", nargs="+", default=default_algos,
+        metavar="NAME",
+        help=f"schemes to run (default: script-specific or all). Choices: {', '.join(ALGO_NAMES)}")
     p.add_argument("--slots", type=int, default=200)
     p.add_argument("--users", type=int, default=6)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     p.add_argument("--out", default="figures")
-    p.add_argument("--slide", type=int, default=5)
     args = p.parse_args()
-    algos = args.algos or [a for a, _ in ALGOS]
+    algos = args.algos if args.algos is not None else list(ALGO_NAMES)
     run_training(algos, slots=args.slots, users=args.users,
-                 seeds=tuple(args.seeds), out=args.out, slide=args.slide)
+                 seeds=tuple(args.seeds), out=args.out)

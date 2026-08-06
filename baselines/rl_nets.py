@@ -8,7 +8,7 @@ from torch.distributions import Categorical
 
 
 class BranchingQNet(nn.Module):
-    """Shared trunk + per-agent Q heads (branching DQN)."""
+    """Shared trunk + per-agent Q heads (branching DQN). Legacy / ablation."""
 
     def __init__(self, state_dim, n_agents, n_actions, hidden=64):
         super().__init__()
@@ -25,6 +25,39 @@ class BranchingQNet(nn.Module):
     def forward(self, x):
         h = self.trunk(x)
         return torch.stack([head(h) for head in self.heads], dim=1)  # [B, U, A]
+
+
+class JointQNet(nn.Module):
+    """Centralized joint-action Q(s, a_1..a_U), aligned with CTO's joint decision.
+
+    Action encoding: flattened one-hot of all agents' local discrete actions.
+    Scores a scalar Q for each (state, joint-action) pair — same decision
+    structure as CTO's joint GP over (model, cell_rank)^U, with candidate
+    sub-sampling when the joint space is intractable.
+    """
+
+    def __init__(self, state_dim, n_agents, n_actions_local, hidden=64):
+        super().__init__()
+        self.n_agents = n_agents
+        self.n_actions_local = n_actions_local
+        self.act_dim = n_agents * n_actions_local
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + self.act_dim, hidden), nn.ReLU(),
+            nn.Linear(hidden, hidden), nn.ReLU(),
+            nn.Linear(hidden, 1),
+        )
+
+    def encode(self, actions):
+        """actions: [B, U] int64 -> [B, U*A] one-hot."""
+        B, U = actions.shape
+        flat = actions.reshape(-1)  # [B*U]
+        oh = nn.functional.one_hot(flat, num_classes=self.n_actions_local).float()
+        return oh.reshape(B, U * self.n_actions_local)
+
+    def forward(self, state, actions):
+        """state [B, S], actions [B, U] -> Q [B]."""
+        x = torch.cat([state, self.encode(actions)], dim=-1)
+        return self.net(x).squeeze(-1)
 
 
 class BranchingActor(nn.Module):
