@@ -1,5 +1,7 @@
 import warnings
+import numpy as np
 from omnis.action_space import ActionSpace
+from omnis.fast_gp import FastGaussianProcessRegressor
 from omnis.util import acq_max
 
 from sklearn.gaussian_process import GaussianProcessRegressor
@@ -10,6 +12,9 @@ class ContextualBayesianOptimization():
         
         self._space = ActionSpace(all_actions_dict, contexts)
         self.init_random = init_random
+        # Private RNG for candidate subsampling: keeps the global RNG stream
+        # (tasks, noise realizations) identical to the exhaustive-search version
+        self._candidate_rng = np.random.RandomState(2024)
         
         if len(points) > 0:
             gp_hyp = GaussianProcessRegressor(
@@ -31,7 +36,7 @@ class ContextualBayesianOptimization():
             # warnings.warn('Kernel hyperparameters will be computed during the optimization.')
             optimizer = 'fmin_l_bfgs_b'
             
-        self._gp = GaussianProcessRegressor(
+        self._gp = FastGaussianProcessRegressor(
             kernel=kernel,
             alpha=noise,
             normalize_y=True,
@@ -58,7 +63,8 @@ class ContextualBayesianOptimization():
     def context_to_array(self, context):
         return self._space.context_to_array(context)
 
-    def suggest(self, context, utility_function):
+    def suggest(self, context, utility_function, max_candidates=None,
+                score_scale=1.0, score_offset=None):
         """Most promissing point to probe next"""
         assert len(context) == self._space.context_dim
         context = self._space.context_to_array(context)
@@ -76,7 +82,11 @@ class ContextualBayesianOptimization():
             ac=utility_function.utility,
             gp=self._gp,
             all_discr_actions=self._space._allActions,
-            context=context)
+            context=context,
+            max_candidates=max_candidates,
+            rng=self._candidate_rng,
+            score_scale=score_scale,
+            score_offset=score_offset)
 
         return self._space.array_to_action(suggestion)
 

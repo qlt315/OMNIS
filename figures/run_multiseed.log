@@ -1,0 +1,27 @@
+=== causal seed=0 ===
+    reward=1.2352 vio=0.1917 backlog=8346 ms/slot=25.44 (15s wall)
+=== causal seed=1 ===
+    reward=1.0034 vio=0.3100 backlog=7616 ms/slot=23.70 (14s wall)
+=== causal seed=2 ===
+    reward=1.2955 vio=0.0183 backlog=8688 ms/slot=23.09 (14s wall)
+=== causal seed=3 ===
+    reward=1.0002 vio=0.3025 backlog=9097 ms/slot=22.49 (13s wall)
+=== causal seed=4 ===
+    reward=1.0781 vio=0.3067 backlog=8840 ms/slot=22.46 (13s wall)
+=== ucb seed=0 ===
+    reward=1.1908 vio=0.1275 backlog=7940 ms/slot=259.37 (61s wall)
+=== ucb seed=1 ===
+    reward=1.0499 vio=0.2317 backlog=4522 ms/slot=231.24 (53s wall)
+=== ucb seed=2 ===
+    reward=1.2434 vio=0.0950 backlog=7876 ms/slot=214.80 (52s wall)
+=== ucb seed=3 ===
+    reward=1.0491 vio=0.1917 backlog=6655 ms/slot=262.77 (62s wall)
+=== ucb seed=4 ===
+    reward=1.1834 vio=0.1100 backlog=7524 ms/slot=234.54 (55s wall)
+=== dts seed=0 ===
+    reward=1.0938 vio=0.2692 backlog=9078 ms/slot=234.96 (56s wall)
+=== dts seed=1 ===
+    reward=0.8724 vio=0.3950 backlog=9493 ms/slot=246.39 (57s wall)
+=== dts seed=2 ===
+    reward=1.1655 vio=0.1192 backlog=8247 ms/slot=213.44 (52s wall)
+=== dts seed=3 ===
