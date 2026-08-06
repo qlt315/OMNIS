@@ -46,7 +46,6 @@ class DTS:
         self.instant_metrics = config.instant_metrics
         self.average_metrics = config.average_metrics
         self.std_metrics = config.std_metrics
-        self.channel_data = config.channel_data
         self.est_err = config.est_err
         self.est_err_db = getattr(config, 'est_err_db', 1.0)
         self.sinr_trace = config.sinr_trace

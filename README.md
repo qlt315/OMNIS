@@ -9,65 +9,25 @@ Journal extension: multi-cell Top-L association, queueing + Lyapunov control, ca
 ## Structure
 ```bash
 OMNIS/
-│── baselines/
-│   ├── rss_main.py                 # RSS
-│   ├── dts_main.py                 # OMNIS-TS
-│   ├── cto_main.py                 # CTO
-│   ├── gdo_main.py                 # GDO
-│   ├── dqn_main.py                 # Centralized branching Double-DQN
-│   ├── ppo_main.py                 # Centralized branching PPO
-│   ├── mappo_main.py               # MAPPO (CTDE)
-│   ├── rl_nets.py                  # Shared RL networks
-│   └── rl_slot_env.py              # Shared slot loop for DQN / PPO / MAPPO
-│
-│── omnis/
-│   ├── omnis_main.py               # Main simulator
-│   ├── causal_bandit.py            # Causal contextual MAB
-│   ├── causal_scm.py               # Structural causal model
-│   ├── causal_gp.py                # Residual GP
-│   ├── fast_gp.py                  # Fast GP predict
-│   ├── cbo.py                      # Contextual BO
-│   ├── action_space.py             # Action–context space
-│   ├── mcs_table.py                # PHY lookup tables
-│   ├── sinr_trace.py               # Multi-cell SINR traces
-│   └── util.py                     # Utilities
-│
-│── scripts/
+│── baselines/                      # RSS, DTS, CTO, GDO, DQN, PPO, MAPPO
+│── omnis/                          # Simulator, causal MAB, PHY helpers
+│── experiments/
 │   ├── train_lib.py                # Shared runner (metrics + plots)
 │   ├── train_all.py                # All schemes → figures/
-│   ├── train_causal.py             # Per-scheme trainers
-│   ├── train_ucb.py / train_dts.py / train_gdo.py / train_rss.py
-│   ├── train_dqn.py / train_ppo.py / train_mappo.py / train_cto.py
-│
-│── experiments/                    # Optional paper sweeps (legacy)
-│   ├── eval_convergence.py / eval_user_num.py / eval_snr.py
-│   ├── eval_action.py / eval_causal_vs_ucb.py / eval_causal_ablation.py
-│   └── *.m
-│
-│── phy_sim/                        # Sionna PHY data generation; see phy_sim/README.md
-│   ├── mcs.py / payloads.py / link.py / features.py
-│   ├── run_bler.py / run_acc.py / run_traces.py / run_cb_scan.py / synth_acc.py
-│   └── output/
-│
-│── observations/                   # Observation figure scripts
+│   └── train_*.py                  # Per-scheme trainers
+│── phy_sim/                        # Sionna PHY; see phy_sim/README.md
 │── sys_data/
 │   ├── config.py                   # Config
-│   ├── acc_data/
-│   └── mimo_channel_gen/
+│   └── acc_data/                   # Optional seed curves for phy_sim/synth_acc
 │── figures/                        # train_*.py output
+│── observations/                   # Observation figure scripts
 ```
 
 ## How to Try OMNIS
 
 Set `PYTHONPATH=.` and run from the repository root.
 
-### 1. Channel generation
-```bash
-python3 sys_data/mimo_channel_gen/mimo_channel_gen.py
-python3 sys_data/mimo_channel_gen/mimo_channel_gen_fix_snr.py
-```
-
-### 2. PHY tables / SINR traces
+### 1. PHY tables / SINR traces
 ```bash
 # See phy_sim/README.md
 python3 phy_sim/run_bler.py ...
@@ -75,41 +35,23 @@ python3 phy_sim/run_acc.py ...
 python3 phy_sim/run_traces.py ...
 ```
 
-### 3. Train one scheme
+### 2. Train one scheme
 ```bash
-PYTHONPATH=. python3 scripts/train_causal.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures
-PYTHONPATH=. python3 scripts/train_dqn.py --slots 80 --seeds 0 --out figures
+PYTHONPATH=. python3 experiments/train_causal.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures
+PYTHONPATH=. python3 experiments/train_dqn.py --slots 80 --seeds 0 --out figures
 # same flags for: train_ucb / train_dts / train_gdo / train_rss / train_ppo / train_mappo / train_cto
 ```
 
-### 4. Train all schemes
+### 3. Train all schemes
 ```bash
-PYTHONPATH=. python3 scripts/train_all.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures
-PYTHONPATH=. python3 scripts/train_all.py --algos causal ucb gdo dqn ppo mappo --out figures
+PYTHONPATH=. python3 experiments/train_all.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures
+PYTHONPATH=. python3 experiments/train_all.py --algos causal ucb gdo dqn ppo mappo --out figures
 ```
 
 Outputs under `--out` (default `figures/`):
 - `summary.csv` / `perseed.csv` — reward, acc, delay, energy, backlog, vio, ms/slot (decision+BCD+update)
 - `reward.png`, `accuracy.png`, `delay.png`, `energy.png`, `backlog.png`, `violation.png`
 - `runtime.png` (stacked decision/BCD/update), `runtime_log.png`
-
-### 5. Optional paper sweeps
-```bash
-PYTHONPATH=. python3 experiments/eval_causal_vs_ucb.py
-PYTHONPATH=. python3 experiments/eval_causal_ablation.py
-PYTHONPATH=. python3 experiments/eval_convergence.py
-PYTHONPATH=. python3 experiments/eval_user_num.py
-PYTHONPATH=. python3 experiments/eval_snr.py
-PYTHONPATH=. python3 experiments/eval_action.py
-```
-
-### 7. DQN pretrain
-```bash
-PYTHONPATH=. python3 scripts/train_dqn.py --slots 400 --seed 0
-```
-
-### 8. MATLAB figures
-Run the corresponding `.m` scripts under `observations/` and `experiments/`.
 
 ## Algorithms
 
@@ -127,11 +69,11 @@ Run the corresponding `.m` scripts under `observations/` and `experiments/`.
 
 ## Important Notes
 1. Prefer running with the working directory set to the repo root and `PYTHONPATH=.`.
-2. Ensure channel / SINR traces cover at least `config.time_slot_num` slots and enough UEs for `config.user_num`.
+2. Ensure SINR traces cover at least `config.time_slot_num` slots and enough UEs for `config.user_num`.
 3. Hyperparameters live in `sys_data/config.py`.
-4. When running `eval_user_num.py`, keep `user_num_list` ≤ `config.user_num` after channel generation.
-5. This repository does not include training code for the multi-branch dynamic split DNN; it interfaces to evaluation tables. For DNN details, contact Ian Andrew Harshbarger (iharshba@uci.edu).
-6. Runtime plots report **decision + BCD + update** wall time per slot.
+4. This repository does not include training code for the multi-branch dynamic split DNN; it interfaces to evaluation tables. For DNN details, contact Ian Andrew Harshbarger (iharshba@uci.edu).
+5. Runtime plots report **decision + BCD + update** wall time per slot.
+
 ## Contributing
 We welcome contributions to improve OMNIS. To contribute:
 1. Fork the repository.

@@ -160,9 +160,6 @@ class Config:
         self.available_mcs = list(range(self.mcs_table.num_mcs))
         self.bler_target = self.mcs_table.bler_target  # ILLA operating point
 
-        # Legacy MIMO channel cube (kept for backwards compat; unused with traces)
-        self.channel_data = np.load("sys_data/mimo_channel_gen/mimo_channel_data.npy")
-
         # Optimization parameters
         self.bcd_flag = 10e-5  # Convergence threshold for BCD
         self.bcd_max_iter = 30  # Maximum iterations for BCD

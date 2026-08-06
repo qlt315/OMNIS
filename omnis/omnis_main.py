@@ -53,7 +53,6 @@ class OMNIS:
         self.decision_time = 0.0
         self.bcd_time = 0.0
         self.update_time = 0.0
-        self.channel_data = config.channel_data
         self.est_err = config.est_err
         self.est_err_db = getattr(config, 'est_err_db', 1.0)
         self.sinr_trace = config.sinr_trace

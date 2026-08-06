@@ -69,7 +69,7 @@ class DQN(OnlineRLBaseline):
         else:
             raise FileNotFoundError(
                 f"DQN eval requested but no pretrained model at {self.model_path}. "
-                "Run scripts/train_dqn.py first.")
+                "Run experiments/train_dqn.py first.")
 
     def save_pretrained(self):
         os.makedirs(os.path.dirname(self.model_path) or ".", exist_ok=True)
