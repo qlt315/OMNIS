@@ -65,6 +65,25 @@ class ContextualBayesianOptimization():
         """Expect observation with known reward"""
         self._space.register(context, action, reward)
 
+    def predict_mean(self, context, action):
+        """Posterior mean at (context, action) if the GP is already fitted.
+
+        Returns None during the random init phase or if fit has not run yet.
+        Used for optional reward prediction-error logging (UCB/DTS/CTO).
+        """
+        if len(self._space) < self.init_random:
+            return None
+        if not hasattr(self._gp, "X_train_") or self._gp.X_train_ is None:
+            return None
+        try:
+            c = self._space.context_to_array(context).reshape(1, -1)
+            a = self._space.action_to_array(action).reshape(1, -1)
+            ca = np.concatenate([c, a], axis=1)
+            mu = self._gp.predict(ca)
+            return float(np.asarray(mu).ravel()[0])
+        except Exception:
+            return None
+
     def array_to_context(self, context):
         return self._space.array_to_context(context)
     

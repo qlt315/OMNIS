@@ -55,6 +55,7 @@ class OMNIS:
         self.update_time = 0.0
         self.est_err = config.est_err
         self.est_err_db = getattr(config, 'est_err_db', 1.0)
+        self.sinr_offset_db = float(getattr(config, 'sinr_offset_db', 0.0))
         self.sinr_trace = config.sinr_trace
         self.top_l_cells = config.top_l_cells
         self.num_cells = config.num_cells
@@ -114,6 +115,14 @@ class OMNIS:
                 drift_gain=getattr(config, 'causal_drift_gain', 1.0),
                 w_acc=self.reward_w_acc,
             )
+        # MAB ablations + prediction-error logging (Causal residual GP / UCB reward GP)
+        self.mab_no_update = bool(getattr(config, 'mab_no_update', False))
+        self.mab_freeze_after = int(getattr(config, 'mab_freeze_after', 0) or 0)
+        self.log_pred_error = bool(getattr(config, 'log_pred_error', True))
+        self._mab_update_slots = 0
+        self.pred_err_prior = []   # mean |acc - prior| per slot (causal)
+        self.pred_err_post = []    # mean |acc - posterior| per slot (causal)
+        self.pred_err_reward = []  # mean |reward - GP mean| per slot (ucb)
         # Persistence-based prediction of the ES allocation (last observed values)
         self._last_bandwidth = {}
         self._last_gpu = {}
@@ -206,8 +215,18 @@ class OMNIS:
             cell_dic[user] = cell_id
         return model_selection_dic, cell_dic
 
+    def _mab_allow_update(self):
+        """Whether this slot should register a new GP observation."""
+        if self.mab_no_update:
+            return False
+        if self.mab_freeze_after > 0 and self._mab_update_slots >= self.mab_freeze_after:
+            return False
+        return True
+
     def update_gp(self, context_dic, model_selection_dic, reward_dic):
-        """Update the GP model with new observations."""
+        """Update the GP model with new observations (unless no_update / freeze)."""
+        allow = self._mab_allow_update()
+        reward_errs = []
         for user in self.users:
             optimizer_m = self.optimizers[user]
             context_m = context_dic[user]
@@ -218,7 +237,16 @@ class OMNIS:
                 'cell_rank': model_selection_dic[user]['cell_rank'],
             }
             reward_m = reward_dic[user]
-            optimizer_m.register(context_m, action_dic_m, reward_m)
+            if self.log_pred_error:
+                mu = optimizer_m.predict_mean(context_m, action_dic_m)
+                if mu is not None:
+                    reward_errs.append(abs(float(reward_m) - float(mu)))
+            if allow:
+                optimizer_m.register(context_m, action_dic_m, reward_m)
+        if self.log_pred_error:
+            self.pred_err_reward.append(
+                float(np.mean(reward_errs)) if reward_errs else float("nan"))
+        self._mab_update_slots += 1
 
     def model_selection_causal(self, task_dic, cand_cells_dic, sinr_db_all_dic, trans_rate_dic):
         """Select the (model, cell) branch for each MD with the causal bandit."""
@@ -329,9 +357,19 @@ class OMNIS:
 
         The GP learns the mechanism-invariant P(acc | do(Model, MCS), SINR);
         per-MD QoS is composed analytically at arm-selection time so the scored
-        objective matches get_reward without pooling heterogeneous rewards."""
-        self.causal_mab.register_outcomes_batch(
-            [(user, mcs_dic[user], acc_dic[user]) for user in self.users])
+        objective matches get_reward without pooling heterogeneous rewards.
+
+        Logs |acc - prior| / |acc - posterior| before optional register; ablations
+        may skip ``add`` (no_update / freeze_after).
+        """
+        records = [(user, mcs_dic[user], acc_dic[user]) for user in self.users]
+        if self.log_pred_error:
+            e_prior, e_post = self.causal_mab.prediction_errors(records)
+            self.pred_err_prior.append(e_prior)
+            self.pred_err_post.append(e_post)
+        allow = self._mab_allow_update()
+        self.causal_mab.register_outcomes_batch(records, do_update=allow)
+        self._mab_update_slots += 1
 
     def realize_accuracy(self, acc_dic):
         """Add per-task observation noise to the curve-based accuracy values."""
@@ -373,7 +411,7 @@ class OMNIS:
             sinr_vec = self.sinr_trace.sinr_vector(time_slot, user_idx)
             sinr_db_all = {}
             for cell_idx in range(self.sinr_trace.num_cells):
-                snr_db = float(sinr_vec[cell_idx])
+                snr_db = float(sinr_vec[cell_idx]) + self.sinr_offset_db
                 if self.est_err_db > 0:
                     snr_db += self.est_err_db * np.random.randn()
                 sinr_db_all[cell_idx] = snr_db

@@ -10,6 +10,41 @@ import os
 import numpy as np
 
 
+def select_spread_ue_ids(n_users, num_ues, num_cells):
+    """Pick ``n_users`` unique UE indices, round-robin across sites/cells.
+
+    Trace UEs are laid out as ``num_cells`` sites × ``ues_per_site`` UEs
+    (e.g. smoke7_sites: 7×6 = 42). Round-robin avoids the old stride
+    ``i * ues_per_site`` collision that mapped many users onto the last UE
+    when ``n_users > num_cells``, which left SinrTrace locals stuck at −120 dB.
+    """
+    n_users = int(n_users)
+    num_ues = int(num_ues)
+    num_cells = max(1, int(num_cells))
+    if n_users < 1:
+        raise ValueError(f"n_users must be >= 1, got {n_users}")
+    if n_users > num_ues:
+        raise ValueError(
+            f"requested {n_users} users but trace only has {num_ues} unique UEs")
+    ues_per_site = max(1, num_ues // num_cells)
+    selected = []
+    used = set()
+    for i in range(n_users):
+        site = i % num_cells
+        within = i // num_cells
+        ue = site * ues_per_site + within
+        if ue >= num_ues or ue in used:
+            for cand in range(num_ues):
+                if cand not in used:
+                    ue = cand
+                    break
+            else:
+                raise ValueError("exhausted unique UE pool while spreading users")
+        selected.append(int(ue))
+        used.add(ue)
+    return selected
+
+
 class SinrTrace:
     def __init__(self, trace_path, link_info_path=None, ue_ids=None):
         """Load a SINR cube.
@@ -22,7 +57,7 @@ class SinrTrace:
             CSV with cell_id, ue_id, distance_m (kept for diagnostics).
         ue_ids : sequence of int, optional
             Subset of trace UE indices to keep (maps onto system users in order).
-            If None, keep every UE present in the file.
+            Must be unique. If None, keep every UE present in the file.
         """
         rows = []
         with open(trace_path) as f:
@@ -39,6 +74,9 @@ class SinrTrace:
             ue_ids = all_ues
         else:
             ue_ids = list(ue_ids)
+            if len(ue_ids) != len(set(ue_ids)):
+                raise ValueError(
+                    f"ue_ids must be unique (duplicates cause −120 dB fill): {ue_ids}")
             missing = set(ue_ids) - set(all_ues)
             if missing:
                 raise ValueError(f"ue_ids not in trace: {missing}")

@@ -49,10 +49,10 @@ class Config:
 
 
         # User-specific configurations
-        # Capacity for CLI --users up to this value (update_users slices origin).
-        # Overnight hard scenario: default 10 users (was 8); origin sized to 12
-        # so intermediate retunes can try 10–12 without re-init bugs.
-        self.user_num = 12  # Number of users (origin pool; train uses ≤ this)
+        # Fixed max UE pool (sweeps nest 5⊂10⊂15⊂20⊂25 via stable prefix of
+        # select_spread_ue_ids(25, …); smoke7_sites has ~42 unique UEs).
+        self.ue_pool_size = 25
+        self.user_num = self.ue_pool_size  # origin pool; update_users slices ≤ this
         self.users = [f'user_{i + 1}' for i in range(self.user_num)]  # Generate user names
 
         # Mobile device (MD) parameters for each user
@@ -122,6 +122,12 @@ class Config:
         # Fairness: Causal uses the same V·u + drift objective as UCB/DTS/CTO
         # (gain=1). Do not reintroduce a Causal-only soft-queue gain < 1.
         self.causal_drift_gain = 1.0
+        # MAB ablations (Causal / UCB / DTS / CTO): skip GP register entirely,
+        # or allow updates only for the first ``mab_freeze_after`` slots.
+        self.mab_no_update = False
+        self.mab_freeze_after = 0  # 0 = never freeze; >0 = stop after N slots
+        # Log |obs - prior/posterior| (Causal acc) and optional reward GP error.
+        self.log_pred_error = True
         # Normalization scales so the drift terms are O(1) against the reward
         self.dpp_bit_scale = float(np.mean(list(self.data_size.values())))  # ~2.2e4 bits
         self.dpp_energy_scale = 0.80  # J
@@ -142,6 +148,8 @@ class Config:
         self.total_bandwidth = 1e5  # Total available bandwidth (Hz) per cell
         self.est_err = 0.5  # Legacy (unused with SINR traces)
         self.est_err_db = 1.0  # SINR estimation noise std [dB] on trace values
+        # Additive shift [dB] applied to every trace SINR sample (paper SNR sweeps).
+        self.sinr_offset_db = 0.0
         self.noise_power_dBm = -174 + 10 * np.log10(self.total_bandwidth)  # Convert dBm to linear scale
         self.noise_power = 10 ** (self.noise_power_dBm / 10 - 3)  # Compute noise power
 
@@ -150,17 +158,17 @@ class Config:
         self.top_l_cells = 3
         self.sinr_trace_tag = "smoke7"
         self.sinr_trace_dir = "phy_sim/output"
-        # Spread system users across distinct hex sites (site = 3 co-sited
-        # sectors; each site drops 3*ues_per_cell UEs). Picking one UE per site
-        # (stride = UEs-per-site) gives a realistic multi-cell user spread rather
-        # than clustering all users into site 0.
-        from omnis.sinr_trace import SinrTrace
+        # Fixed max pool of unique UEs (round-robin across sites). Nested
+        # user sweeps use a stable prefix of this pool so n=5⊂10⊂…⊂25 share
+        # the same first-k UEs (fair SNR / geometry). Never stride by
+        # ues_per_site — that duplicates ids when n > num_cells.
+        from omnis.sinr_trace import SinrTrace, select_spread_ue_ids
         _probe = SinrTrace.from_config_dir(self.sinr_trace_dir, tag=self.sinr_trace_tag)
-        _ues_per_site = max(1, _probe.num_ues // _probe.num_cells)
-        _spread = [min(i * _ues_per_site, _probe.num_ues - 1)
-                   for i in range(self.user_num)]
+        self.sinr_ue_pool = select_spread_ue_ids(
+            self.ue_pool_size, _probe.num_ues, _probe.num_cells)
         self.sinr_trace = SinrTrace.from_config_dir(
-            self.sinr_trace_dir, tag=self.sinr_trace_tag, ue_ids=_spread)
+            self.sinr_trace_dir, tag=self.sinr_trace_tag,
+            ue_ids=self.sinr_ue_pool[:self.user_num])
 
         # PHY layer: Sionna-generated MCS tables (mcs_def / acc / bler / acc_clean)
         self.mcs_table = McsTable("phy_sim/output", acc_floor=0.0, bler_target=0.1)
@@ -212,9 +220,10 @@ class Config:
         # False → stock sklearn GP predict for joint acquisition (FastGP would
         # erase the centralized scoring cost vs per-user Causal/UCB).
         self.cto_use_fast_gp = False
-        # GDO = SEM-O-RAN SF-ESP greedy (Puligheddu et al., TMC 2024)
-        # Acc floor Ac picks lightest z* with offline a(z)≥Ac at ref SNR.
-        # 0.25 → Box12 (high Acc, myopic queues) — deliberate Acc-chasing baseline.
+        # GDO = SF-ESP Acc-floor greedy (SEM-O-RAN / Puligheddu TMC 2024 spirit):
+        # pick lightest model with offline a(z) ≥ gdo_acc_floor at ref SNR/MCS
+        # (min z s.t. Acc≥Ac), then best-cell + offer/price knapsack EG admission.
+        # NOT a V·u+drift / DPP oracle. Default 0.25 locks Acc-chasing (Box12).
         self.gdo_acc_floor = 0.25
         self.gdo_ref_snr_db = 5.0
         self.gdo_ref_mcs = None
@@ -356,12 +365,18 @@ class Config:
         self.rewards_history = {user: [] for user in self.users}  # History of rewards for users
 
         from omnis.sinr_trace import SinrTrace
-        _probe = SinrTrace.from_config_dir(self.sinr_trace_dir, tag=self.sinr_trace_tag)
-        _ues_per_site = max(1, _probe.num_ues // _probe.num_cells)
-        _spread = [min(i * _ues_per_site, _probe.num_ues - 1)
-                   for i in range(self.user_num)]
+        # Nested fairness: always a prefix of the fixed max UE pool.
+        if not hasattr(self, "sinr_ue_pool") or len(self.sinr_ue_pool) < self.user_num:
+            from omnis.sinr_trace import select_spread_ue_ids
+            _probe = SinrTrace.from_config_dir(
+                self.sinr_trace_dir, tag=self.sinr_trace_tag)
+            pool_n = max(self.user_num, int(getattr(self, "ue_pool_size", self.user_num)))
+            self.sinr_ue_pool = select_spread_ue_ids(
+                pool_n, _probe.num_ues, _probe.num_cells)
+            self.ue_pool_size = pool_n
         self.sinr_trace = SinrTrace.from_config_dir(
-            self.sinr_trace_dir, tag=self.sinr_trace_tag, ue_ids=_spread)
+            self.sinr_trace_dir, tag=self.sinr_trace_tag,
+            ue_ids=self.sinr_ue_pool[:self.user_num])
         self._init_action_and_gp()
 
         # Track action selection frequencies [user, model, cell_rank]

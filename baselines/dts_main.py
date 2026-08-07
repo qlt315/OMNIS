@@ -48,6 +48,7 @@ class DTS:
         self.std_metrics = config.std_metrics
         self.est_err = config.est_err
         self.est_err_db = getattr(config, 'est_err_db', 1.0)
+        self.sinr_offset_db = float(getattr(config, 'sinr_offset_db', 0.0))
         self.sinr_trace = config.sinr_trace
         self.top_l_cells = config.top_l_cells
         self.num_cells = config.num_cells
@@ -91,6 +92,12 @@ class DTS:
         self.energy_queue = {user: 0.0 for user in self.users}
         self._last_bandwidth = {}
         self._last_gpu = {}
+        # MAB ablations + optional reward prediction-error logging
+        self.mab_no_update = bool(getattr(config, 'mab_no_update', False))
+        self.mab_freeze_after = int(getattr(config, 'mab_freeze_after', 0) or 0)
+        self.log_pred_error = bool(getattr(config, 'log_pred_error', True))
+        self._mab_update_slots = 0
+        self.pred_err_reward = []
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed.
@@ -175,8 +182,17 @@ class DTS:
             cell_dic[user] = cell_id
         return model_selection_dic, cell_dic
 
+    def _mab_allow_update(self):
+        if self.mab_no_update:
+            return False
+        if self.mab_freeze_after > 0 and self._mab_update_slots >= self.mab_freeze_after:
+            return False
+        return True
+
     def update_gp(self, context_dic, model_selection_dic, reward_dic):
-        """Update the GP model with new observations."""
+        """Update the GP model with new observations (unless no_update / freeze)."""
+        allow = self._mab_allow_update()
+        reward_errs = []
         for user in self.users:
             optimizer_m = self.optimizers[user]
             context_m = context_dic[user]
@@ -187,7 +203,16 @@ class DTS:
                 'cell_rank': model_selection_dic[user]['cell_rank'],
             }
             reward_m = reward_dic[user]
-            optimizer_m.register(context_m, action_dic_m, reward_m)
+            if self.log_pred_error:
+                mu = optimizer_m.predict_mean(context_m, action_dic_m)
+                if mu is not None:
+                    reward_errs.append(abs(float(reward_m) - float(mu)))
+            if allow:
+                optimizer_m.register(context_m, action_dic_m, reward_m)
+        if self.log_pred_error:
+            self.pred_err_reward.append(
+                float(np.mean(reward_errs)) if reward_errs else float("nan"))
+        self._mab_update_slots += 1
 
     def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0):
         """Analytic Payload -> {Delay, Energy}; transmission uses goodput SE."""
@@ -281,7 +306,7 @@ class DTS:
             sinr_vec = self.sinr_trace.sinr_vector(time_slot, user_idx)
             sinr_db_all = {}
             for cell_idx in range(self.sinr_trace.num_cells):
-                snr_db = float(sinr_vec[cell_idx])
+                snr_db = float(sinr_vec[cell_idx]) + self.sinr_offset_db
                 if self.est_err_db > 0:
                     snr_db += self.est_err_db * np.random.randn()
                 sinr_db_all[cell_idx] = snr_db

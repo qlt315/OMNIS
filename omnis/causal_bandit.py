@@ -178,15 +178,38 @@ class CausalMAB:
             return mu + std * np.random.randn(len(mu))
         return mu + self.beta * std
 
-    def register_outcome(self, user, mcs_realized, acc_obs):
-        """Register the realized interventional observation in the GP."""
-        snr_db, model_idx, _cell_id = self._pending.pop(user)
-        self._gp_for(user).add(self._make_x(snr_db, model_idx, mcs_realized), acc_obs)
+    def register_outcome(self, user, mcs_realized, acc_obs, do_update=True):
+        """Register the realized interventional observation in the GP.
 
-    def register_outcomes_batch(self, records):
+        If ``do_update`` is False (no-update / freeze ablation), drop the pending
+        arm without calling ``add`` so selection keeps the frozen posterior.
+        """
+        snr_db, model_idx, _cell_id = self._pending.pop(user)
+        if do_update:
+            self._gp_for(user).add(self._make_x(snr_db, model_idx, mcs_realized), acc_obs)
+
+    def register_outcomes_batch(self, records, do_update=True):
         """Register one slot of realized outcomes: [(user, mcs_idx, acc_obs)]."""
         for user, mcs_realized, acc_obs in records:
-            self.register_outcome(user, mcs_realized, acc_obs)
+            self.register_outcome(user, mcs_realized, acc_obs, do_update=do_update)
+
+    def prediction_errors(self, records):
+        """Abs accuracy errors vs prior / current posterior at the pending arm.
+
+        Call **before** ``register_outcomes_batch`` (uses ``_pending``).
+        Returns (mean_|acc-prior|, mean_|acc-posterior|) over users in ``records``.
+        """
+        prior_errs = []
+        post_errs = []
+        for user, mcs_realized, acc_obs in records:
+            snr_db, model_idx, _cell_id = self._pending[user]
+            x = self._make_x(snr_db, model_idx, mcs_realized)
+            prior = float(self._prior_at(x))
+            mu, _std = self._gp_for(user).predict(np.asarray(x, dtype=float)[None, :])
+            post = float(np.asarray(mu).ravel()[0])
+            prior_errs.append(abs(float(acc_obs) - prior))
+            post_errs.append(abs(float(acc_obs) - post))
+        return float(np.mean(prior_errs)), float(np.mean(post_errs))
 
     def __len__(self):
         if self.shared:

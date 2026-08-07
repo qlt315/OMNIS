@@ -51,6 +51,7 @@ class RSS:
         self.bcd_time = 0.0
         self.est_err = config.est_err
         self.est_err_db = getattr(config, 'est_err_db', 1.0)
+        self.sinr_offset_db = float(getattr(config, 'sinr_offset_db', 0.0))
         self.sinr_trace = config.sinr_trace
         self.top_l_cells = config.top_l_cells
         self.num_cells = config.num_cells
@@ -240,7 +241,7 @@ class RSS:
             sinr_vec = self.sinr_trace.sinr_vector(time_slot, user_idx)
             sinr_db_all = {}
             for cell_idx in range(self.sinr_trace.num_cells):
-                snr_db = float(sinr_vec[cell_idx])
+                snr_db = float(sinr_vec[cell_idx]) + self.sinr_offset_db
                 if self.est_err_db > 0:
                     snr_db += self.est_err_db * np.random.randn()
                 sinr_db_all[cell_idx] = snr_db

@@ -50,6 +50,12 @@ SERIES_KEYS = (
     "rew_series", "cum_reward", "acc_series", "delay_series",
     "energy_series", "backlog_series", "vio_series",
 )
+# Optional per-seed series (written when present on the agent / row).
+OPTIONAL_SERIES_KEYS = (
+    "pred_err_prior", "pred_err_post", "pred_err_reward", "pred_err_rmse",
+)
+
+MAB_BASE_ALGOS = ("causal", "ucb", "dts", "cto")
 
 SCALAR_FIELDS = [
     "name", "seed", "reward", "acc", "delay", "energy", "backlog", "vio",
@@ -123,7 +129,8 @@ def algo_ms_per_slot(agent, slots, name=None):
     }
 
 
-def configure(name, seed, slots, users):
+def configure(name, seed, slots, users, *, no_update=False, freeze_after=0,
+              log_pred_error=None):
     c = Config(seed)
     c.time_slot_num = slots
     c.update_users(users)
@@ -143,11 +150,29 @@ def configure(name, seed, slots, users):
         c.mappo_eval = False
         c.rl_eval = False
         c.mappo_rollout_len = min(16, max(8, slots // 4))
+    c.mab_no_update = bool(no_update)
+    c.mab_freeze_after = int(freeze_after or 0)
+    # Default: log pred error for MAB family (Causal acc + UCB/DTS/CTO reward).
+    if log_pred_error is None:
+        log_pred_error = name in MAB_BASE_ALGOS
+    c.log_pred_error = bool(log_pred_error)
     return c
 
 
-def run_one(name, cls, seed, slots, users):
-    c = configure(name, seed, slots, users)
+def _rolling_rmse(abs_errs):
+    """Cumulative RMSE of absolute errors: sqrt(mean(e[:t+1]^2))."""
+    e = np.asarray(abs_errs, dtype=float)
+    if e.size == 0:
+        return e
+    return np.sqrt(np.cumsum(e * e) / np.arange(1, len(e) + 1))
+
+
+def run_one(name, cls, seed, slots, users, *, base_algo=None,
+            no_update=False, freeze_after=0, log_pred_error=None):
+    """Run one (algo, seed). ``name`` is the result label; ``base_algo`` selects class/config."""
+    algo = base_algo or name
+    c = configure(algo, seed, slots, users, no_update=no_update,
+                  freeze_after=freeze_after, log_pred_error=log_pred_error)
     t0 = time.time()
     agent = cls(c)
     # expose comm model knobs on agent for timing helper
@@ -157,8 +182,8 @@ def run_one(name, cls, seed, slots, users):
     wall = time.time() - t0
     avg = agent.average_metrics
     obj = reward_series(agent)
-    timing = algo_ms_per_slot(agent, slots, name=name)
-    return {
+    timing = algo_ms_per_slot(agent, slots, name=algo)
+    row = {
         "name": name, "seed": seed,
         "reward": float(np.mean(obj)),
         "acc": float(avg["accuracy"]),
@@ -176,6 +201,20 @@ def run_one(name, cls, seed, slots, users):
         "sec": wall,
         **timing,
     }
+    # Prediction-error series (Causal accuracy GP; optional reward GP for UCB-family)
+    prior = getattr(agent, "pred_err_prior", None)
+    post = getattr(agent, "pred_err_post", None)
+    rew_err = getattr(agent, "pred_err_reward", None)
+    if prior is not None and len(prior) > 0:
+        row["pred_err_prior"] = np.asarray(prior, dtype=float)
+        row["pred_err_rmse"] = _rolling_rmse(prior)
+    if post is not None and len(post) > 0:
+        row["pred_err_post"] = np.asarray(post, dtype=float)
+        # Prefer posterior for rolling RMSE when available
+        row["pred_err_rmse"] = _rolling_rmse(post)
+    if rew_err is not None and len(rew_err) > 0:
+        row["pred_err_reward"] = np.asarray(rew_err, dtype=float)
+    return row
 
 
 def series_dir(out_dir):
@@ -188,6 +227,9 @@ def save_series(out_dir, row):
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, f"{row['name']}_seed{row['seed']}.npz")
     payload = {k: np.asarray(row[k], dtype=np.float64) for k in SERIES_KEYS}
+    for k in OPTIONAL_SERIES_KEYS:
+        if k in row and row[k] is not None:
+            payload[k] = np.asarray(row[k], dtype=np.float64)
     payload["seed"] = np.asarray([row["seed"]], dtype=np.int64)
     np.savez_compressed(path, **payload)
     return path
@@ -231,7 +273,7 @@ def rebuild_summary(out_dir, rows):
             if m in r:
                 agg[name][m].append(float(r[m]))
 
-    # Stable order: known ALGOS first, then any extras
+    # Stable order: known ALGOS first, then any extras (ablation labels, etc.)
     ordered = [n for n in ALGO_NAMES if n in agg] + [
         n for n in names if n not in ALGO_NAMES]
 
@@ -266,9 +308,9 @@ def merge_results(out_dir, new_rows):
         merged.append({k: r[k] for k in SCALAR_FIELDS})
         save_series(out_dir, r)
 
-    # Sort: algo order then seed
+    # Sort: algo order then seed; unknown ablation labels after known algos
     rank = {n: i for i, n in enumerate(ALGO_NAMES)}
-    merged.sort(key=lambda r: (rank.get(r["name"], 999), r["seed"]))
+    merged.sort(key=lambda r: (rank.get(r["name"], 999), r["name"], r["seed"]))
     write_perseed_csv(path, merged)
     agg, ordered = rebuild_summary(out_dir, merged)
     return merged, agg, ordered
@@ -310,7 +352,8 @@ def resolve_algos(names):
     return ordered
 
 
-def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures"):
+def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures",
+                 *, no_update=False, freeze_after=0, log_pred_error=None):
     """Run listed algos over seeds; merge CSVs + series under ``out`` (no plots)."""
     names = resolve_algos(algos)
     cls_map = dict(ALGOS)
@@ -321,7 +364,9 @@ def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures
         cls = cls_map[name]
         for seed in seeds:
             print(f"=== {name} seed={seed} ===", flush=True)
-            r = run_one(name, cls, seed, slots, users)
+            r = run_one(name, cls, seed, slots, users,
+                        no_update=no_update, freeze_after=freeze_after,
+                        log_pred_error=log_pred_error)
             print(f"    reward={r['reward']:.4f} acc={r['acc']:.4f} "
                   f"delay={r['delay']:.3f} energy={r['energy']:.3f} "
                   f"backlog={r['backlog']:.0f} vio={r['vio']:.3f} "
@@ -338,6 +383,47 @@ def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures
     return rows
 
 
+def run_mab_ablations(bases=None, slots=300, users=10, seeds=(0, 1, 2),
+                      freeze_after=50, out="figures/ablation"):
+    """Train MAB base / no_update / freeze variants; log Causal pred error.
+
+    Labels: ``causal``, ``causal_noupdate``, ``causal_freeze``, ``ucb``, …
+    """
+    bases = list(bases) if bases else list(MAB_BASE_ALGOS)
+    unknown = [b for b in bases if b not in MAB_BASE_ALGOS]
+    if unknown:
+        raise SystemExit(f"MAB ablations only support {MAB_BASE_ALGOS}; got {unknown}")
+    cls_map = dict(ALGOS)
+    os.makedirs(out, exist_ok=True)
+
+    variants = []
+    for base in bases:
+        variants.append((base, base, False, 0))
+        variants.append((f"{base}_noupdate", base, True, 0))
+        variants.append((f"{base}_freeze", base, False, int(freeze_after)))
+
+    rows = []
+    for label, base, no_upd, frz in variants:
+        cls = cls_map[base]
+        for seed in seeds:
+            tag = (f" no_update" if no_upd
+                   else (f" freeze@{frz}" if frz > 0 else ""))
+            print(f"=== {label}{tag} seed={seed} ===", flush=True)
+            r = run_one(label, cls, seed, slots, users, base_algo=base,
+                        no_update=no_upd, freeze_after=frz, log_pred_error=True)
+            print(f"    reward={r['reward']:.4f} acc={r['acc']:.4f} "
+                  f"delay={r['delay']:.3f} energy={r['energy']:.3f} "
+                  f"backlog={r['backlog']:.0f} vio={r['vio']:.3f} "
+                  f"wall={r['sec']:.0f}s", flush=True)
+            rows.append(r)
+
+    _, agg, ordered = merge_results(out, rows)
+    print_summary(agg, ordered)
+    print(f"wrote/merged CSVs + series -> {out}/")
+    print(f"plot with: PYTHONPATH=. python3 experiments/plot_ablation.py --indir {out}")
+    return rows
+
+
 def cli_main(default_algos=None):
     p = argparse.ArgumentParser(
         description="Train / evaluate OMNIS schemes (writes data only; use plot_results.py to plot)")
@@ -350,7 +436,12 @@ def cli_main(default_algos=None):
     p.add_argument("--users", type=int, default=10)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     p.add_argument("--out", default="figures")
+    p.add_argument("--no-update", action="store_true",
+                   help="MAB ablation: never register GP observations")
+    p.add_argument("--freeze-after", type=int, default=0,
+                   help="MAB ablation: stop GP updates after N slots (0=off)")
     args = p.parse_args()
     algos = args.algos if args.algos is not None else list(ALGO_NAMES)
     run_training(algos, slots=args.slots, users=args.users,
-                 seeds=tuple(args.seeds), out=args.out)
+                 seeds=tuple(args.seeds), out=args.out,
+                 no_update=args.no_update, freeze_after=args.freeze_after)
