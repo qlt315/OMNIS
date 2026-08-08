@@ -190,28 +190,29 @@ class RSS:
 
 
     def forward_sim_mcs(self, user, snr_db, model_name, task_u):
-        """ILLA-style MCS forward sim with QoS feasibility."""
+        """ILLA MCS forward sim: BLER/SE + QoS only (no Acc-table scoring).
+
+        Acc table is environment-only; learners observe Acc after realization.
+        """
         bler_t = getattr(self, 'bler_target', self.mcs_table.bler_target)
         feas = []
         best_infeas, best_infeas_score = None, -np.inf
         for mcs in self.available_mcs:
             service_hat, _, energy_hat = self.predict_md_overheads(
                 user, None, model_name, mcs, snr_db=snr_db)
-            acc_hat = self.mcs_table.accuracy(model_name, mcs, snr_db)
             if (service_hat <= task_u['delay_constraint']
                     and energy_hat <= task_u['energy_constraint']):
                 bler = self.mcs_table.bler(model_name, mcs, snr_db)
-                feas.append((mcs, bler, self.mcs_table.se[mcs], acc_hat))
+                feas.append((mcs, bler, self.mcs_table.se[mcs]))
             else:
-                score = (acc_hat
-                         + task_u['delay_weight'] * erf(task_u['delay_constraint'] - service_hat)
+                score = (task_u['delay_weight'] * erf(task_u['delay_constraint'] - service_hat)
                          + task_u['energy_weight'] * erf(task_u['energy_constraint'] - energy_hat))
                 if score > best_infeas_score:
                     best_infeas, best_infeas_score = mcs, score
         if feas:
             under = [t for t in feas if t[1] <= bler_t]
             pool = under if under else feas
-            return max(pool, key=lambda t: (t[2], t[3]))[0]
+            return max(pool, key=lambda t: t[2])[0]
         return best_infeas
 
 
@@ -340,7 +341,7 @@ class RSS:
 
     def mcs_selection(self, task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                       local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic, users=None):
-        """ILLA BLER filter + DPP score among QoS-feasible MCS."""
+        """ILLA BLER filter + drift/QoS score (no Acc-table term)."""
         users = self.users if users is None else users
         bler_t = getattr(self, 'bler_target', self.mcs_table.bler_target)
         mcs_dic = {}
@@ -351,9 +352,6 @@ class RSS:
             under, over, best_infeas, best_infeas_score = [], [], None, -np.inf
             for mcs in self.available_mcs:
                 temp_mcs_dic = {user: mcs}
-                acc_dic = self.get_accuracy(
-                    {user: snr_dic[user]}, temp_mcs_dic,
-                    {user: model_selection_dic[user]})
                 trans_overhead_dic = self.get_trans_overhead(
                     {user: trans_rate_dic[user]}, {user: model_selection_dic[user]},
                     {user: bandwidth_allocation_dic[user]}, temp_mcs_dic,
@@ -365,7 +363,7 @@ class RSS:
                 drift = self.dpp_drift(user, model_name_u, mcs, total_energy, snr_db=snr_db)
                 if (service_delay <= task_dic[user]['delay_constraint']
                         and total_energy <= task_dic[user]['energy_constraint']):
-                    score = self.lyapunov_v * getattr(self, "reward_w_acc", 1.0) * acc_dic[user] + drift
+                    score = drift
                     bler = self.mcs_table.bler(model_name_u, mcs, snr_db)
                     entry = (mcs, score, bler, self.mcs_table.se[mcs])
                     if bler <= bler_t:
@@ -373,8 +371,8 @@ class RSS:
                     else:
                         over.append(entry)
                 else:
-                    score = (self.lyapunov_v * (getattr(self, "reward_w_acc", 1.0) * acc_dic[user]
-                             + task_dic[user]['delay_weight']
+                    score = (self.lyapunov_v * (
+                             task_dic[user]['delay_weight']
                              * erf(task_dic[user]['delay_constraint'] - service_delay)
                              + task_dic[user]['energy_weight']
                              * erf(task_dic[user]['energy_constraint'] - total_energy))
@@ -402,7 +400,7 @@ class RSS:
         return mcs_dic
 
     def get_accuracy(self, snr_dic, mcs_dic, model_selection_dic):
-        """ Get the table accuracy for a given model, MCS, and SNR."""
+        """Environment Acc realization from the PHY Acc table (not for decisions)."""
         acc_dic = {}
         for user in snr_dic.keys():
             chosen_model_m = model_selection_dic[user]["model"]
@@ -699,9 +697,6 @@ class RSS:
                     task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                     local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic, cell_dic)
 
-                # Get the accuracy for each user based on current SNR, MCS, and model selection
-                acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
-
                 # Get the transmission overhead for each user
                 trans_overhead_dic = self.get_trans_overhead(trans_rate_dic, model_selection_dic,
                                                              bandwidth_allocation_dic, phy_choice_dic,
@@ -715,28 +710,20 @@ class RSS:
                                   for user in self.users}
                 total_overhead_dic = self.get_total_overhead(local_overhead_dic, trans_overhead_dic,
                                                              edge_overhead_dic, queue_wait_dic)
-                # Find the user with the minimum accuracy and the corresponding accuracy value
-                bcd_min_acc_user = min(acc_dic, key=lambda user: float(acc_dic[user]))
-                bcd_min_acc_value = float(acc_dic[bcd_min_acc_user])
 
-                # Calculate the delay penalty for each user (how much it exceeds the delay constraint)
+                # BCD objective: QoS penalties only (no Acc-table term at decision time)
                 bcd_delay_penalty = sum(
                     erf(total_overhead_dic[user]['delay'] - task_dic[user]['delay_constraint']) for user in
                     self.users)
 
-                # Calculate the energy penalty for each user (how much it exceeds the energy constraint)
                 bcd_energy_penalty = sum(
                     erf(total_overhead_dic[user]['energy'] - task_dic[user]['energy_constraint']) for user in
                     self.users)
 
-                # Calculate the total objective function value
-                bcd_obj = bcd_min_acc_value + bcd_delay_penalty + bcd_energy_penalty
-                # print("BCD obj:",bcd_obj)
-                # Check convergence condition (if objective function change is small or max iterations reached)
+                bcd_obj = bcd_delay_penalty + bcd_energy_penalty
                 if abs(bcd_obj - bcd_obj_last) <= self.bcd_flag or bcd_iter >= self.bcd_max_iter:
                     break
 
-                # Update iteration counter and last objective function value for the next iteration
                 bcd_iter += 1
                 bcd_obj_last = bcd_obj
             self.bcd_time += time.time() - t_bcd
@@ -749,7 +736,8 @@ class RSS:
                 self.instant_metrics[user]["bler"].append(self.mcs_table.bler(
                     model_selection_dic[user]["model"], phy_choice_dic[user], snr_db_u))
 
-            # Realize the per-task accuracy (curve mean + observation noise)
+            # Env-only Acc realization (rewards / metrics / learners observe this)
+            acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
             if self.acc_noise_std > 0:
                 acc_dic = {
                     user: float(np.clip(acc + np.random.normal(0.0, self.acc_noise_std), 0.0, 1.0))

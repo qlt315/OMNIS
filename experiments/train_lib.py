@@ -55,6 +55,7 @@ OPTIONAL_SERIES_KEYS = (
     "pred_err_prior", "pred_err_post", "pred_err_reward", "pred_err_rmse",
 )
 
+# MAB family (optional pred-error logging default).
 MAB_BASE_ALGOS = ("causal", "ucb", "dts", "cto")
 
 SCALAR_FIELDS = [
@@ -273,7 +274,7 @@ def rebuild_summary(out_dir, rows):
             if m in r:
                 agg[name][m].append(float(r[m]))
 
-    # Stable order: known ALGOS first, then any extras (ablation labels, etc.)
+    # Stable order: known ALGOS first, then any extras.
     ordered = [n for n in ALGO_NAMES if n in agg] + [
         n for n in names if n not in ALGO_NAMES]
 
@@ -308,7 +309,7 @@ def merge_results(out_dir, new_rows):
         merged.append({k: r[k] for k in SCALAR_FIELDS})
         save_series(out_dir, r)
 
-    # Sort: algo order then seed; unknown ablation labels after known algos
+    # Sort: algo order then seed; unknown labels after known algos
     rank = {n: i for i, n in enumerate(ALGO_NAMES)}
     merged.sort(key=lambda r: (rank.get(r["name"], 999), r["name"], r["seed"]))
     write_perseed_csv(path, merged)
@@ -352,8 +353,8 @@ def resolve_algos(names):
     return ordered
 
 
-def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures",
-                 *, no_update=False, freeze_after=0, log_pred_error=None):
+def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4),
+                 out="figures/train", *, log_pred_error=None):
     """Run listed algos over seeds; merge CSVs + series under ``out`` (no plots)."""
     names = resolve_algos(algos)
     cls_map = dict(ALGOS)
@@ -365,7 +366,6 @@ def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures
         for seed in seeds:
             print(f"=== {name} seed={seed} ===", flush=True)
             r = run_one(name, cls, seed, slots, users,
-                        no_update=no_update, freeze_after=freeze_after,
                         log_pred_error=log_pred_error)
             print(f"    reward={r['reward']:.4f} acc={r['acc']:.4f} "
                   f"delay={r['delay']:.3f} energy={r['energy']:.3f} "
@@ -383,47 +383,6 @@ def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4), out="figures
     return rows
 
 
-def run_mab_ablations(bases=None, slots=300, users=10, seeds=(0, 1, 2),
-                      freeze_after=50, out="figures/ablation"):
-    """Train MAB base / no_update / freeze variants; log Causal pred error.
-
-    Labels: ``causal``, ``causal_noupdate``, ``causal_freeze``, ``ucb``, …
-    """
-    bases = list(bases) if bases else list(MAB_BASE_ALGOS)
-    unknown = [b for b in bases if b not in MAB_BASE_ALGOS]
-    if unknown:
-        raise SystemExit(f"MAB ablations only support {MAB_BASE_ALGOS}; got {unknown}")
-    cls_map = dict(ALGOS)
-    os.makedirs(out, exist_ok=True)
-
-    variants = []
-    for base in bases:
-        variants.append((base, base, False, 0))
-        variants.append((f"{base}_noupdate", base, True, 0))
-        variants.append((f"{base}_freeze", base, False, int(freeze_after)))
-
-    rows = []
-    for label, base, no_upd, frz in variants:
-        cls = cls_map[base]
-        for seed in seeds:
-            tag = (f" no_update" if no_upd
-                   else (f" freeze@{frz}" if frz > 0 else ""))
-            print(f"=== {label}{tag} seed={seed} ===", flush=True)
-            r = run_one(label, cls, seed, slots, users, base_algo=base,
-                        no_update=no_upd, freeze_after=frz, log_pred_error=True)
-            print(f"    reward={r['reward']:.4f} acc={r['acc']:.4f} "
-                  f"delay={r['delay']:.3f} energy={r['energy']:.3f} "
-                  f"backlog={r['backlog']:.0f} vio={r['vio']:.3f} "
-                  f"wall={r['sec']:.0f}s", flush=True)
-            rows.append(r)
-
-    _, agg, ordered = merge_results(out, rows)
-    print_summary(agg, ordered)
-    print(f"wrote/merged CSVs + series -> {out}/")
-    print(f"plot with: PYTHONPATH=. python3 experiments/plot_ablation.py --indir {out}")
-    return rows
-
-
 def cli_main(default_algos=None):
     p = argparse.ArgumentParser(
         description="Train / evaluate OMNIS schemes (writes data only; use plot_results.py to plot)")
@@ -435,13 +394,9 @@ def cli_main(default_algos=None):
     p.add_argument("--slots", type=int, default=300)
     p.add_argument("--users", type=int, default=10)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
-    p.add_argument("--out", default="figures")
-    p.add_argument("--no-update", action="store_true",
-                   help="MAB ablation: never register GP observations")
-    p.add_argument("--freeze-after", type=int, default=0,
-                   help="MAB ablation: stop GP updates after N slots (0=off)")
+    p.add_argument("--out", default="figures/train",
+                   help="CSVs + series output dir (pair with plot_results --indir)")
     args = p.parse_args()
     algos = args.algos if args.algos is not None else list(ALGO_NAMES)
     run_training(algos, slots=args.slots, users=args.users,
-                 seeds=tuple(args.seeds), out=args.out,
-                 no_update=args.no_update, freeze_after=args.freeze_after)
+                 seeds=tuple(args.seeds), out=args.out)

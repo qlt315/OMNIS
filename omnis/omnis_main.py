@@ -99,6 +99,7 @@ class OMNIS:
                 data_size=self.data_size,
                 mcs_table=self.mcs_table,
                 prior_snr_step=config.causal_prior_snr_step,
+                build_prior=False,
             )
             noise_var = max(self.acc_noise_std ** 2, 1e-6)
             self.causal_mab = CausalMAB(
@@ -109,11 +110,15 @@ class OMNIS:
                 beta=getattr(config, 'causal_beta', self.beta_const_val),
                 penalty_gain=self.reward_qos_coef,
                 acquisition=config.causal_acq,
-                use_prior=config.causal_use_prior,
+                use_prior=False,
                 shared=config.causal_shared,
                 lyapunov_v=self.lyapunov_v,
                 drift_gain=getattr(config, 'causal_drift_gain', 1.0),
                 w_acc=self.reward_w_acc,
+                init_random=getattr(config, 'causal_init_random', 20),
+                empty_prior_std=getattr(config, 'causal_empty_prior_std', 1.0),
+                explore_slots=getattr(config, 'causal_explore_slots', 20),
+                max_obs=getattr(config, 'causal_gp_max_obs', 600),
             )
         # MAB ablations + prediction-error logging (Causal residual GP / UCB reward GP)
         self.mab_no_update = bool(getattr(config, 'mab_no_update', False))
@@ -324,32 +329,29 @@ class OMNIS:
         return q_n * (service_n - arrivals_n) + z_n * (budget_n - energy_n)
 
     def forward_sim_mcs(self, user, snr_db, model_name, task_u):
-        """ILLA-style MCS forward sim with QoS feasibility (classmate semantics).
+        """ILLA MCS forward sim: BLER/SE + QoS only (no Acc-table scoring).
 
-        Prefer the highest-SE MCS with BLER <= bler_target among QoS-feasible
-        candidates; if none meet the BLER target, fall back to min-BLER feasible;
-        if none are feasible, maximize the reward-form score."""
+        Acc table is environment-only; learners observe Acc after realization.
+        """
         bler_t = getattr(self, 'bler_target', self.mcs_table.bler_target)
         feas = []
         best_infeas, best_infeas_score = None, -np.inf
         for mcs in self.available_mcs:
             service_hat, _, energy_hat = self.predict_md_overheads(
                 user, None, model_name, mcs, snr_db=snr_db)
-            acc_hat = self.mcs_table.accuracy(model_name, mcs, snr_db)
             if (service_hat <= task_u['delay_constraint']
                     and energy_hat <= task_u['energy_constraint']):
                 bler = self.mcs_table.bler(model_name, mcs, snr_db)
-                feas.append((mcs, bler, self.mcs_table.se[mcs], acc_hat))
+                feas.append((mcs, bler, self.mcs_table.se[mcs]))
             else:
-                score = (acc_hat
-                         + task_u['delay_weight'] * erf(task_u['delay_constraint'] - service_hat)
+                score = (task_u['delay_weight'] * erf(task_u['delay_constraint'] - service_hat)
                          + task_u['energy_weight'] * erf(task_u['energy_constraint'] - energy_hat))
                 if score > best_infeas_score:
                     best_infeas, best_infeas_score = mcs, score
         if feas:
             under = [t for t in feas if t[1] <= bler_t]
             pool = under if under else feas
-            return max(pool, key=lambda t: (t[2], t[3]))[0]
+            return max(pool, key=lambda t: t[2])[0]
         return best_infeas
 
     def update_causal(self, snr_dic, mcs_dic, acc_dic):
@@ -510,11 +512,7 @@ class OMNIS:
 
     def mcs_selection(self, task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                       local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic, users=None):
-        """Select MCS per user: ILLA BLER filter + DPP score among feasible.
-
-        Prefer QoS-feasible MCS with BLER <= bler_target; rank by
-        V*acc + drift. If none meet the BLER target, fall back to all
-        QoS-feasible; if none are feasible, maximize the reward-form score."""
+        """Select MCS: ILLA BLER filter + drift/QoS (no Acc-table term)."""
         users = self.users if users is None else users
         bler_t = getattr(self, 'bler_target', self.mcs_table.bler_target)
         mcs_dic = {}
@@ -525,9 +523,6 @@ class OMNIS:
             under, over, best_infeas, best_infeas_score = [], [], None, -np.inf
             for mcs in self.available_mcs:
                 temp_mcs_dic = {user: mcs}
-                acc_dic = self.get_accuracy(
-                    {user: snr_dic[user]}, temp_mcs_dic,
-                    {user: model_selection_dic[user]})
 
                 trans_overhead_dic = self.get_trans_overhead(
                     {user: trans_rate_dic[user]}, {user: model_selection_dic[user]},
@@ -542,7 +537,7 @@ class OMNIS:
 
                 if (service_delay <= task_dic[user]['delay_constraint']
                         and total_energy <= task_dic[user]['energy_constraint']):
-                    score = self.lyapunov_v * getattr(self, "reward_w_acc", 1.0) * acc_dic[user] + drift
+                    score = drift
                     bler = self.mcs_table.bler(model_name_u, mcs, snr_db)
                     entry = (mcs, score, bler, self.mcs_table.se[mcs])
                     if bler <= bler_t:
@@ -550,8 +545,8 @@ class OMNIS:
                     else:
                         over.append(entry)
                 else:
-                    score = (self.lyapunov_v * (getattr(self, "reward_w_acc", 1.0) * acc_dic[user]
-                             + task_dic[user]['delay_weight']
+                    score = (self.lyapunov_v * (
+                             task_dic[user]['delay_weight']
                              * erf(task_dic[user]['delay_constraint'] - service_delay)
                              + task_dic[user]['energy_weight']
                              * erf(task_dic[user]['energy_constraint'] - total_energy))
@@ -580,7 +575,7 @@ class OMNIS:
         return mcs_dic
 
     def get_accuracy(self, snr_dic, phy_choice_dic, model_selection_dic):
-        """ Get the table accuracy for a given model, MCS, and SNR."""
+        """Environment Acc realization from the PHY Acc table (not for decisions)."""
         acc_dic = {}
         for user in snr_dic.keys():
             chosen_model_m = model_selection_dic[user]["model"]
@@ -892,8 +887,6 @@ class OMNIS:
                     task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                     local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic, cell_dic)
 
-                acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
-
                 trans_overhead_dic = self.get_trans_overhead(trans_rate_dic, model_selection_dic,
                                                              bandwidth_allocation_dic, phy_choice_dic,
                                                              snr_dic=snr_dic)
@@ -907,9 +900,8 @@ class OMNIS:
                                   for user in self.users}
                 total_overhead_dic = self.get_total_overhead(local_overhead_dic, trans_overhead_dic,
                                                              edge_overhead_dic, queue_wait_dic)
-                bcd_min_acc_user = min(acc_dic, key=lambda user: float(acc_dic[user]))
-                bcd_min_acc_value = float(acc_dic[bcd_min_acc_user])
 
+                # BCD objective: QoS penalties only (no Acc-table term)
                 bcd_delay_penalty = sum(
                     erf(total_overhead_dic[user]['delay'] - task_dic[user]['delay_constraint']) for user in
                     self.users)
@@ -918,7 +910,7 @@ class OMNIS:
                     erf(total_overhead_dic[user]['energy'] - task_dic[user]['energy_constraint']) for user in
                     self.users)
 
-                bcd_obj = bcd_min_acc_value + bcd_delay_penalty + bcd_energy_penalty
+                bcd_obj = bcd_delay_penalty + bcd_energy_penalty
                 if abs(bcd_obj - bcd_obj_last) <= self.bcd_flag or bcd_iter >= self.bcd_max_iter:
                     break
 
@@ -933,7 +925,8 @@ class OMNIS:
                 self.instant_metrics[user]["bler"].append(self.mcs_table.bler(
                     model_selection_dic[user]["model"], phy_choice_dic[user], snr_db_u))
 
-            # Realize the per-task accuracy (curve mean + observation noise)
+            # Env-only Acc realization (rewards / GP registration observe this)
+            acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
             acc_realized_dic = self.realize_accuracy(acc_dic)
 
             # Calculate the performance for MDs

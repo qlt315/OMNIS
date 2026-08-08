@@ -134,7 +134,6 @@ class OnlineRLBaseline(RSS):
                     task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                     local_overhead_dic, bandwidth_allocation_dic,
                     gpu_allocation_dic, cell_dic)
-                acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
                 trans_overhead_dic = self.get_trans_overhead(
                     trans_rate_dic, model_selection_dic,
                     bandwidth_allocation_dic, phy_choice_dic, snr_dic=snr_dic)
@@ -151,14 +150,14 @@ class OnlineRLBaseline(RSS):
                 total_overhead_dic = self.get_total_overhead(
                     local_overhead_dic, trans_overhead_dic,
                     edge_overhead_dic, queue_wait_dic)
-                bcd_min_acc_value = float(min(acc_dic.values()))
+                # BCD: QoS only (Acc table is env-only, realized after loop)
                 bcd_delay_penalty = sum(
                     erf(total_overhead_dic[u]["delay"] - task_dic[u]["delay_constraint"])
                     for u in self.users)
                 bcd_energy_penalty = sum(
                     erf(total_overhead_dic[u]["energy"] - task_dic[u]["energy_constraint"])
                     for u in self.users)
-                bcd_obj = bcd_min_acc_value + bcd_delay_penalty + bcd_energy_penalty
+                bcd_obj = bcd_delay_penalty + bcd_energy_penalty
                 if abs(bcd_obj - bcd_obj_last) <= self.bcd_flag or bcd_iter >= self.bcd_max_iter:
                     break
                 bcd_iter += 1
@@ -172,6 +171,7 @@ class OnlineRLBaseline(RSS):
                 self.instant_metrics[user]["bler"].append(self.mcs_table.bler(
                     model_selection_dic[user]["model"], phy_choice_dic[user], snr_db_u))
 
+            acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
             if self.acc_noise_std > 0:
                 acc_dic = {
                     user: float(np.clip(acc + np.random.normal(0.0, self.acc_noise_std), 0.0, 1.0))

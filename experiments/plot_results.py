@@ -5,8 +5,8 @@ Missing algorithms are skipped (plots whatever is available).
 Also writes ``plot_data.mat`` for MATLAB figure scripts.
 
 Usage:
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures --algos causal ucb cto
+  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train
+  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train --algos causal ucb cto
 """
 
 from __future__ import annotations
@@ -476,8 +476,9 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
 
 def main():
     p = argparse.ArgumentParser(description="Plot OMNIS train results")
-    p.add_argument("--indir", default="figures",
-                   help="directory with perseed.csv and series/")
+    p.add_argument("--indir", default="figures/train",
+                   help="directory with perseed.csv and series/ "
+                        "(pair with train_all --out figures/train)")
     p.add_argument("--out", default=None,
                    help="plot output dir (default: same as --indir)")
     p.add_argument("--algos", nargs="+", default=None,

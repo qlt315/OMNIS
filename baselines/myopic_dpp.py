@@ -1,8 +1,9 @@
 """Unused myopic V·u+drift oracle (ablation / archive).
 
-GDO in ``gdo_main.py`` is the literature SF-ESP Acc-floor greedy.
-This module keeps the previous queue-aware argmax(V·u+drift) scoring for
-optional ablation — not imported by sweeps or train_all.
+GDO in ``gdo_main.py`` is the online empirical Acc-floor + SF-ESP greedy.
+This module keeps queue-aware argmax(V·u+drift) scoring for optional ablation
+— not imported by sweeps or train_all. Acc estimates use last realized Acc
+per model (or 0.5 before any obs); never the Acc table at decision time.
 """
 
 from __future__ import annotations
@@ -14,13 +15,16 @@ from baselines.rss_main import RSS
 
 
 class MyopicDPP(RSS):
-    """Per-user argmax of V·utility + Lyapunov drift (no Acc-floor primary)."""
+    """Per-user argmax of V·utility + Lyapunov drift (no Acc-table oracle)."""
 
     def __init__(self, config):
         super().__init__(config)
         self.name = "oracle"
         self._last_task = None
         self._last_sinr_db_all = None
+        self._last_model_selection = None
+        self._emp_acc_sum = {m["name"]: 0.0 for m in self.models}
+        self._emp_acc_n = {m["name"]: 0 for m in self.models}
         self.static_model_dic = {}
         self.static_cell_rank_dic = {}
 
@@ -33,11 +37,17 @@ class MyopicDPP(RSS):
         self._last_task = super().generate_tasks(time_slot)
         return self._last_task
 
+    def _emp_acc(self, model_name):
+        n = self._emp_acc_n[model_name]
+        if n <= 0:
+            return 0.5  # uninformative until observations arrive
+        return self._emp_acc_sum[model_name] / n
+
     def _arm_score(self, user, model_name, snr_db, task_u):
         mcs_hat = self.forward_sim_mcs(user, snr_db, model_name, task_u)
         _svc, sojourn_hat, energy_hat = self.predict_md_overheads(
             user, None, model_name, mcs_hat, snr_db=snr_db)
-        acc_hat = float(self.mcs_table.accuracy(model_name, mcs_hat, snr_db))
+        acc_hat = self._emp_acc(model_name)
         w_acc = getattr(self, "reward_w_acc", 1.0)
         qos = getattr(self, "reward_qos_coef", 1.5)
         utility = (
@@ -79,5 +89,18 @@ class MyopicDPP(RSS):
         return model_selection_dic, cell_dic
 
     def model_selection(self, cand_cells_dic):
-        return self._greedy(
+        out = self._greedy(
             self._last_task, cand_cells_dic, self._last_sinr_db_all)
+        self._last_model_selection = out[0]
+        return out
+
+    def get_instant_metrics(self, task_dic, total_overhead_dic, reward_dic, acc_dic,
+                            queue_info_dic=None):
+        out = super().get_instant_metrics(
+            task_dic, total_overhead_dic, reward_dic, acc_dic, queue_info_dic)
+        if self._last_model_selection is not None:
+            for user in self.users:
+                name = self._last_model_selection[user]["model"]
+                self._emp_acc_sum[name] += float(acc_dic[user])
+                self._emp_acc_n[name] += 1
+        return out

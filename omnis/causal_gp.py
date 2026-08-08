@@ -13,15 +13,23 @@ class ResidualGP:
     once per slot rather than once per observation. No per-slot hyperparameter
     optimization is performed, which removes the O(t^3) L-BFGS refits of the
     original implementation.
+
+    With an empty (uninformative) prior and ``_n==0``, predictive std is
+    inflated so UCB/TS explores aggressively until observations arrive.
     """
 
     def __init__(self, prior_mean_fn, length_scales, signal_var=2.5e-3, noise_var=1e-4,
-                 jitter=1e-8, init_capacity=64):
+                 jitter=1e-8, init_capacity=64, empty_prior_std=1.0, max_obs=600):
         self.prior_mean_fn = prior_mean_fn
         self.length_scales = np.asarray(length_scales, dtype=float)
         self.signal_var = float(signal_var)
         self.noise_var = float(noise_var)
         self.jitter = float(jitter)
+        # Large std when no observations → Acc UCB/TS explores (乱搞).
+        self.empty_prior_std = float(max(
+            empty_prior_std, 10.0 * np.sqrt(max(self.signal_var, 1e-12))))
+        # Cap observations (sliding window) so 300-slot runs stay O(max_obs^2).
+        self.max_obs = int(max_obs) if max_obs else 0
 
         self._n = 0
         self._cap = init_capacity
@@ -69,6 +77,36 @@ class ResidualGP:
         self._y_res[n] = res
         self._n = n + 1
         self._alpha_dirty = True
+        # Batch trim: rebuild only after growing ~20% past the cap (not every add).
+        if self.max_obs > 0 and self._n > int(self.max_obs * 1.2):
+            self._rebuild_window(self.max_obs)
+
+    def _rebuild_window(self, keep):
+        """Keep the newest ``keep`` residuals and rebuild the Cholesky factor."""
+        X = self._X[self._n - keep:self._n].copy()
+        y_res = self._y_res[self._n - keep:self._n].copy()
+        self._n = 0
+        self._alpha = np.empty(0)
+        self._alpha_dirty = True
+        self._L[:] = 0.0
+        for i in range(keep):
+            x = X[i]
+            res = float(y_res[i])
+            n = self._n
+            self._ensure_capacity(n + 1)
+            k_diag = self.signal_var + self.noise_var + self.jitter
+            if n == 0:
+                self._L[0, 0] = np.sqrt(k_diag)
+            else:
+                L = self._L[:n, :n]
+                k_vec = self._kernel(self._X[:n], x[None, :]).ravel()
+                l_new = solve_triangular(L, k_vec, lower=True)
+                self._L[n, :n] = l_new
+                self._L[n, n] = np.sqrt(max(k_diag - l_new @ l_new, self.jitter))
+            self._X[n] = x
+            self._y_res[n] = res
+            self._n = n + 1
+        self._alpha_dirty = True
 
     def _sync_alpha(self):
         if not self._alpha_dirty:
@@ -83,7 +121,7 @@ class ResidualGP:
         X = np.atleast_2d(np.asarray(X, dtype=float))
         prior = np.array([self.prior_mean_fn(x) for x in X])
         if self._n == 0:
-            return prior, np.sqrt(np.full(len(X), self.signal_var))
+            return prior, np.full(len(X), self.empty_prior_std)
 
         self._sync_alpha()
         n = self._n

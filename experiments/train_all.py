@@ -8,7 +8,7 @@ Examples:
   PYTHONPATH=. python3 experiments/train_all.py
   PYTHONPATH=. python3 experiments/train_all.py --algos causal ucb gdo dqn
   PYTHONPATH=. python3 experiments/train_all.py --algos cto --seeds 0 1 2 3 4
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures
+  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train
 """
 import os
 import sys

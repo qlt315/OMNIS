@@ -115,15 +115,15 @@ class Config:
         # Acc-chasing inflate backlog and erased Causal's reward lead vs UCB).
         self.lyapunov_v = 2.5
         # Utility = w_acc * acc + qos_coef * (delay/energy erf terms)
-        # Shared across schemes. Slightly lower w_acc + higher qos_coef under
-        # stress so QoS/queue terms matter in both selection and reported reward.
-        self.reward_w_acc = 4.0
+        # Shared across schemes. Modest shared Acc weight bump (was 4.0) so
+        # all learners value Acc a bit more under stress; not Causal-only.
+        self.reward_w_acc = 4.5
         self.reward_qos_coef = 2.0
         # Fairness: Causal uses the same V·u + drift objective as UCB/DTS/CTO
         # (gain=1). Do not reintroduce a Causal-only soft-queue gain < 1.
         self.causal_drift_gain = 1.0
-        # MAB ablations (Causal / UCB / DTS / CTO): skip GP register entirely,
-        # or allow updates only for the first ``mab_freeze_after`` slots.
+        # Optional MAB GP update controls (default off). Used by Causal/UCB/
+        # DTS/CTO logging paths; not exposed as train CLI entrypoints.
         self.mab_no_update = False
         self.mab_freeze_after = 0  # 0 = never freeze; >0 = stop after N slots
         # Log |obs - prior/posterior| (Causal acc) and optional reward GP error.
@@ -170,7 +170,12 @@ class Config:
             self.sinr_trace_dir, tag=self.sinr_trace_tag,
             ue_ids=self.sinr_ue_pool[:self.user_num])
 
-        # PHY layer: Sionna-generated MCS tables (mcs_def / acc / bler / acc_clean)
+        # PHY layer: Sionna-generated MCS tables (mcs_def / acc / bler / acc_clean).
+        # Acc table (accuracy / acc_clean) is ENVIRONMENT-ONLY: used solely to
+        # realize observed Acc for rewards, metrics, and learner registration.
+        # NO algorithm may query Acc at decision time; all learners start
+        # exploratory and learn Acc/reward from observations. PHY BLER/SE for
+        # delay/energy/queue may still be used at decision time.
         self.mcs_table = McsTable("phy_sim/output", acc_floor=0.0, bler_target=0.1)
         self.available_mcs = list(range(self.mcs_table.num_mcs))
         self.bler_target = self.mcs_table.bler_target  # ILLA operating point
@@ -194,20 +199,28 @@ class Config:
         # Std of the per-task accuracy observation noise, simulating per-image
         # accuracy fluctuations around the pre-computed accuracy curves (0 disables)
         self.acc_noise_std = 0.02
-        # Causal MAB settings
+        # Causal MAB settings — Acc prior from table is banned (env-only Acc).
         self.causal_acq = 'ucb'            # Acquisition function: 'ucb' or 'ts'
-        self.causal_use_prior = True       # Use the offline causal prior mean
+        self.causal_use_prior = False      # Uninformative Acc prior (mean 0); never table
         self.causal_shared = True          # Pool the accuracy mechanism GP across MDs
-        self.causal_prior_snr_step = 5     # Finer offline prior SNR grid (was 10)
+        self.causal_prior_snr_step = 5     # Legacy (unused; prior build banned)
+        # Random (model, cell) burn-in (乱搞): by slots and/or by GP obs count.
+        # Slightly longer than 20 → more diverse Acc observations before
+        # residual-GP exploitation (env-only Acc; no table prior).
+        self.causal_explore_slots = 28
+        self.causal_init_random = 28
+        self.causal_empty_prior_std = 1.0  # Inflated std when residual GP is empty
+        # Sliding-window cap on residual Acc GP (keeps 300-slot runs tractable).
+        self.causal_gp_max_obs = 500
         # UCB beta on the residual accuracy GP (not the soft-queue gain).
-        # Under hard load, beta=1.0 still over-explores heavy Acc arms → backlog
-        # blow-up; 0.55 keeps residual UCB but favors posterior mean sooner.
-        self.causal_beta = 0.55
+        # Lower than 0.55 after explore: less wasted uncertainty chasing of
+        # heavy Acc arms; favor posterior Acc mean while keeping fair drift=1.
+        self.causal_beta = 0.40
         # Residual GP hyperparameters over (snr_db, quant_flag, channels, mcs_index).
-        # Slightly sharper SNR/quant ARD + moderate signal var for mechanism
-        # discrimination without Acc overconfidence under fair drift.
-        self.causal_gp_length_scales = [1.0, 0.35, 1.0, 1.0]
-        self.causal_gp_signal_var = 4.0e-3
+        # Slightly sharper ARD + modest signal var for Acc mechanism
+        # discrimination without Acc-table prior or soft-queue unfairness.
+        self.causal_gp_length_scales = [0.85, 0.28, 0.75, 0.75]
+        self.causal_gp_signal_var = 6.0e-3
         # CTO: joint space (n_models·L)^U is huge — sample K candidates on the fly
         # (never materialize the cartesian product; avoids OOM on ~3e7 actions).
         # K≈6^6 matches the classic joint model-only pool size (centrality cost).
@@ -220,16 +233,21 @@ class Config:
         # False → stock sklearn GP predict for joint acquisition (FastGP would
         # erase the centralized scoring cost vs per-user Causal/UCB).
         self.cto_use_fast_gp = False
-        # GDO = SF-ESP Acc-floor greedy (SEM-O-RAN / Puligheddu TMC 2024 spirit):
-        # pick lightest model with offline a(z) ≥ gdo_acc_floor at ref SNR/MCS
-        # (min z s.t. Acc≥Ac), then best-cell + offer/price knapsack EG admission.
-        # NOT a V·u+drift / DPP oracle. Default 0.25 locks Acc-chasing (Box12).
+        # GDO = online empirical Acc estimate + SF-ESP Acc-floor greedy
+        # (SEM-O-RAN spirit). NOT an Acc-table oracle. Starts random for
+        # gdo_explore_slots, then lightest model with empirical Acc ≥ floor.
         self.gdo_acc_floor = 0.25
+        self.gdo_explore_slots = 20
+        self.gdo_min_samples = 5
+        self.gdo_epsilon = 0.05
+        # Legacy keys (unused; Acc table not queried at decision time)
         self.gdo_ref_snr_db = 5.0
         self.gdo_ref_mcs = None
         self.gdo_price_radio = 1.0
         self.gdo_price_compute = 1.0
         self.gdo_offer_scale = 1.0
+        # UCB/DTS/CTO reward-GP random burn-in (exploratory start)
+        self.gp_init_random = 15
         # Control-plane model for distributed interaction overhead (plot runtime)
         self.comm_rtt_s = 1e-3          # 1 ms RTT per control round
         self.comm_ctrl_rate_bps = 1e6   # 1 Mbps control channel
@@ -312,12 +330,15 @@ class Config:
         self.noise = 1e-6
         self.beta_function = 'const'
         self.beta_const_val = 2.5
+        # Reward-GP random burn-in so UCB/DTS start exploratory (learn reward, not Acc table).
+        self.gp_init_random = int(getattr(self, 'gp_init_random', 15))
 
         self.optimizers = {
             user: cbo.ContextualBayesianOptimization(
                 all_actions_dict=self.action,
                 contexts=self.contexts,
-                kernel=self.kernel
+                kernel=self.kernel,
+                init_random=self.gp_init_random,
             ) for user in self.users
         }
 

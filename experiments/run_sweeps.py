@@ -208,7 +208,8 @@ def main():
     )
     notes.append(
         "plots: mean lines only (no error bars); log-y for delay/backlog; "
-        "causal_drift_gain=1.0; GDO=SF-ESP Acc-floor greedy (gdo_acc_floor=0.25)"
+        "causal_drift_gain=1.0; GDO=online emp Acc-floor (gdo_acc_floor=0.25, "
+        "gdo_explore_slots); Acc table env-only"
     )
 
     skip = set(args.skip)

@@ -14,10 +14,12 @@ class CausalSCM:
     realized SINR at association time. Interventions on Model propagate through
     known mechanisms; the ES MCS policy is a downstream, post-action mechanism
     that the bandit marginalizes by mechanistic forward simulation. Only the
-    accuracy mechanism P(acc | do(Model, MCS), SINR) is learned online.
+    accuracy mechanism P(acc | do(Model, MCS), SINR) is learned online from
+    observations — the Acc table is environment-only and must not seed a prior.
     """
 
-    def __init__(self, models, data_size, mcs_table, prior_snr_step=10):
+    def __init__(self, models, data_size, mcs_table, prior_snr_step=10,
+                 build_prior=False):
         self.models = models
         self.data_size = data_size  # payload size per model [bytes]
         self.mcs_table = mcs_table
@@ -32,23 +34,19 @@ class CausalSCM:
             feat: m['name'] for feat, m in zip(self.arm_features, models)
         }
 
-        self._acc_prior = self._build_accuracy_prior(mcs_table, prior_snr_step)
-
-    def _build_accuracy_prior(self, mcs_table, prior_snr_step):
-        """Coarse piecewise-linear BLER-gated accuracy curves from the BLER grid."""
-        prior = {}
-        for m in self.models:
-            for mcs in self.available_mcs:
-                snr_grid, _ = mcs_table._bler[m['name']][mcs]
-                snr = snr_grid[::prior_snr_step]
-                if snr[-1] != snr_grid[-1]:
-                    snr = np.append(snr, snr_grid[-1])
-                acc = np.array([mcs_table.accuracy(m['name'], mcs, s) for s in snr])
-                prior[(m['name'], mcs)] = (snr, acc)
-        return prior
+        # Acc table is env-only: never build a decision-time prior from it.
+        # Empty / uninformative prior (mean 0); residual GP learns from obs.
+        del prior_snr_step  # unused; kept for call-site compatibility
+        if build_prior:
+            raise ValueError(
+                "Building Acc prior from mcs_table.accuracy is banned; "
+                "Acc table is environment-only (realize_accuracy / get_accuracy).")
+        self._acc_prior = {}
 
     def acc_prior_mean(self, snr_db, model_name, mcs_idx):
-        """Prior mean of the accuracy mechanism at (do(model, mcs), snr_db)."""
+        """Uninformative prior mean (0). Table Acc is never used here."""
+        if not self._acc_prior:
+            return 0.0
         snr, acc = self._acc_prior[(model_name, mcs_idx)]
         return float(np.interp(snr_db, snr, acc))
 
