@@ -12,22 +12,29 @@ OMNIS/
 │── baselines/                      # RSS, DTS, CTO, GDO, DQN, PPO, MAPPO
 │── omnis/                          # Simulator, causal MAB, PHY helpers
 │── experiments/
-│   ├── train_lib.py                # Shared runner (data only)
-│   ├── train_all.py                # Selected / all schemes → figures/train/
-│   ├── train_*.py                  # Per-scheme trainers
-│   ├── comm_model.py               # Control-plane bytes / RTT → comm_ms
-│   └── plot_results.py             # Plot from saved CSVs + series/
+│   ├── train_lib.py                # Shared runner (+ PYCHARM_* defaults)
+│   ├── train_all.py / train_*.py   # Train → CSV + series + plot_data.mat
+│   ├── run_sweeps.py / sweep_*.py  # Parameter sweeps → figures/sweeps/
+│   ├── plot_results.py             # Train PNGs + plot_data.mat
+│   ├── plot_sweeps.py              # Sweep PNGs + <name>.mat from CSV
+│   └── comm_model.py               # Control-plane bytes / RTT → comm_ms
 │── phy_sim/                        # Sionna PHY; see phy_sim/README.md
 │── sys_data/
 │   ├── config.py                   # Config
 │   └── acc_data/                   # Optional seed curves for phy_sim/synth_acc
 │── figures/train/                  # train output + plots (default)
+│── figures/sweeps/                 # sweep outputs (snr/users/arrival/…)
 │── observations/                   # Observation figure scripts
 ```
 
 ## How to Try OMNIS
 
-Set `PYTHONPATH=.` and run from the repository root.
+CLI: set `PYTHONPATH=.` and run from the repository root.
+
+**PyCharm:** open any `experiments/train_*.py`, `train_all.py`, `run_sweeps.py`,
+`plot_results.py`, or `plot_sweeps.py` → Run with empty parameters. Edit the
+`PYCHARM_*` block at the top of the script (or in `train_lib.py` for train).
+Scripts `chdir` to the repo root automatically.
 
 ### 1. PHY tables / SINR traces
 ```bash
@@ -53,10 +60,16 @@ PYTHONPATH=. python3 experiments/train_all.py --algos causal ucb gdo dqn ppo map
 PYTHONPATH=. python3 experiments/train_all.py --algos cto --out figures/train
 ```
 
-### 4. Plot (separate; skips missing algos)
+### 4. Plot train results (also refreshes `plot_data.mat`)
 ```bash
-PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train
+PYTHONPATH=. python3 experiments/plot_results.py
 PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train --algos causal ucb cto
+```
+
+### 5. Parameter sweeps + re-plot
+```bash
+PYTHONPATH=. python3 experiments/run_sweeps.py --algos all --only snr users
+PYTHONPATH=. python3 experiments/plot_sweeps.py          # PNGs + *.mat from CSV
 ```
 
 Outputs under `--out` / `--indir` (default `figures/train/`):
@@ -74,6 +87,7 @@ Outputs under `--out` / `--indir` (default `figures/train/`):
     overrides Config.user_num for that derivation.
 - `plot_data.mat` — MATLAB export (`algo_names`, `summary.*`, `series.<algo>.*`,
   plus flat `decision_ms` / `comm_ms` / `bcd_ms` / …)
+- sweeps (`figures/sweeps/<name>/`): `perseed.csv`, metric PNGs, `<name>.mat`
 
 ## Algorithms
 
@@ -95,7 +109,8 @@ channel-conditioned Acc at decision time; all learners start exploratory and lea
 Acc or reward from observations. PHY BLER/SE may still drive delay/energy/queue.
 
 ## Important Notes
-1. Prefer running with the working directory set to the repo root and `PYTHONPATH=.`.
+1. Prefer repo root + `PYTHONPATH=.` on the CLI. In PyCharm, empty Parameters is enough
+   (scripts call `ensure_repo_root()`).
 2. Ensure SINR traces cover at least `config.time_slot_num` slots and enough UEs for `config.user_num`.
 3. Hyperparameters live in `sys_data/config.py`. Fair Causal uses `causal_drift_gain=1.0`
    (same `V·u+drift` objective as other schemes); shared knobs (`lyapunov_v`,

@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Action pick probability (paper Fig. 8) + exploration-knob sweep."""
+"""Action pick probability (paper Fig. 8) + exploration-knob sweep.
+
+PyCharm: Run with empty parameters (all algos by default).
+Select schemes: ``--algos causal ucb gdo`` or ``--algos all``.
+"""
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(_ROOT)
+sys.path.insert(0, os.path.join(_ROOT, "experiments"))
+sys.path.insert(0, _ROOT)
 
-from sweep_lib import add_common_args, sweep_action_pick
+from sweep_lib import add_common_args, resolved_algos_from_args, sweep_action_pick
 import argparse
 
 if __name__ == "__main__":
@@ -19,7 +25,7 @@ if __name__ == "__main__":
                    help="Exploration knobs: causal_beta / UCB β / mapped DQN ε")
     args = p.parse_args()
     sweep_action_pick(
-        algos=args.algos, seeds=tuple(args.seeds), slots=args.slots,
-        snr_targets=args.snr, user_list=args.n_users, beta_values=args.betas,
-        out_root=args.out_root,
+        algos=resolved_algos_from_args(args), seeds=tuple(args.seeds),
+        slots=args.slots, snr_targets=args.snr, user_list=args.n_users,
+        beta_values=args.betas, out_root=args.out_root,
     )

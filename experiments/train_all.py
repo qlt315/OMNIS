@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """Train / evaluate selected schemes (default: all).
 
-Writes/merges CSVs + series under --out. Does **not** plot.
-Plot separately with experiments/plot_results.py.
+Writes CSVs + series + ``plot_data.mat`` under ``--out``.
+Plot PNGs separately with ``plot_results.py`` (or pass ``--plot``).
 
-Examples:
-  PYTHONPATH=. python3 experiments/train_all.py
-  PYTHONPATH=. python3 experiments/train_all.py --algos causal ucb gdo dqn
-  PYTHONPATH=. python3 experiments/train_all.py --algos cto --seeds 0 1 2 3 4
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train
+PyCharm: Run with empty parameters (all algos). To subset, either:
+  - set Parameters: ``--algos causal ucb gdo``
+  - or edit ``PYCHARM_TRAIN_ALGOS`` in ``train_lib.py``
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_EXP = os.path.dirname(os.path.abspath(__file__))
+if _EXP not in sys.path:
+    sys.path.insert(0, _EXP)
+
+from repo_util import ensure_repo_root
+
+ensure_repo_root()
+
 from train_lib import ALGO_NAMES, cli_main
 
 if __name__ == "__main__":

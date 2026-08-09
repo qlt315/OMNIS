@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 from scipy.special import erf
 
@@ -14,11 +16,14 @@ class CausalMAB:
     QoS + drift into a reward-aligned score matching ``get_reward``.
 
     MCS forward simulation uses ILLA on BLER/SE (+ QoS erf when infeasible);
-    Acc-table tie-breaks are banned. After the GP has data, optional Acc
-    estimates come from the GP posterior — never from the table.
+    Acc-table tie-breaks are banned. GP Acc is scored once per joint arm after
+    MCS is chosen — never inside the MCS loop.
 
     Joint arms are (model, cell_rank); cell_rank indexes the UE's Top-L
     strongest cells at the current slot.
+
+    Parallel decision model (distributed MDs): ``last_parallel_decision_s`` is
+    max over per-MD analytic work (+ shared GP predict amortized by /U).
     """
 
     def __init__(self, scm, length_scales, signal_var, noise_var, beta,
@@ -52,6 +57,7 @@ class CausalMAB:
         self.gp = ResidualGP(**self._gp_args)
         self._gps = {}
         self._pending = {}  # per-MD (snr_db, model_idx, cell_id) of the last arm
+        self.last_parallel_decision_s = 0.0
 
     def _gp_for(self, user):
         if self.shared:
@@ -72,49 +78,56 @@ class CausalMAB:
         model_name = self.scm.feature_to_name(quant_flag, channels)
         return self.scm.acc_prior_mean(snr_db, model_name, int(round(mcs_idx)))
 
-    def _gp_acc_mean(self, snr_db, model_idx, mcs_idx, user=None):
-        """Posterior Acc mean if the GP has data; else None (no table fallback)."""
-        gp = self._gp_for(user) if user is not None else self.gp
-        if len(gp) == 0:
-            return None
-        x = self._make_x(snr_db, model_idx, mcs_idx)
-        mu, _std = gp.predict(np.asarray(x, dtype=float)[None, :])
-        return float(np.asarray(mu).ravel()[0])
-
-    def predict_mcs(self, snr_db, model_name, task, predict_overheads, model_idx=None):
-        """ILLA MCS forward sim: BLER/SE (+ QoS); no Acc-table tie-break.
-
-        Prefer QoS-feasible MCS with BLER <= bler_target (highest SE). If the
-        residual GP has observations and ``model_idx`` is given, SE ties may
-        break on GP Acc estimate — never on the Acc table. Infeasible MCS are
-        scored by QoS erf only (optionally + GP Acc).
-        """
+    def predict_mcs(self, snr_db, model_name, task, predict_overheads,
+                    model_idx=None, overhead_parts=None):
+        """ILLA MCS forward sim: BLER/SE (+ QoS); no Acc-GP / Acc-table inside."""
+        del model_idx  # Acc-GP must not run inside the MCS loop
+        if overhead_parts is not None:
+            return self._predict_mcs_vectorized(
+                snr_db, model_name, task, overhead_parts)
         bler_t = self.scm.bler_target()
         feas = []
         best_infeas, best_infeas_score = None, -np.inf
-        name_to_idx = {m['name']: i for i, m in enumerate(self.scm.models)}
-        mid = model_idx if model_idx is not None else name_to_idx.get(model_name)
         for mcs in self.scm.available_mcs:
             service_hat, _, energy_hat = predict_overheads(model_name, mcs, snr_db=snr_db)
-            gp_acc = (self._gp_acc_mean(snr_db, mid, mcs)
-                      if mid is not None else None)
-            acc_hat = 0.0 if gp_acc is None else gp_acc
             if (service_hat <= task['delay_constraint']
                     and energy_hat <= task['energy_constraint']):
                 bler = self.scm.bler(model_name, mcs, snr_db)
-                feas.append((mcs, bler, self.scm.se(mcs), acc_hat))
+                feas.append((mcs, bler, self.scm.se(mcs)))
             else:
-                score = (acc_hat
-                         + task['delay_weight'] * erf(task['delay_constraint'] - service_hat)
-                         + task['energy_weight'] * erf(task['energy_constraint'] - energy_hat))
+                score = (
+                    task['delay_weight'] * erf(task['delay_constraint'] - service_hat)
+                    + task['energy_weight'] * erf(task['energy_constraint'] - energy_hat))
                 if score > best_infeas_score:
                     best_infeas, best_infeas_score = mcs, score
         if feas:
             under = [t for t in feas if t[1] <= bler_t]
             pool = under if under else feas
-            # Primary: SE; secondary: GP Acc if available (not table).
-            return max(pool, key=lambda t: (t[2], t[3]))[0]
+            return max(pool, key=lambda t: t[2])[0]
         return best_infeas
+
+    def _predict_mcs_vectorized(self, snr_db, model_name, task, overhead_parts):
+        """Vectorized ILLA over all MCS for one (model, snr, user-base)."""
+        local_d, local_e, edge_d, edge_e, payload, bw, backlog, p_tx = overhead_parts
+        bler, goodput = self.scm.mcs_table.bler_goodput_all_mcs(model_name, snr_db)
+        mcs_idx = np.asarray(self.scm.available_mcs, dtype=int)
+        se = self.scm.mcs_table._se_arr
+        rates = bw * np.maximum(goodput, 1e-12)
+        trans_d = payload / rates
+        service = local_d + trans_d + edge_d
+        energy = local_e + p_tx * trans_d + edge_e
+        d_c = task['delay_constraint']
+        e_c = task['energy_constraint']
+        feas = (service <= d_c) & (energy <= e_c)
+        bler_t = self.scm.bler_target()
+        if np.any(feas):
+            under = feas & (bler <= bler_t)
+            mask = under if np.any(under) else feas
+            best_j = int(np.argmax(np.where(mask, se, -np.inf)))
+            return int(mcs_idx[best_j])
+        score = (task['delay_weight'] * erf(d_c - service)
+                 + task['energy_weight'] * erf(e_c - energy))
+        return int(mcs_idx[int(np.argmax(score))])
 
     def select_arm(self, user, top_cells, sinr_db_by_cell, task, predict_overheads):
         """Score every joint (model, cell_rank) arm and return the best."""
@@ -126,20 +139,75 @@ class CausalMAB:
             return len(self.gp)
         return sum(len(g) for g in self._gps.values())
 
+    def _score_user_arms(self, user, top_cells, sinr_db_by_cell, task,
+                         predict_overheads, drift_score, overhead_parts_by_model=None):
+        """Per-MD analytic work: M×L×|MCS| ILLA + overhead hats (no GP)."""
+        L = len(top_cells)
+        mcs_hats = []
+        overhead_hats = []
+        arm_meta = []
+        xs = []
+        for model_idx, model in enumerate(self.scm.models):
+            name = model['name']
+            parts = None
+            if overhead_parts_by_model is not None:
+                parts = overhead_parts_by_model.get(name)
+            for cell_rank in range(L):
+                cell_id = top_cells[cell_rank]
+                snr_db = sinr_db_by_cell[cell_id]
+                mcs_hat = self.predict_mcs(
+                    snr_db, name, task, predict_overheads,
+                    model_idx=model_idx, overhead_parts=parts)
+                mcs_hats.append(mcs_hat)
+                overhead_hats.append(
+                    predict_overheads(name, mcs_hat, snr_db=snr_db))
+                xs.append(self._make_x(snr_db, model_idx, mcs_hat))
+                arm_meta.append((model_idx, cell_id, snr_db))
+        return user, task, mcs_hats, overhead_hats, drift_score, arm_meta, xs
+
+    def _local_argmax(self, user, task, mcs_hats, overhead_hats, drift_score,
+                      arm_meta, acc_scores):
+        """Per-MD local composition + argmax given Acc scores for its arms."""
+        best_val, best_arm = -np.inf, 0
+        for arm_idx in range(len(arm_meta)):
+            model_idx, cell_id, snr_db = arm_meta[arm_idx]
+            _, sojourn_hat, energy_hat = overhead_hats[arm_idx]
+            reward_hat = (self.w_acc * acc_scores[arm_idx]
+                          + self.penalty_gain * task['delay_weight']
+                          * erf(task['delay_constraint'] - sojourn_hat)
+                          + self.penalty_gain * task['energy_weight']
+                          * erf(task['energy_constraint'] - energy_hat))
+            val = self.lyapunov_v * reward_hat
+            if drift_score is not None:
+                val += self.drift_gain * drift_score(
+                    self.scm.models[model_idx]['name'],
+                    mcs_hats[arm_idx], energy_hat, snr_db=snr_db)
+            if val > best_val:
+                best_val, best_arm = val, arm_idx
+        model_idx, cell_id, snr_db = arm_meta[best_arm]
+        self._pending[user] = (snr_db, model_idx, cell_id)
+        return model_idx, cell_id
+
     def select_arms_batch(self, requests):
-        """Batched joint-arm selection: one GP posterior solve per slot.
+        """Batched joint-arm selection with parallel (max-agent) timing.
 
         requests: iterable of
-            (user, top_cells, sinr_db_by_cell, task, predict_overheads[, drift_score]).
-        Early observations (``_n_obs < init_random``): uniform random arms (乱搞).
+            (user, top_cells, sinr_db_by_cell, task, predict_overheads
+             [, drift_score [, overhead_parts_by_model]]).
+        Early observations (``_n_obs < init_random``): uniform random arms.
+
+        Sets ``last_parallel_decision_s`` = max over MD analytic times, plus
+        shared GP predict wall / U (amortized).
         """
+        requests = list(requests)
         num_models = len(self.scm.models)
-        # Burn-in: exploratory / random policy before the Acc GP is trustworthy.
         explore = (self._select_slots < self.explore_slots
                    or self._n_obs() < self.init_random)
         if explore:
             selected = {}
+            user_times = []
             for request in requests:
+                t_u = time.time()
                 user, top_cells, sinr_db_by_cell = request[0], request[1], request[2]
                 L = len(top_cells)
                 model_idx = int(np.random.randint(0, num_models))
@@ -148,67 +216,65 @@ class CausalMAB:
                 snr_db = sinr_db_by_cell[cell_id]
                 selected[user] = (model_idx, cell_id)
                 self._pending[user] = (snr_db, model_idx, cell_id)
+                user_times.append(time.time() - t_u)
             self._select_slots += 1
+            self.last_parallel_decision_s = max(user_times) if user_times else 0.0
             return selected
         self._select_slots += 1
 
-        flat_xs = []
-        meta = []
+        packed = []
+        user_times = []
         for request in requests:
-            user, top_cells, sinr_db_by_cell, task, predict_overheads = request[:5]
+            t_u = time.time()
+            user = request[0]
+            top_cells = request[1]
+            sinr_db_by_cell = request[2]
+            task = request[3]
+            predict_overheads = request[4]
             drift_score = request[5] if len(request) > 5 else None
-            L = len(top_cells)
-            mcs_hats = []
-            overhead_hats = []
-            arm_meta = []
-            for model_idx, model in enumerate(self.scm.models):
-                for cell_rank in range(L):
-                    cell_id = top_cells[cell_rank]
-                    snr_db = sinr_db_by_cell[cell_id]
-                    mcs_hat = self.predict_mcs(
-                        snr_db, model['name'], task, predict_overheads,
-                        model_idx=model_idx)
-                    mcs_hats.append(mcs_hat)
-                    overhead_hats.append(predict_overheads(model['name'], mcs_hat, snr_db=snr_db))
-                    flat_xs.append(self._make_x(snr_db, model_idx, mcs_hat))
-                    arm_meta.append((model_idx, cell_id, snr_db))
-            meta.append((user, task, mcs_hats, overhead_hats, drift_score, arm_meta))
+            parts = request[6] if len(request) > 6 else None
+            packed.append(self._score_user_arms(
+                user, top_cells, sinr_db_by_cell, task,
+                predict_overheads, drift_score, parts))
+            user_times.append(time.time() - t_u)
 
-        arms_per_user = len(meta[0][5]) if meta else 0
+        arms_per_user = len(packed[0][5]) if packed else 0
+        flat_xs = []
+        for _user, _task, _mcs, _oh, _drift, _meta, xs in packed:
+            flat_xs.extend(xs)
 
+        t_gp = time.time()
         if self.shared:
             mu, std = self.gp.predict(np.array(flat_xs))
             acc_score = self._acquire(mu, std)
-            scores = [acc_score[u_idx * arms_per_user:(u_idx + 1) * arms_per_user]
-                      for u_idx in range(len(meta))]
+            scores = [
+                acc_score[u_idx * arms_per_user:(u_idx + 1) * arms_per_user]
+                for u_idx in range(len(packed))]
+            gp_s = (time.time() - t_gp) / max(len(packed), 1)
         else:
             scores = []
-            for u_idx, (user, _, _, _, _, _) in enumerate(meta):
-                xs_u = np.array(flat_xs[u_idx * arms_per_user:(u_idx + 1) * arms_per_user])
+            for u_idx, (user, _, _, _, _, _, _) in enumerate(packed):
+                xs_u = np.array(
+                    flat_xs[u_idx * arms_per_user:(u_idx + 1) * arms_per_user])
                 mu, std = self._gp_for(user).predict(xs_u)
                 scores.append(self._acquire(mu, std))
+            gp_s = time.time() - t_gp  # per-MD GPs: count full wall once as max proxy
 
         selected = {}
-        for u_idx, (user, task, mcs_hats, overhead_hats, drift_score, arm_meta) in enumerate(meta):
-            best_val, best_arm = -np.inf, 0
-            for arm_idx in range(arms_per_user):
-                model_idx, cell_id, snr_db = arm_meta[arm_idx]
-                _, sojourn_hat, energy_hat = overhead_hats[arm_idx]
-                reward_hat = (self.w_acc * scores[u_idx][arm_idx]
-                              + self.penalty_gain * task['delay_weight']
-                              * erf(task['delay_constraint'] - sojourn_hat)
-                              + self.penalty_gain * task['energy_weight']
-                              * erf(task['energy_constraint'] - energy_hat))
-                val = self.lyapunov_v * reward_hat
-                if drift_score is not None:
-                    val += self.drift_gain * drift_score(
-                        self.scm.models[model_idx]['name'],
-                        mcs_hats[arm_idx], energy_hat, snr_db=snr_db)
-                if val > best_val:
-                    best_val, best_arm = val, arm_idx
-            model_idx, cell_id, snr_db = arm_meta[best_arm]
-            selected[user] = (model_idx, cell_id)
-            self._pending[user] = (snr_db, model_idx, cell_id)
+        for u_idx, (user, task, mcs_hats, overhead_hats, drift_score,
+                    arm_meta, _xs) in enumerate(packed):
+            t_u = time.time()
+            selected[user] = self._local_argmax(
+                user, task, mcs_hats, overhead_hats, drift_score,
+                arm_meta, scores[u_idx])
+            user_times[u_idx] += time.time() - t_u
+
+        local_max = max(user_times) if user_times else 0.0
+        self.last_parallel_decision_s = local_max + (gp_s if self.shared else 0.0)
+        if not self.shared:
+            # Non-shared: GP predict already in per-user times if done inside loop;
+            # here GP was sequential — use max(local, gp/U) style: add gp/U.
+            self.last_parallel_decision_s = local_max + gp_s / max(len(packed), 1)
         return selected
 
     def _acquire(self, mu, std):
@@ -240,14 +306,29 @@ class CausalMAB:
         """
         prior_errs = []
         post_errs = []
-        for user, mcs_realized, acc_obs in records:
-            snr_db, model_idx, _cell_id = self._pending[user]
-            x = self._make_x(snr_db, model_idx, mcs_realized)
-            prior = float(self._prior_at(x))
-            mu, _std = self._gp_for(user).predict(np.asarray(x, dtype=float)[None, :])
-            post = float(np.asarray(mu).ravel()[0])
-            prior_errs.append(abs(float(acc_obs) - prior))
-            post_errs.append(abs(float(acc_obs) - post))
+        if self.shared and records:
+            xs = []
+            accs = []
+            priors = []
+            for user, mcs_realized, acc_obs in records:
+                snr_db, model_idx, _cell_id = self._pending[user]
+                x = self._make_x(snr_db, model_idx, mcs_realized)
+                xs.append(x)
+                accs.append(float(acc_obs))
+                priors.append(float(self._prior_at(x)))
+            mu, _std = self.gp.predict(np.asarray(xs, dtype=float))
+            prior_errs = [abs(a - p) for a, p in zip(accs, priors)]
+            post_errs = [abs(a - float(m)) for a, m in zip(accs, mu)]
+        else:
+            for user, mcs_realized, acc_obs in records:
+                snr_db, model_idx, _cell_id = self._pending[user]
+                x = self._make_x(snr_db, model_idx, mcs_realized)
+                prior = float(self._prior_at(x))
+                mu, _std = self._gp_for(user).predict(
+                    np.asarray(x, dtype=float)[None, :])
+                post = float(np.asarray(mu).ravel()[0])
+                prior_errs.append(abs(float(acc_obs) - prior))
+                post_errs.append(abs(float(acc_obs) - post))
         return float(np.mean(prior_errs)), float(np.mean(post_errs))
 
     def __len__(self):

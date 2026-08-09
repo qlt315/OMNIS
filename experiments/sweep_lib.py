@@ -53,7 +53,8 @@ SWEEP_UE_POOL_SIZE = 25
 DEFAULT_SLOTS = 400
 DEFAULT_USERS = 10                    # SNR / arrival default MD count
 DEFAULT_USER_LIST = (5, 10, 15, 20, 25)
-DEFAULT_SWEEP_ALGOS = ("causal", "ucb", "gdo", "dqn", "ppo")
+# Full scheme set (same order as train_lib.ALGOS).
+DEFAULT_SWEEP_ALGOS = tuple(ALGO_NAMES)
 METRICS = ("reward", "delay", "energy", "acc", "vio", "backlog")
 # Log-y helps when Acc-chasing / heavy-queue algos crush linear scale.
 LOG_Y_METRICS = frozenset({"delay", "backlog"})
@@ -310,6 +311,109 @@ def plot_metric_vs_axis(agg, algos, axis_key, xlabel, out_dir, sweep_name):
         fig.tight_layout()
         fig.savefig(os.path.join(out_dir, f"{m}_vs_{axis_key}.png"), dpi=160)
         plt.close(fig)
+
+
+def load_sweep_perseed_csv(path, axis_key=None):
+    """Load sweep ``perseed.csv``; infer axis column if needed."""
+    if not os.path.isfile(path):
+        return [], None
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        rows_raw = list(reader)
+        fields = reader.fieldnames or []
+    if not rows_raw:
+        return [], axis_key
+    skip = {"name", "seed", "reward", "acc", "delay", "energy", "backlog",
+            "vio", "vio_excess", "sec"}
+    if axis_key is None:
+        axis_key = next((c for c in fields if c not in skip), None)
+    if axis_key is None:
+        raise SystemExit(f"cannot infer sweep axis from {path}")
+    rows = []
+    for r in rows_raw:
+        rows.append({
+            "name": r["name"],
+            "seed": int(r["seed"]),
+            axis_key: float(r[axis_key]),
+            "reward": float(r["reward"]),
+            "acc": float(r["acc"]),
+            "delay": float(r["delay"]),
+            "energy": float(r["energy"]),
+            "backlog": float(r["backlog"]),
+            "vio": float(r["vio"]),
+            "vio_excess": float(r.get("vio_excess", 0.0) or 0.0),
+            "sec": float(r.get("sec", 0.0) or 0.0),
+        })
+    return rows, axis_key
+
+
+def replot_sweep_dir(out_dir, sweep_name=None, axis_key=None, xlabel=None,
+                     algos=None, csv_name="perseed.csv", mat_stem=None):
+    """Re-generate PNGs + ``*.mat`` from an existing sweep CSV.
+
+    Does not re-run simulations. Useful after train/sweep finishes or when
+    refreshing MATLAB exports from PyCharm.
+
+    ``csv_name`` — usually ``perseed.csv``; action_pick also has
+    ``perseed_explore.csv`` / ``perseed_snr.csv`` / ``perseed_users.csv``.
+    ``mat_stem`` — basename of the ``.mat`` (default: ``sweep_name``).
+    """
+    out_dir = os.path.abspath(out_dir)
+    sweep_name = sweep_name or os.path.basename(out_dir.rstrip(os.sep))
+    csv_path = os.path.join(out_dir, csv_name)
+    rows, axis_key = load_sweep_perseed_csv(csv_path, axis_key=axis_key)
+    if not rows:
+        raise SystemExit(f"no rows in {csv_path}")
+    present = []
+    for r in rows:
+        if r["name"] not in present:
+            present.append(r["name"])
+    if algos:
+        algos = resolve_algos(algos)
+        algos = [a for a in algos if a in present]
+    else:
+        algos = [a for a in ALGO_NAMES if a in present] + [
+            a for a in present if a not in ALGO_NAMES]
+    xlabel = xlabel or {
+        "snr_db": "SNR [dB] (mean best-cell SINR)",
+        "n_users": "# Mobile devices",
+        "arrival_rate": "Arrival rate [tasks/slot]",
+        "explore_knob": "Exploration knob (causal_beta / UCB β / ~4·DQN ε_end)",
+    }.get(axis_key, axis_key)
+    plot_stem = mat_stem or sweep_name
+    agg = aggregate_by_axis(rows, axis_key, algos)
+    plot_metric_vs_axis(agg, algos, axis_key, xlabel, out_dir, plot_stem)
+    mat_path = os.path.join(out_dir, f"{plot_stem}.mat")
+    save_sweep_mat(mat_path, agg, algos, axis_key, rows)
+    print(f"[replot] {plot_stem}: PNGs + {mat_path}", flush=True)
+    return mat_path
+
+
+def replot_action_pick_dir(out_dir, algos=None):
+    """Replot metric PNGs + mats for action_pick (multi-CSV layout)."""
+    out_dir = os.path.abspath(out_dir)
+    written = []
+    specs = (
+        ("perseed_explore.csv", "action_pick_explore", "explore_knob", None),
+        ("perseed_snr.csv", "action_pick_snr_metrics", "snr_db",
+         "SNR [dB] (mean best-cell SINR)"),
+        ("perseed_users.csv", "action_pick_users_metrics", "n_users",
+         "# Mobile devices"),
+    )
+    for csv_name, stem, axis_key, xlabel in specs:
+        path = os.path.join(out_dir, csv_name)
+        if not os.path.isfile(path):
+            continue
+        written.append(replot_sweep_dir(
+            out_dir, sweep_name=stem, axis_key=axis_key, xlabel=xlabel,
+            algos=algos, csv_name=csv_name, mat_stem=stem,
+        ))
+    if not written:
+        raise SystemExit(
+            f"no action_pick perseed_*.csv under {out_dir}; "
+            "re-run sweep_action_pick / run_sweeps first "
+            "(pick histogram mats need a fresh sweep)")
+    return written
 
 
 def save_sweep_mat(path, agg, algos, axis_key, rows, extra=None):
@@ -719,10 +823,28 @@ def sweep_action_pick(
     }, out_dir
 
 
-def add_common_args(p):
-    p.add_argument("--algos", nargs="+", default=list(DEFAULT_SWEEP_ALGOS))
+def add_common_args(p, *, default_algos=None):
+    """Shared CLI. ``--algos`` accepts scheme names and/or ``all``.
+
+    Examples:
+      --algos all
+      --algos causal ucb gdo
+    Default (no flag): full suite ``DEFAULT_SWEEP_ALGOS`` (= all train schemes).
+    """
+    choices = list(ALGO_NAMES) + ["all"]
+    p.add_argument(
+        "--algos", nargs="+", default=list(default_algos or DEFAULT_SWEEP_ALGOS),
+        metavar="NAME",
+        help=("schemes to run; use 'all' or omit for the full set. "
+              f"Choices: {', '.join(choices)}"),
+    )
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--slots", type=int, default=DEFAULT_SLOTS)
     p.add_argument("--users", type=int, default=DEFAULT_USERS)
     p.add_argument("--out-root", default="figures/sweeps")
     return p
+
+
+def resolved_algos_from_args(args):
+    """Parse ``args.algos`` (supports ``all``)."""
+    return resolve_algos(getattr(args, "algos", None))

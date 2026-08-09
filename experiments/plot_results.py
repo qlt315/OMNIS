@@ -4,7 +4,10 @@ Reads ``perseed.csv`` + ``series/*.npz`` under ``--indir``.
 Missing algorithms are skipped (plots whatever is available).
 Also writes ``plot_data.mat`` for MATLAB figure scripts.
 
+PyCharm: edit ``PYCHARM_*`` below, Run with empty parameters.
+
 Usage:
+  PYTHONPATH=. python3 experiments/plot_results.py
   PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train
   PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train --algos causal ucb cto
 """
@@ -21,12 +24,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import savemat
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from repo_util import ensure_repo_root
+except ImportError:
+    from experiments.repo_util import ensure_repo_root  # type: ignore
+
+ensure_repo_root()
+
 from train_lib import ALGO_NAMES, SERIES_KEYS, series_dir  # noqa: E402
 try:
     from comm_model import comm_ms_per_slot
 except ImportError:  # when imported as experiments.plot_results
     from experiments.comm_model import comm_ms_per_slot  # noqa: E402
+
+# =============================================================================
+# PyCharm defaults (CLI flags override these)
+# =============================================================================
+PYCHARM_INDIR = "figures/train"
+PYCHARM_OUT = None                 # None → same as indir
+PYCHARM_ALGOS = None               # None → all in CSV; or ["causal","ucb"] / "all"
+PYCHARM_SLIDE = 5
+PYCHARM_USERS = None               # None → Config.user_num for comm_ms backfill
+PYCHARM_WRITE_MAT = True
+# =============================================================================
 
 LABELS = {
     "causal": "OMNIS-Causal", "ucb": "OMNIS-UCB",
@@ -469,16 +489,16 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
         print(f"wrote MATLAB data -> {mat}")
 
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser(description="Plot OMNIS train results")
-    p.add_argument("--indir", default="figures/train",
+    p.add_argument("--indir", default=None,
                    help="directory with perseed.csv and series/ "
-                        "(pair with train_all --out figures/train)")
+                        "(default: PYCHARM_INDIR / figures/train)")
     p.add_argument("--out", default=None,
                    help="plot output dir (default: same as --indir)")
     p.add_argument("--algos", nargs="+", default=None,
                    help="subset to plot (default: all present in CSV)")
-    p.add_argument("--slide", type=int, default=5)
+    p.add_argument("--slide", type=int, default=None)
     p.add_argument("--mat", default=None,
                    help="output .mat path (default: <out>/plot_data.mat)")
     p.add_argument("--no-mat", action="store_true",
@@ -486,9 +506,17 @@ def main():
     p.add_argument("--users", type=int, default=None,
                    help="user count for deriving comm_ms on old CSVs "
                         "(default: Config.user_num)")
-    args = p.parse_args()
-    plot_results(args.indir, out_dir=args.out, algos=args.algos, slide=args.slide,
-                 mat_path=args.mat, no_mat=args.no_mat, user_num=args.users)
+    args = p.parse_args(argv)
+    indir = args.indir if args.indir is not None else PYCHARM_INDIR
+    out = args.out if args.out is not None else PYCHARM_OUT
+    algos = args.algos if args.algos is not None else PYCHARM_ALGOS
+    if algos == "all" or algos == ["all"]:
+        algos = None  # plot whatever is present in CSV
+    slide = args.slide if args.slide is not None else PYCHARM_SLIDE
+    users = args.users if args.users is not None else PYCHARM_USERS
+    no_mat = bool(args.no_mat) or (not PYCHARM_WRITE_MAT)
+    plot_results(indir, out_dir=out, algos=algos, slide=slide,
+                 mat_path=args.mat, no_mat=no_mat, user_num=users)
 
 
 if __name__ == "__main__":

@@ -2,12 +2,15 @@
 """Overnight orchestrator for OMNIS parameter sweeps.
 
 Re-runs online simulation for every setting (no fake checkpoints).
-Focus algos: causal, ucb, gdo, dqn, ppo (override with --algos / --all).
 
-Examples:
-  PYTHONPATH=. python3 experiments/run_sweeps.py --smoke
+PyCharm: open this file → Run (no parameters needed). Edit the
+``PYCHARM_*`` block below to choose algorithms / which sweeps to run.
+
+CLI examples:
+  PYTHONPATH=. python3 experiments/run_sweeps.py
   PYTHONPATH=. python3 experiments/run_sweeps.py --algos causal ucb gdo
-  PYTHONPATH=. python3 experiments/run_sweeps.py --all
+  PYTHONPATH=. python3 experiments/run_sweeps.py --algos all --only snr users
+  PYTHONPATH=. python3 experiments/run_sweeps.py --smoke
 """
 from __future__ import annotations
 
@@ -18,10 +21,13 @@ import time
 import traceback
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Repo root as CWD so phy_sim / figures / relative paths work from PyCharm.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(_ROOT)
+sys.path.insert(0, os.path.join(_ROOT, "experiments"))
+sys.path.insert(0, _ROOT)
 
-from sweep_lib import (
+from sweep_lib import (  # noqa: E402
     ALGO_NAMES,
     DEFAULT_SLOTS,
     DEFAULT_SWEEP_ALGOS,
@@ -29,11 +35,34 @@ from sweep_lib import (
     DEFAULT_USERS,
     TRACE_MEAN_BEST_CELL_SINR_DB,
     SWEEP_UE_POOL_SIZE,
+    resolve_algos,
     sweep_action_pick,
     sweep_arrival,
     sweep_snr,
     sweep_users,
 )
+
+# =============================================================================
+# PyCharm / zero-arg defaults — edit here, then Run without CLI parameters.
+# =============================================================================
+# Algorithms: None or "all" → every scheme; or a subset list, e.g.
+#   ["causal", "ucb", "gdo", "dqn", "ppo"]
+PYCHARM_ALGOS = None  # None | "all" | ["causal", "ucb", ...]
+
+# Which sweeps to run. If ONLY is non-empty it wins; else SKIP is applied.
+# Names: "snr", "users", "arrival", "action_pick"
+PYCHARM_ONLY = []          # e.g. ["snr", "users"]
+PYCHARM_SKIP = []          # e.g. ["action_pick"]
+
+PYCHARM_SEEDS = [0, 1, 2]
+PYCHARM_SLOTS = DEFAULT_SLOTS
+PYCHARM_USERS = DEFAULT_USERS  # MD count for SNR / arrival axes
+PYCHARM_SMOKE = False          # True → tiny grid for a dry run
+PYCHARM_OUT_ROOT = "figures/sweeps"
+PYCHARM_RESUME = False         # skip sweeps that already have .mat outputs
+# =============================================================================
+
+SWEEP_NAMES = ("snr", "users", "arrival", "action_pick")
 
 
 def log(msg, fp=None):
@@ -49,9 +78,7 @@ def write_readme(out_root):
     text = f"""# OMNIS parameter sweeps
 
 Honest **online re-simulation** for every (algo, seed, setting). Checkpoints from
-`train_all` are **not** reused: MAB schemes never save GPs; DQN only writes
-`figures/dqn_pretrained.pt` via explicit `pretrain()` (not called by `train_all`);
-PPO/MAPPO do not save.
+`train_all` are **not** reused.
 
 ## Paper alignment (Sec. VI)
 
@@ -62,46 +89,24 @@ PPO/MAPPO do not save.
 | Action pick | `sweep_action_pick.py` | Fig. 8 | pick hist @ SNR∈{{2,4,6}}, MDs∈{{10,15,20}} + β sweep |
 | Arrival | `sweep_arrival.py` | (journal) | Poisson λ tasks/slot |
 
-## SNR axis definition
-
-`sinr_offset_db = snr_target_db − TRACE_MEAN_BEST_CELL_SINR_DB` (≈{TRACE_MEAN_BEST_CELL_SINR_DB:.2f} dB on
-the fixed {SWEEP_UE_POOL_SIZE}-UE pool of `smoke7_sites`). The labeled SNR tracks mean max-cell /
-serving SINR used by association and MCS — **not** the all-cell mean (≈−10.75 dB).
-
-## GDO
-
-GDO is **SF-ESP Acc-floor greedy** (SEM-O-RAN / Puligheddu TMC 2024 spirit):
-lightest model with offline `a(z) ≥ gdo_acc_floor` (default **0.25**), then
-best-cell + offer/price knapsack EG. Not a V·u+drift / DPP oracle.
-
-## Metrics
-
-- **reward** — mean Lyapunov `V·u + drift` (same as `train_lib`)
-- **delay** — mean latency [s] (log-y plots when helpful)
-- **energy** — mean energy [J]
-- **acc** — mean inference accuracy
-- **vio** — QoS violation probability (delay **or** energy); paper “Avg. Violation Prob.”
-- **backlog** — mean queue backlog [bits] (log-y plots when helpful)
-
-## Outputs
-
-Each sweep writes under `figures/sweeps/<name>/`:
-
-- `*_vs_*.png` — metric vs sweep axis (mean over seeds; no error bars)
-- `action_pick_*.png` — model selection histograms
-- `<name>.mat` — MATLAB arrays: `axis`, `{{algo}}_{{metric}}_mean/std`, `raw_*`
-- `perseed.csv` — one row per (algo, seed, axis value)
-
-## Run
+## Run (PyCharm or CLI)
 
 ```bash
-MPLBACKEND=Agg PYTHONPATH=. python3 experiments/run_sweeps.py
-PYTHONPATH=. python3 experiments/sweep_snr.py --algos causal ucb gdo --seeds 0 1 2
+# Full suite, all algorithms (default)
+PYTHONPATH=. python3 experiments/run_sweeps.py
+
+# Subset of algorithms
+PYTHONPATH=. python3 experiments/run_sweeps.py --algos causal ucb gdo dts
+
+# Only some sweeps
+PYTHONPATH=. python3 experiments/run_sweeps.py --only snr users
 ```
 
+In PyCharm: edit ``PYCHARM_ALGOS`` / ``PYCHARM_ONLY`` at the top of
+``experiments/run_sweeps.py``, then Run with empty parameters.
+
 Defaults: slots={DEFAULT_SLOTS}, users={DEFAULT_USERS} for SNR/arrival, seeds 0–2,
-algos causal/ucb/gdo/dqn/ppo, users axis {list(DEFAULT_USER_LIST)}.
-`causal_drift_gain=1.0` (fair).
+algos=all ({', '.join(ALGO_NAMES)}), users axis {list(DEFAULT_USER_LIST)}.
 
 Log: `figures/sweeps/overnight.log`. Status: `figures/sweeps/STATUS.md`.
 """
@@ -123,15 +128,6 @@ def write_status(out_root, finished, failed, notes):
         "",
         f"Updated: {datetime.now().isoformat(timespec='seconds')}",
         "",
-        "## Model saving answer",
-        "",
-        "- After `train_all`, **MAB models are not saved** (Causal/UCB/DTS/CTO GPs "
-        "live only in-process).",
-        "- **DQN** can `torch.save` via `save_pretrained()` only after `pretrain()`; "
-        "`train_all` → `simulation()` does **not** save; no `figures/*.pt` from Train A.",
-        "- **PPO / MAPPO** do not persist weights.",
-        "- Sweeps therefore **re-run online simulation** with fixed seeds (honest).",
-        "",
         "## Finished",
         "",
     ]
@@ -150,34 +146,78 @@ def write_status(out_root, finished, failed, notes):
     return path
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--algos", nargs="+", default=list(DEFAULT_SWEEP_ALGOS))
+def _normalize_algo_spec(spec):
+    """None / 'all' / list → validated algo name list."""
+    if spec is None or spec == "all":
+        return list(DEFAULT_SWEEP_ALGOS)
+    if isinstance(spec, str):
+        spec = [spec]
+    return resolve_algos(list(spec))
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument(
+        "--algos", nargs="+", default=None, metavar="NAME",
+        help=("schemes to run. Pass 'all' or omit for the full set "
+              f"({', '.join(ALGO_NAMES)}). Example: --algos causal ucb gdo"),
+    )
     p.add_argument("--all", action="store_true",
-                   help="Use all ALGOS (includes heavy CTO)")
-    p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
-    p.add_argument("--slots", type=int, default=DEFAULT_SLOTS)
-    p.add_argument("--users", type=int, default=DEFAULT_USERS,
+                   help="Force all algorithms (same as --algos all)")
+    p.add_argument("--seeds", type=int, nargs="+", default=None)
+    p.add_argument("--slots", type=int, default=None)
+    p.add_argument("--users", type=int, default=None,
                    help="Default MD count for SNR/arrival sweeps")
-    p.add_argument("--out-root", default="figures/sweeps")
+    p.add_argument("--out-root", default=None)
     p.add_argument("--smoke", action="store_true",
                    help="Tiny grid: 30 slots, 1 seed, few axis points")
-    p.add_argument("--skip", nargs="+", default=[],
-                   choices=["snr", "users", "arrival", "action_pick"],
+    p.add_argument("--only", nargs="+", default=None,
+                   choices=list(SWEEP_NAMES),
+                   help="Run only these sweeps (overrides --skip / PYCHARM_SKIP)")
+    p.add_argument("--skip", nargs="+", default=None,
+                   choices=list(SWEEP_NAMES),
                    help="Skip named sweeps")
     p.add_argument("--resume", action="store_true",
                    help="Skip sweeps that already have complete .mat outputs")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
-    algos = list(ALGO_NAMES) if args.all else list(args.algos)
-    seeds = tuple(args.seeds)
-    slots = args.slots
-    users = args.users
-    out_root = args.out_root
+    # Merge CLI over PyCharm defaults (CLI wins when provided).
+    if args.all or (args.algos is not None and args.algos == ["all"]):
+        algos = list(ALGO_NAMES)
+    elif args.algos is not None:
+        algos = resolve_algos(args.algos)
+    else:
+        algos = _normalize_algo_spec(PYCHARM_ALGOS)
+
+    seeds = tuple(args.seeds if args.seeds is not None else PYCHARM_SEEDS)
+    slots = args.slots if args.slots is not None else PYCHARM_SLOTS
+    users = args.users if args.users is not None else PYCHARM_USERS
+    out_root = args.out_root if args.out_root is not None else PYCHARM_OUT_ROOT
+    smoke = bool(args.smoke or PYCHARM_SMOKE)
+    resume = bool(args.resume or PYCHARM_RESUME)
+
+    if args.only is not None:
+        only = set(args.only)
+    elif PYCHARM_ONLY:
+        only = set(PYCHARM_ONLY)
+    else:
+        only = set()
+
+    if args.skip is not None:
+        skip = set(args.skip)
+    else:
+        skip = set(PYCHARM_SKIP or [])
+
+    if only:
+        skip = set(SWEEP_NAMES) - only
+
     os.makedirs(out_root, exist_ok=True)
     write_readme(out_root)
 
-    if args.smoke:
+    if smoke:
         seeds = (0,)
         slots = 30
         users = min(users, 10)
@@ -208,19 +248,18 @@ def main():
     )
     notes.append(
         "plots: mean lines only (no error bars); log-y for delay/backlog; "
-        "causal_drift_gain=1.0; GDO=online emp Acc-floor (gdo_acc_floor=0.25, "
-        "gdo_explore_slots); Acc table env-only"
+        "causal_drift_gain=1.0; GDO=online emp Acc-floor; Acc table env-only"
     )
 
-    skip = set(args.skip)
-    if args.resume:
-        for name in ("snr", "users", "arrival", "action_pick"):
+    if resume:
+        for name in SWEEP_NAMES:
             if sweep_complete(out_root, name):
                 skip.add(name)
                 notes.append(f"resume: skip complete `{name}`")
 
     t0 = time.time()
-    log(f"START sweeps smoke={args.smoke} algos={algos} skip={sorted(skip)}")
+    log(f"START sweeps smoke={smoke} algos={algos} skip={sorted(skip)} "
+        f"cwd={os.getcwd()}")
 
     jobs = []
     if "snr" not in skip:
@@ -241,6 +280,10 @@ def main():
             snr_targets=pick_snr, user_list=pick_users,
             beta_values=betas, out_root=out_root)))
 
+    if not jobs:
+        log("Nothing to run (all sweeps skipped).")
+        return
+
     for name, fn in jobs:
         log(f"=== begin {name} ===")
         try:
@@ -255,7 +298,7 @@ def main():
 
     elapsed = time.time() - t0
     notes.append(f"total wall {elapsed/3600:.2f} h")
-    for sweep in ("snr", "users", "arrival", "action_pick"):
+    for sweep in SWEEP_NAMES:
         d = os.path.join(out_root, sweep)
         if os.path.isdir(d):
             arts = sorted(os.listdir(d))

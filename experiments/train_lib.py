@@ -1,7 +1,10 @@
 """Shared training / evaluation runner for OMNIS schemes.
 
-Writes (and merges) CSVs + per-seed series under ``--out``.
-Plotting is separate: ``experiments/plot_results.py``.
+Writes (and merges) CSVs + per-seed series + ``plot_data.mat`` under ``--out``.
+Plotting: ``experiments/plot_results.py`` (also rewrites ``plot_data.mat``).
+
+PyCharm: Run any ``train_*.py`` / ``train_all.py`` with empty parameters.
+Edit ``PYCHARM_*`` in ``cli_main`` (or pass ``--algos`` in the Run config).
 
 Reported **reward** = mean Lyapunov objective V·utility + drift.
 Also logs accuracy, delay, energy, backlog, violation rate, and
@@ -22,6 +25,13 @@ import time
 from collections import defaultdict
 
 import numpy as np
+
+try:
+    from repo_util import ensure_repo_root
+except ImportError:
+    from experiments.repo_util import ensure_repo_root
+
+ensure_repo_root()
 
 from sys_data.config import Config
 from omnis.omnis_main import OMNIS
@@ -356,13 +366,19 @@ def print_summary(agg, algo_names):
 
 
 def resolve_algos(names):
-    """Validate and order algo names; raise on unknown."""
+    """Validate and order algo names; raise on unknown.
+
+    ``None``, ``[]``, or ``["all"]`` → full ``ALGO_NAMES``.
+    """
     if not names:
+        return list(ALGO_NAMES)
+    names = list(names)
+    if names == ["all"] or (len(names) == 1 and names[0] == "all"):
         return list(ALGO_NAMES)
     unknown = [n for n in names if n not in ALGO_NAMES]
     if unknown:
         raise SystemExit(
-            f"unknown algos {unknown}; choose from {ALGO_NAMES}")
+            f"unknown algos {unknown}; choose from {ALGO_NAMES} or 'all'")
     # preserve user order, dedupe
     seen, ordered = set(), []
     for n in names:
@@ -372,9 +388,35 @@ def resolve_algos(names):
     return ordered
 
 
+def write_train_mat(out_dir, slide=5, user_num=None):
+    """Write ``plot_data.mat`` from ``perseed.csv`` + ``series/`` (MATLAB-ready)."""
+    try:
+        from plot_results import export_mat, enrich_runtime_rows, load_perseed
+    except ImportError:
+        from experiments.plot_results import (  # type: ignore
+            export_mat, enrich_runtime_rows, load_perseed,
+        )
+    rows = load_perseed(out_dir)
+    if not rows:
+        print(f"warning: no perseed.csv under {out_dir}; skip .mat", flush=True)
+        return None
+    rows, _cfg = enrich_runtime_rows(rows, user_num=user_num)
+    names = []
+    for r in rows:
+        if r["name"] not in names:
+            names.append(r["name"])
+    ordered = [n for n in ALGO_NAMES if n in names] + [
+        n for n in names if n not in ALGO_NAMES]
+    mat_path = os.path.join(out_dir, "plot_data.mat")
+    export_mat(mat_path, rows, series_dir(out_dir), ordered, slide)
+    print(f"wrote MATLAB data -> {mat_path}", flush=True)
+    return mat_path
+
+
 def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4),
-                 out="figures/train", *, log_pred_error=None):
-    """Run listed algos over seeds; merge CSVs + series under ``out`` (no plots)."""
+                 out="figures/train", *, log_pred_error=None, write_mat=True,
+                 do_plot=False, slide=5):
+    """Run listed algos over seeds; merge CSVs + series (+ ``plot_data.mat``)."""
     names = resolve_algos(algos)
     cls_map = dict(ALGOS)
     os.makedirs(out, exist_ok=True)
@@ -398,24 +440,76 @@ def run_training(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4),
     _, agg, ordered = merge_results(out, rows)
     print_summary(agg, ordered)
     print(f"wrote/merged CSVs + series -> {out}/")
-    print(f"plot with: PYTHONPATH=. python3 experiments/plot_results.py --indir {out}")
+    if write_mat:
+        write_train_mat(out, slide=slide, user_num=users)
+    if do_plot:
+        try:
+            from plot_results import plot_results
+        except ImportError:
+            from experiments.plot_results import plot_results  # type: ignore
+        plot_results(out, out_dir=out, slide=slide, user_num=users, no_mat=False)
+    else:
+        print(f"plot with: PYTHONPATH=. python3 experiments/plot_results.py "
+              f"--indir {out}")
     return rows
 
 
-def cli_main(default_algos=None):
+# PyCharm / zero-arg defaults for train_all / train_*.py (CLI overrides these).
+PYCHARM_TRAIN_ALGOS = None       # None → script default_algos; or ["causal","ucb"] / "all"
+PYCHARM_TRAIN_SLOTS = 300
+PYCHARM_TRAIN_USERS = 10
+PYCHARM_TRAIN_SEEDS = [0, 1, 2, 3, 4]
+PYCHARM_TRAIN_OUT = "figures/train"
+PYCHARM_TRAIN_PLOT = False       # True → also run plot_results after train
+PYCHARM_TRAIN_WRITE_MAT = True
+
+
+def cli_main(default_algos=None, argv=None):
+    """Entry for ``train_all.py`` / ``train_*.py`` (PyCharm-safe)."""
+    try:
+        from repo_util import ensure_repo_root
+    except ImportError:
+        from experiments.repo_util import ensure_repo_root  # type: ignore
+    ensure_repo_root()
+
+    script_default = list(default_algos) if default_algos is not None else list(ALGO_NAMES)
+
     p = argparse.ArgumentParser(
-        description="Train / evaluate OMNIS schemes (writes data only; use plot_results.py to plot)")
+        description="Train / evaluate OMNIS schemes (CSV + series + plot_data.mat)")
     p.add_argument(
-        "--algos", nargs="+", default=default_algos,
-        metavar="NAME",
-        help=f"schemes to run (default: script-specific or all). Choices: {', '.join(ALGO_NAMES)}")
-    # Overnight hard defaults (match sys_data/config.py stress scenario).
-    p.add_argument("--slots", type=int, default=300)
-    p.add_argument("--users", type=int, default=10)
-    p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
-    p.add_argument("--out", default="figures/train",
-                   help="CSVs + series output dir (pair with plot_results --indir)")
-    args = p.parse_args()
-    algos = args.algos if args.algos is not None else list(ALGO_NAMES)
-    run_training(algos, slots=args.slots, users=args.users,
-                 seeds=tuple(args.seeds), out=args.out)
+        "--algos", nargs="+", default=None, metavar="NAME",
+        help=("schemes to run; 'all' = full suite. "
+              f"Default: script default or {script_default}. "
+              f"Choices: {', '.join(ALGO_NAMES + ['all'])}"),
+    )
+    p.add_argument("--slots", type=int, default=None)
+    p.add_argument("--users", type=int, default=None)
+    p.add_argument("--seeds", type=int, nargs="+", default=None)
+    p.add_argument("--out", default=None,
+                   help="CSVs + series + plot_data.mat output dir")
+    p.add_argument("--plot", action="store_true",
+                   help="Also generate PNGs via plot_results.py")
+    p.add_argument("--no-mat", action="store_true",
+                   help="Skip writing plot_data.mat")
+    p.add_argument("--slide", type=int, default=5,
+                   help="Sliding window for optional plot / mat sliding series")
+    args = p.parse_args(argv)
+
+    if args.algos is not None:
+        algos = resolve_algos(args.algos)
+    elif PYCHARM_TRAIN_ALGOS is not None:
+        algos = resolve_algos(
+            PYCHARM_TRAIN_ALGOS if PYCHARM_TRAIN_ALGOS != "all"
+            else ["all"])
+    else:
+        algos = resolve_algos(script_default)
+
+    slots = args.slots if args.slots is not None else PYCHARM_TRAIN_SLOTS
+    users = args.users if args.users is not None else PYCHARM_TRAIN_USERS
+    seeds = tuple(args.seeds if args.seeds is not None else PYCHARM_TRAIN_SEEDS)
+    out = args.out if args.out is not None else PYCHARM_TRAIN_OUT
+    do_plot = bool(args.plot or PYCHARM_TRAIN_PLOT)
+    write_mat = bool(PYCHARM_TRAIN_WRITE_MAT) and not args.no_mat
+
+    run_training(algos, slots=slots, users=users, seeds=seeds, out=out,
+                 write_mat=write_mat, do_plot=do_plot, slide=args.slide)

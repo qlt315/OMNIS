@@ -1,0 +1,758 @@
+===== snr sweep start 2026-08-09 23:48:31 =====
+[snr 1/162] causal seed=0 snr_db=0.0 users=10 slots=400
+    reward=5.2056 delay=3.102 energy=0.748 acc=0.2137 vio=0.487 backlog=25622 wall=18s
+[snr 2/162] causal seed=1 snr_db=0.0 users=10 slots=400
+    reward=5.1433 delay=5.658 energy=0.607 acc=0.2211 vio=0.543 backlog=56049 wall=16s
+[snr 3/162] causal seed=2 snr_db=0.0 users=10 slots=400
+    reward=5.3054 delay=3.576 energy=0.693 acc=0.2162 vio=0.522 backlog=34638 wall=15s
+[snr 4/162] ucb seed=0 snr_db=0.0 users=10 slots=400
+    reward=4.2719 delay=6.791 energy=0.774 acc=0.2014 vio=0.561 backlog=94775 wall=17s
+[snr 5/162] ucb seed=1 snr_db=0.0 users=10 slots=400
+    reward=4.2992 delay=6.772 energy=0.612 acc=0.2161 vio=0.620 backlog=88872 wall=17s
+[snr 6/162] ucb seed=2 snr_db=0.0 users=10 slots=400
+    reward=4.3302 delay=5.899 energy=0.731 acc=0.2190 vio=0.654 backlog=72505 wall=19s
+[snr 7/162] dts seed=0 snr_db=0.0 users=10 slots=400
+    reward=3.0064 delay=37.052 energy=0.789 acc=0.2137 vio=0.740 backlog=372037 wall=18s
+[snr 8/162] dts seed=1 snr_db=0.0 users=10 slots=400
+    reward=3.2971 delay=19.807 energy=0.600 acc=0.2175 vio=0.780 backlog=250743 wall=19s
+[snr 9/162] dts seed=2 snr_db=0.0 users=10 slots=400
+    reward=3.3425 delay=13.612 energy=0.673 acc=0.2001 vio=0.736 backlog=124487 wall=26s
+[snr 10/162] gdo seed=0 snr_db=0.0 users=10 slots=400
+    reward=2.1322 delay=132.801 energy=0.790 acc=0.2569 vio=0.984 backlog=1617542 wall=14s
+[snr 11/162] gdo seed=1 snr_db=0.0 users=10 slots=400
+    reward=2.3220 delay=146.914 energy=0.628 acc=0.2589 vio=0.982 backlog=1766343 wall=10s
+[snr 12/162] gdo seed=2 snr_db=0.0 users=10 slots=400
+    reward=2.0994 delay=140.374 energy=0.686 acc=0.2571 vio=0.981 backlog=1700810 wall=9s
+[snr 13/162] rss seed=0 snr_db=0.0 users=10 slots=400
+    reward=2.3536 delay=129.567 energy=0.809 acc=0.2130 vio=0.926 backlog=1062524 wall=10s
+[snr 14/162] rss seed=1 snr_db=0.0 users=10 slots=400
+    reward=3.5406 delay=142.528 energy=0.675 acc=0.2148 vio=0.605 backlog=1273223 wall=10s
+[snr 15/162] rss seed=2 snr_db=0.0 users=10 slots=400
+    reward=3.6369 delay=32.039 energy=0.905 acc=0.2135 vio=0.680 backlog=557386 wall=13s
+[snr 16/162] dqn seed=0 snr_db=0.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.0524 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.3550 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=4.1406 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.0245 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=4.0204 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=2.5106 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.7835 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=2.1138 eps=0.169 K=2000
+    reward=2.4728 delay=33.000 energy=0.830 acc=0.2240 vio=0.927 backlog=362724 wall=28s
+[snr 17/162] dqn seed=1 snr_db=0.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.0849 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.3910 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=1.8799 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.5497 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.2757 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.2969 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.0699 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=2.1699 eps=0.169 K=2000
+    reward=2.5958 delay=26.338 energy=0.701 acc=0.2235 vio=0.882 backlog=284310 wall=29s
+[snr 18/162] dqn seed=2 snr_db=0.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=4.4494 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=1.8074 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=2.4940 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=1.6635 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=1.9498 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.1159 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=1.7676 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=2.5577 eps=0.169 K=2000
+    reward=2.4317 delay=32.441 energy=0.794 acc=0.2272 vio=0.908 backlog=357725 wall=29s
+[snr 19/162] ppo seed=0 snr_db=0.0 users=10 slots=400
+  [ppo train] slot=0 team_r=3.8262
+  [ppo train] slot=50 team_r=1.7983
+  [ppo train] slot=100 team_r=3.8711
+  [ppo train] slot=150 team_r=2.0517
+  [ppo train] slot=200 team_r=3.9839
+  [ppo train] slot=250 team_r=2.0308
+  [ppo train] slot=300 team_r=2.2593
+  [ppo train] slot=350 team_r=1.6930
+    reward=2.1539 delay=34.814 energy=0.858 acc=0.2249 vio=0.941 backlog=359778 wall=15s
+[snr 20/162] ppo seed=1 snr_db=0.0 users=10 slots=400
+  [ppo train] slot=0 team_r=5.8798
+  [ppo train] slot=50 team_r=3.6845
+  [ppo train] slot=100 team_r=2.3620
+  [ppo train] slot=150 team_r=1.8634
+  [ppo train] slot=200 team_r=4.7054
+  [ppo train] slot=250 team_r=2.5692
+  [ppo train] slot=300 team_r=1.8875
+  [ppo train] slot=350 team_r=1.7931
+    reward=2.2912 delay=38.543 energy=0.736 acc=0.2273 vio=0.929 backlog=402620 wall=15s
+[snr 21/162] ppo seed=2 snr_db=0.0 users=10 slots=400
+  [ppo train] slot=0 team_r=5.7730
+  [ppo train] slot=50 team_r=2.4068
+  [ppo train] slot=100 team_r=2.5640
+  [ppo train] slot=150 team_r=2.2780
+  [ppo train] slot=200 team_r=1.9387
+  [ppo train] slot=250 team_r=2.0011
+  [ppo train] slot=300 team_r=1.5987
+  [ppo train] slot=350 team_r=4.5684
+    reward=1.9864 delay=45.630 energy=0.821 acc=0.2269 vio=0.940 backlog=471577 wall=13s
+[snr 22/162] mappo seed=0 snr_db=0.0 users=10 slots=400
+  [mappo train] slot=0 team_r=4.7658
+  [mappo train] slot=50 team_r=2.2431
+  [mappo train] slot=100 team_r=2.7767
+  [mappo train] slot=150 team_r=2.0627
+  [mappo train] slot=200 team_r=2.4121
+  [mappo train] slot=250 team_r=3.5302
+  [mappo train] slot=300 team_r=2.7008
+  [mappo train] slot=350 team_r=2.1485
+    reward=2.0807 delay=40.659 energy=0.868 acc=0.2273 vio=0.947 backlog=422829 wall=11s
+[snr 23/162] mappo seed=1 snr_db=0.0 users=10 slots=400
+  [mappo train] slot=0 team_r=6.3888
+  [mappo train] slot=50 team_r=2.6256
+  [mappo train] slot=100 team_r=2.3335
+  [mappo train] slot=150 team_r=2.3371
+  [mappo train] slot=200 team_r=2.8946
+  [mappo train] slot=250 team_r=2.0353
+  [mappo train] slot=300 team_r=2.3611
+  [mappo train] slot=350 team_r=1.6939
+    reward=2.4233 delay=28.246 energy=0.719 acc=0.2240 vio=0.916 backlog=286377 wall=11s
+[snr 24/162] mappo seed=2 snr_db=0.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.7599
+  [mappo train] slot=50 team_r=2.3313
+  [mappo train] slot=100 team_r=1.7554
+  [mappo train] slot=150 team_r=6.4916
+  [mappo train] slot=200 team_r=2.1234
+  [mappo train] slot=250 team_r=4.1646
+  [mappo train] slot=300 team_r=2.0989
+  [mappo train] slot=350 team_r=2.0277
+    reward=2.2864 delay=23.498 energy=0.809 acc=0.2237 vio=0.906 backlog=245275 wall=16s
+[snr 25/162] cto seed=0 snr_db=0.0 users=10 slots=400
+    reward=3.0212 delay=10.244 energy=0.806 acc=0.2143 vio=0.776 backlog=104863 wall=49s
+[snr 26/162] cto seed=1 snr_db=0.0 users=10 slots=400
+    reward=4.5193 delay=3.209 energy=0.613 acc=0.1977 vio=0.517 backlog=23333 wall=32s
+[snr 27/162] cto seed=2 snr_db=0.0 users=10 slots=400
+    reward=4.2895 delay=3.152 energy=0.718 acc=0.1981 vio=0.607 backlog=23036 wall=43s
+[snr 28/162] causal seed=0 snr_db=2.0 users=10 slots=400
+    reward=5.1506 delay=3.767 energy=0.747 acc=0.2147 vio=0.504 backlog=32802 wall=44s
+[snr 29/162] causal seed=1 snr_db=2.0 users=10 slots=400
+    reward=5.5338 delay=5.102 energy=0.605 acc=0.2200 vio=0.430 backlog=54022 wall=26s
+[snr 30/162] causal seed=2 snr_db=2.0 users=10 slots=400
+    reward=5.2516 delay=3.970 energy=0.697 acc=0.2209 vio=0.555 backlog=40015 wall=32s
+[snr 31/162] ucb seed=0 snr_db=2.0 users=10 slots=400
+    reward=4.4822 delay=3.774 energy=0.762 acc=0.1968 vio=0.479 backlog=38783 wall=52s
+[snr 32/162] ucb seed=1 snr_db=2.0 users=10 slots=400
+    reward=3.9564 delay=7.394 energy=0.606 acc=0.2134 vio=0.575 backlog=102773 wall=41s
+[snr 33/162] ucb seed=2 snr_db=2.0 users=10 slots=400
+    reward=4.0117 delay=9.842 energy=0.759 acc=0.2207 vio=0.705 backlog=143158 wall=29s
+[snr 34/162] dts seed=0 snr_db=2.0 users=10 slots=400
+    reward=3.4624 delay=12.146 energy=0.771 acc=0.2187 vio=0.746 backlog=153297 wall=25s
+[snr 35/162] dts seed=1 snr_db=2.0 users=10 slots=400
+    reward=3.7174 delay=13.092 energy=0.618 acc=0.2142 vio=0.654 backlog=193739 wall=23s
+[snr 36/162] dts seed=2 snr_db=2.0 users=10 slots=400
+    reward=3.3981 delay=20.509 energy=0.697 acc=0.2013 vio=0.754 backlog=193008 wall=21s
+[snr 37/162] gdo seed=0 snr_db=2.0 users=10 slots=400
+    reward=2.1742 delay=124.461 energy=0.785 acc=0.2574 vio=0.982 backlog=1534863 wall=9s
+[snr 38/162] gdo seed=1 snr_db=2.0 users=10 slots=400
+    reward=2.3693 delay=138.681 energy=0.623 acc=0.2594 vio=0.981 backlog=1668502 wall=9s
+[snr 39/162] gdo seed=2 snr_db=2.0 users=10 slots=400
+    reward=2.1481 delay=132.657 energy=0.681 acc=0.2578 vio=0.980 backlog=1625183 wall=10s
+[snr 40/162] rss seed=0 snr_db=2.0 users=10 slots=400
+    reward=2.3720 delay=129.556 energy=0.808 acc=0.2130 vio=0.926 backlog=1062524 wall=11s
+[snr 41/162] rss seed=1 snr_db=2.0 users=10 slots=400
+    reward=3.5734 delay=141.961 energy=0.673 acc=0.2147 vio=0.603 backlog=1271199 wall=28s
+[snr 42/162] rss seed=2 snr_db=2.0 users=10 slots=400
+    reward=3.6582 delay=32.013 energy=0.903 acc=0.2134 vio=0.680 backlog=557378 wall=14s
+[snr 43/162] dqn seed=0 snr_db=2.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.3001 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.4524 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=4.5851 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=1.6985 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=1.7090 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=2.5820 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=1.5571 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=2.9984 eps=0.169 K=2000
+    reward=2.4931 delay=31.832 energy=0.837 acc=0.2250 vio=0.918 backlog=350712 wall=29s
+[snr 44/162] dqn seed=1 snr_db=2.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.0863 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.7208 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=1.8778 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.7126 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.4410 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.1677 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=2.9966 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=2.3488 eps=0.169 K=2000
+    reward=2.7612 delay=25.691 energy=0.698 acc=0.2244 vio=0.859 backlog=274078 wall=29s
+[snr 45/162] dqn seed=2 snr_db=2.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=4.4494 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=1.8134 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=2.6489 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=1.8224 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=1.9972 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.6431 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=2.5869 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=3.7199 eps=0.169 K=2000
+    reward=2.5942 delay=28.418 energy=0.795 acc=0.2276 vio=0.885 backlog=321663 wall=43s
+[snr 46/162] ppo seed=0 snr_db=2.0 users=10 slots=400
+  [ppo train] slot=0 team_r=3.8262
+  [ppo train] slot=50 team_r=1.9163
+  [ppo train] slot=100 team_r=3.8875
+  [ppo train] slot=150 team_r=3.0199
+  [ppo train] slot=200 team_r=2.8840
+  [ppo train] slot=250 team_r=1.8259
+  [ppo train] slot=300 team_r=2.2475
+  [ppo train] slot=350 team_r=1.6893
+    reward=2.3066 delay=31.405 energy=0.857 acc=0.2252 vio=0.925 backlog=326716 wall=26s
+[snr 47/162] ppo seed=1 snr_db=2.0 users=10 slots=400
+  [ppo train] slot=0 team_r=4.8741
+  [ppo train] slot=50 team_r=3.8876
+  [ppo train] slot=100 team_r=2.3727
+  [ppo train] slot=150 team_r=1.8544
+  [ppo train] slot=200 team_r=4.5835
+  [ppo train] slot=250 team_r=2.6164
+  [ppo train] slot=300 team_r=2.0379
+  [ppo train] slot=350 team_r=1.7139
+    reward=2.3876 delay=35.774 energy=0.735 acc=0.2273 vio=0.910 backlog=374652 wall=13s
+[snr 48/162] ppo seed=2 snr_db=2.0 users=10 slots=400
+  [ppo train] slot=0 team_r=5.8386
+  [ppo train] slot=50 team_r=2.4088
+  [ppo train] slot=100 team_r=2.6260
+  [ppo train] slot=150 team_r=2.7281
+  [ppo train] slot=200 team_r=1.7218
+  [ppo train] slot=250 team_r=2.1129
+  [ppo train] slot=300 team_r=1.6066
+  [ppo train] slot=350 team_r=4.7441
+    reward=2.0392 delay=43.793 energy=0.824 acc=0.2271 vio=0.931 backlog=454099 wall=13s
+[snr 49/162] mappo seed=0 snr_db=2.0 users=10 slots=400
+  [mappo train] slot=0 team_r=4.7857
+  [mappo train] slot=50 team_r=2.2747
+  [mappo train] slot=100 team_r=2.9217
+  [mappo train] slot=150 team_r=2.2393
+  [mappo train] slot=200 team_r=2.5203
+  [mappo train] slot=250 team_r=3.9285
+  [mappo train] slot=300 team_r=2.9702
+  [mappo train] slot=350 team_r=2.1571
+    reward=2.2187 delay=37.125 energy=0.865 acc=0.2274 vio=0.929 backlog=392585 wall=21s
+[snr 50/162] mappo seed=1 snr_db=2.0 users=10 slots=400
+  [mappo train] slot=0 team_r=6.4560
+  [mappo train] slot=50 team_r=2.6605
+  [mappo train] slot=100 team_r=2.9204
+  [mappo train] slot=150 team_r=2.4383
+  [mappo train] slot=200 team_r=2.9251
+  [mappo train] slot=250 team_r=2.1509
+  [mappo train] slot=300 team_r=2.3662
+  [mappo train] slot=350 team_r=1.6249
+    reward=2.5085 delay=28.015 energy=0.718 acc=0.2247 vio=0.904 backlog=285237 wall=21s
+[snr 51/162] mappo seed=2 snr_db=2.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.7718
+  [mappo train] slot=50 team_r=2.4726
+  [mappo train] slot=100 team_r=1.9806
+  [mappo train] slot=150 team_r=6.6866
+  [mappo train] slot=200 team_r=2.2847
+  [mappo train] slot=250 team_r=4.1495
+  [mappo train] slot=300 team_r=2.0117
+  [mappo train] slot=350 team_r=2.0934
+    reward=2.3629 delay=23.055 energy=0.808 acc=0.2239 vio=0.895 backlog=239365 wall=14s
+[snr 52/162] cto seed=0 snr_db=2.0 users=10 slots=400
+    reward=4.6116 delay=2.508 energy=0.744 acc=0.1891 vio=0.484 backlog=16405 wall=40s
+[snr 53/162] cto seed=1 snr_db=2.0 users=10 slots=400
+    reward=4.9380 delay=2.637 energy=0.611 acc=0.1903 vio=0.413 backlog=19052 wall=26s
+[snr 54/162] cto seed=2 snr_db=2.0 users=10 slots=400
+    reward=4.7575 delay=2.638 energy=0.693 acc=0.1888 vio=0.530 backlog=18642 wall=25s
+[snr 55/162] causal seed=0 snr_db=4.0 users=10 slots=400
+    reward=5.4315 delay=3.525 energy=0.750 acc=0.2176 vio=0.463 backlog=31897 wall=16s
+[snr 56/162] causal seed=1 snr_db=4.0 users=10 slots=400
+    reward=5.8050 delay=4.293 energy=0.615 acc=0.2215 vio=0.421 backlog=48640 wall=19s
+[snr 57/162] causal seed=2 snr_db=4.0 users=10 slots=400
+    reward=5.5725 delay=3.209 energy=0.694 acc=0.2202 vio=0.518 backlog=32165 wall=20s
+[snr 58/162] ucb seed=0 snr_db=4.0 users=10 slots=400
+    reward=4.1611 delay=5.108 energy=0.726 acc=0.1932 vio=0.559 backlog=50226 wall=18s
+[snr 59/162] ucb seed=1 snr_db=4.0 users=10 slots=400
+    reward=4.0824 delay=23.614 energy=0.527 acc=0.2085 vio=0.602 backlog=307569 wall=17s
+[snr 60/162] ucb seed=2 snr_db=4.0 users=10 slots=400
+    reward=4.2199 delay=22.642 energy=0.673 acc=0.2140 vio=0.626 backlog=278006 wall=19s
+[snr 61/162] dts seed=0 snr_db=4.0 users=10 slots=400
+    reward=3.7360 delay=10.768 energy=0.762 acc=0.2112 vio=0.668 backlog=119302 wall=18s
+[snr 62/162] dts seed=1 snr_db=4.0 users=10 slots=400
+    reward=4.0026 delay=15.345 energy=0.622 acc=0.2202 vio=0.642 backlog=214804 wall=18s
+[snr 63/162] dts seed=2 snr_db=4.0 users=10 slots=400
+    reward=3.9910 delay=13.334 energy=0.679 acc=0.2143 vio=0.659 backlog=123614 wall=16s
+[snr 64/162] gdo seed=0 snr_db=4.0 users=10 slots=400
+    reward=2.2401 delay=107.959 energy=0.774 acc=0.2569 vio=0.979 backlog=1396343 wall=8s
+[snr 65/162] gdo seed=1 snr_db=4.0 users=10 slots=400
+    reward=2.4525 delay=122.838 energy=0.612 acc=0.2588 vio=0.974 backlog=1544138 wall=7s
+[snr 66/162] gdo seed=2 snr_db=4.0 users=10 slots=400
+    reward=2.2063 delay=116.216 energy=0.670 acc=0.2571 vio=0.976 backlog=1494876 wall=7s
+[snr 67/162] rss seed=0 snr_db=4.0 users=10 slots=400
+    reward=2.3872 delay=129.550 energy=0.808 acc=0.2129 vio=0.926 backlog=1062524 wall=9s
+[snr 68/162] rss seed=1 snr_db=4.0 users=10 slots=400
+    reward=3.6150 delay=132.296 energy=0.665 acc=0.2145 vio=0.603 backlog=1232193 wall=12s
+[snr 69/162] rss seed=2 snr_db=4.0 users=10 slots=400
+    reward=3.6706 delay=31.997 energy=0.902 acc=0.2135 vio=0.680 backlog=557374 wall=19s
+[snr 70/162] dqn seed=0 snr_db=4.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.6110 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.5155 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=4.6526 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=1.8204 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=1.7533 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.3298 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.8281 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=4.3724 eps=0.169 K=2000
+    reward=2.6740 delay=27.567 energy=0.832 acc=0.2253 vio=0.891 backlog=309361 wall=46s
+[snr 71/162] dqn seed=1 snr_db=4.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.2648 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.9397 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=1.7543 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=3.4809 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.5004 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=4.3721 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=2.9031 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=2.4859 eps=0.169 K=2000
+    reward=2.8030 delay=24.035 energy=0.699 acc=0.2241 vio=0.848 backlog=268806 wall=31s
+[snr 72/162] dqn seed=2 snr_db=4.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=4.7305 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=1.8366 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=1.6166 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=1.8408 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.1049 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.4388 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=1.9011 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=3.1601 eps=0.169 K=2000
+    reward=2.7710 delay=23.808 energy=0.785 acc=0.2264 vio=0.866 backlog=272727 wall=32s
+[snr 73/162] ppo seed=0 snr_db=4.0 users=10 slots=400
+  [ppo train] slot=0 team_r=3.8262
+  [ppo train] slot=50 team_r=2.1275
+  [ppo train] slot=100 team_r=3.8828
+  [ppo train] slot=150 team_r=3.7170
+  [ppo train] slot=200 team_r=2.8824
+  [ppo train] slot=250 team_r=1.8112
+  [ppo train] slot=300 team_r=2.2472
+  [ppo train] slot=350 team_r=1.8983
+    reward=2.4308 delay=27.116 energy=0.851 acc=0.2247 vio=0.908 backlog=287219 wall=15s
+[snr 74/162] ppo seed=1 snr_db=4.0 users=10 slots=400
+  [ppo train] slot=0 team_r=4.8771
+  [ppo train] slot=50 team_r=3.9335
+  [ppo train] slot=100 team_r=2.5556
+  [ppo train] slot=150 team_r=1.8524
+  [ppo train] slot=200 team_r=2.5514
+  [ppo train] slot=250 team_r=2.6298
+  [ppo train] slot=300 team_r=2.1853
+  [ppo train] slot=350 team_r=1.7605
+    reward=2.5311 delay=30.064 energy=0.725 acc=0.2271 vio=0.892 backlog=319433 wall=13s
+[snr 75/162] ppo seed=2 snr_db=4.0 users=10 slots=400
+  [ppo train] slot=0 team_r=5.9828
+  [ppo train] slot=50 team_r=2.3945
+  [ppo train] slot=100 team_r=2.8961
+  [ppo train] slot=150 team_r=2.7769
+  [ppo train] slot=200 team_r=1.6349
+  [ppo train] slot=250 team_r=2.1427
+  [ppo train] slot=300 team_r=1.6051
+  [ppo train] slot=350 team_r=3.6639
+    reward=2.1380 delay=41.386 energy=0.822 acc=0.2272 vio=0.918 backlog=438735 wall=14s
+[snr 76/162] mappo seed=0 snr_db=4.0 users=10 slots=400
+  [mappo train] slot=0 team_r=4.7931
+  [mappo train] slot=50 team_r=2.3772
+  [mappo train] slot=100 team_r=2.9042
+  [mappo train] slot=150 team_r=2.3099
+  [mappo train] slot=200 team_r=2.4435
+  [mappo train] slot=250 team_r=4.0987
+  [mappo train] slot=300 team_r=3.4369
+  [mappo train] slot=350 team_r=2.0606
+    reward=2.3231 delay=33.421 energy=0.860 acc=0.2274 vio=0.915 backlog=361051 wall=13s
+[snr 77/162] mappo seed=1 snr_db=4.0 users=10 slots=400
+  [mappo train] slot=0 team_r=6.4882
+  [mappo train] slot=50 team_r=2.6873
+  [mappo train] slot=100 team_r=3.3312
+  [mappo train] slot=150 team_r=2.4937
+  [mappo train] slot=200 team_r=2.9683
+  [mappo train] slot=250 team_r=2.2534
+  [mappo train] slot=300 team_r=2.3584
+  [mappo train] slot=350 team_r=2.2162
+    reward=2.6578 delay=24.453 energy=0.713 acc=0.2250 vio=0.879 backlog=253475 wall=11s
+[snr 78/162] mappo seed=2 snr_db=4.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.7718
+  [mappo train] slot=50 team_r=2.6124
+  [mappo train] slot=100 team_r=2.1818
+  [mappo train] slot=150 team_r=6.7896
+  [mappo train] slot=200 team_r=2.5816
+  [mappo train] slot=250 team_r=4.6167
+  [mappo train] slot=300 team_r=2.3544
+  [mappo train] slot=350 team_r=1.6146
+    reward=2.4752 delay=19.832 energy=0.801 acc=0.2237 vio=0.881 backlog=207451 wall=14s
+[snr 79/162] cto seed=0 snr_db=4.0 users=10 slots=400
+    reward=4.6344 delay=2.524 energy=0.743 acc=0.1900 vio=0.481 backlog=17181 wall=32s
+[snr 80/162] cto seed=1 snr_db=4.0 users=10 slots=400
+    reward=4.9975 delay=2.566 energy=0.602 acc=0.1908 vio=0.398 backlog=18870 wall=30s
+[snr 81/162] cto seed=2 snr_db=4.0 users=10 slots=400
+    reward=4.8207 delay=2.544 energy=0.698 acc=0.1945 vio=0.520 backlog=18521 wall=32s
+[snr 82/162] causal seed=0 snr_db=6.0 users=10 slots=400
+    reward=6.1903 delay=2.004 energy=0.730 acc=0.2162 vio=0.309 backlog=18353 wall=20s
+[snr 83/162] causal seed=1 snr_db=6.0 users=10 slots=400
+    reward=6.0033 delay=2.915 energy=0.596 acc=0.2237 vio=0.384 backlog=33629 wall=26s
+[snr 84/162] causal seed=2 snr_db=6.0 users=10 slots=400
+    reward=6.1879 delay=2.249 energy=0.670 acc=0.2216 vio=0.399 backlog=22868 wall=20s
+[snr 85/162] ucb seed=0 snr_db=6.0 users=10 slots=400
+    reward=4.2081 delay=8.133 energy=0.774 acc=0.2203 vio=0.619 backlog=93376 wall=24s
+[snr 86/162] ucb seed=1 snr_db=6.0 users=10 slots=400
+    reward=4.3813 delay=11.444 energy=0.557 acc=0.2184 vio=0.598 backlog=152290 wall=22s
+[snr 87/162] ucb seed=2 snr_db=6.0 users=10 slots=400
+    reward=5.4777 delay=1.923 energy=0.631 acc=0.1900 vio=0.312 backlog=18224 wall=20s
+[snr 88/162] dts seed=0 snr_db=6.0 users=10 slots=400
+    reward=4.5815 delay=5.035 energy=0.733 acc=0.2163 vio=0.537 backlog=54370 wall=20s
+[snr 89/162] dts seed=1 snr_db=6.0 users=10 slots=400
+    reward=4.1342 delay=23.132 energy=0.644 acc=0.2222 vio=0.606 backlog=297147 wall=22s
+[snr 90/162] dts seed=2 snr_db=6.0 users=10 slots=400
+    reward=4.3522 delay=13.695 energy=0.681 acc=0.2138 vio=0.589 backlog=150785 wall=22s
+[snr 91/162] gdo seed=0 snr_db=6.0 users=10 slots=400
+    reward=2.3892 delay=77.212 energy=0.752 acc=0.2565 vio=0.974 backlog=1111203 wall=10s
+[snr 92/162] gdo seed=1 snr_db=6.0 users=10 slots=400
+    reward=2.6329 delay=89.199 energy=0.588 acc=0.2586 vio=0.961 backlog=1268162 wall=12s
+[snr 93/162] gdo seed=2 snr_db=6.0 users=10 slots=400
+    reward=2.3657 delay=83.481 energy=0.647 acc=0.2569 vio=0.969 backlog=1216265 wall=10s
+[snr 94/162] rss seed=0 snr_db=6.0 users=10 slots=400
+    reward=2.4191 delay=129.539 energy=0.807 acc=0.2129 vio=0.924 backlog=1062475 wall=10s
+[snr 95/162] rss seed=1 snr_db=6.0 users=10 slots=400
+    reward=3.6779 delay=116.835 energy=0.653 acc=0.2145 vio=0.601 backlog=1159204 wall=10s
+[snr 96/162] rss seed=2 snr_db=6.0 users=10 slots=400
+    reward=3.6798 delay=31.985 energy=0.902 acc=0.2135 vio=0.680 backlog=557371 wall=16s
+[snr 97/162] dqn seed=0 snr_db=6.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.8640 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.5280 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=4.7701 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.1731 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=3.7312 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=4.5048 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.6828 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=3.3452 eps=0.169 K=2000
+    reward=2.9764 delay=16.540 energy=0.822 acc=0.2241 vio=0.840 backlog=194957 wall=28s
+[snr 98/162] dqn seed=1 snr_db=6.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.5597 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.9399 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=1.7764 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=3.7372 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.5288 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.0403 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.2188 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=3.5694 eps=0.169 K=2000
+    reward=3.0371 delay=14.740 energy=0.685 acc=0.2253 vio=0.817 backlog=173987 wall=30s
+[snr 99/162] dqn seed=2 snr_db=6.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.1318 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=1.9123 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=3.4744 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.1500 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.3156 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.7130 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=2.0766 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=2.6317 eps=0.169 K=2000
+    reward=2.9446 delay=18.956 energy=0.780 acc=0.2272 vio=0.840 backlog=233824 wall=27s
+[snr 100/162] ppo seed=0 snr_db=6.0 users=10 slots=400
+  [ppo train] slot=0 team_r=3.8262
+  [ppo train] slot=50 team_r=2.2345
+  [ppo train] slot=100 team_r=2.4976
+  [ppo train] slot=150 team_r=4.2328
+  [ppo train] slot=200 team_r=2.9272
+  [ppo train] slot=250 team_r=2.1653
+  [ppo train] slot=300 team_r=2.3653
+  [ppo train] slot=350 team_r=2.1351
+    reward=2.6770 delay=18.304 energy=0.836 acc=0.2244 vio=0.881 backlog=198767 wall=12s
+[snr 101/162] ppo seed=1 snr_db=6.0 users=10 slots=400
+  [ppo train] slot=0 team_r=4.9205
+  [ppo train] slot=50 team_r=4.3994
+  [ppo train] slot=100 team_r=3.0187
+  [ppo train] slot=150 team_r=1.8643
+  [ppo train] slot=200 team_r=2.6687
+  [ppo train] slot=250 team_r=4.7162
+  [ppo train] slot=300 team_r=2.5202
+  [ppo train] slot=350 team_r=1.9147
+    reward=2.7119 delay=21.854 energy=0.709 acc=0.2270 vio=0.872 backlog=236728 wall=12s
+[snr 102/162] ppo seed=2 snr_db=6.0 users=10 slots=400
+  [ppo train] slot=0 team_r=6.0961
+  [ppo train] slot=50 team_r=2.4303
+  [ppo train] slot=100 team_r=2.9249
+  [ppo train] slot=150 team_r=2.8200
+  [ppo train] slot=200 team_r=2.0431
+  [ppo train] slot=250 team_r=2.1861
+  [ppo train] slot=300 team_r=1.6539
+  [ppo train] slot=350 team_r=3.7579
+    reward=2.2905 delay=31.522 energy=0.808 acc=0.2273 vio=0.907 backlog=353120 wall=12s
+[snr 103/162] mappo seed=0 snr_db=6.0 users=10 slots=400
+  [mappo train] slot=0 team_r=4.8675
+  [mappo train] slot=50 team_r=2.5077
+  [mappo train] slot=100 team_r=3.0007
+  [mappo train] slot=150 team_r=2.4122
+  [mappo train] slot=200 team_r=2.5599
+  [mappo train] slot=250 team_r=4.5274
+  [mappo train] slot=300 team_r=3.5372
+  [mappo train] slot=350 team_r=2.9852
+    reward=2.5323 delay=24.031 energy=0.848 acc=0.2278 vio=0.897 backlog=270077 wall=12s
+[snr 104/162] mappo seed=1 snr_db=6.0 users=10 slots=400
+  [mappo train] slot=0 team_r=6.5019
+  [mappo train] slot=50 team_r=2.7516
+  [mappo train] slot=100 team_r=3.2681
+  [mappo train] slot=150 team_r=2.5923
+  [mappo train] slot=200 team_r=3.1955
+  [mappo train] slot=250 team_r=2.7935
+  [mappo train] slot=300 team_r=2.3788
+  [mappo train] slot=350 team_r=2.6773
+    reward=2.9231 delay=16.252 energy=0.698 acc=0.2247 vio=0.846 backlog=174929 wall=12s
+[snr 105/162] mappo seed=2 snr_db=6.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.7718
+  [mappo train] slot=50 team_r=2.9340
+  [mappo train] slot=100 team_r=2.6532
+  [mappo train] slot=150 team_r=6.8853
+  [mappo train] slot=200 team_r=3.1435
+  [mappo train] slot=250 team_r=5.1257
+  [mappo train] slot=300 team_r=2.5899
+  [mappo train] slot=350 team_r=2.0604
+    reward=2.7256 delay=13.036 energy=0.782 acc=0.2236 vio=0.857 backlog=132774 wall=11s
+[snr 106/162] cto seed=0 snr_db=6.0 users=10 slots=400
+    reward=4.7961 delay=2.330 energy=0.736 acc=0.1919 vio=0.454 backlog=16884 wall=31s
+[snr 107/162] cto seed=1 snr_db=6.0 users=10 slots=400
+    reward=5.2541 delay=2.323 energy=0.601 acc=0.1929 vio=0.358 backlog=17713 wall=31s
+[snr 108/162] cto seed=2 snr_db=6.0 users=10 slots=400
+    reward=5.0968 delay=2.191 energy=0.691 acc=0.1926 vio=0.461 backlog=16746 wall=31s
+[snr 109/162] causal seed=0 snr_db=8.0 users=10 slots=400
+    reward=6.5851 delay=1.710 energy=0.693 acc=0.2194 vio=0.232 backlog=17818 wall=19s
+[snr 110/162] causal seed=1 snr_db=8.0 users=10 slots=400
+    reward=6.1001 delay=2.711 energy=0.555 acc=0.2270 vio=0.342 backlog=32503 wall=19s
+[snr 111/162] causal seed=2 snr_db=8.0 users=10 slots=400
+    reward=6.4052 delay=2.090 energy=0.608 acc=0.2271 vio=0.316 backlog=22608 wall=19s
+[snr 112/162] ucb seed=0 snr_db=8.0 users=10 slots=400
+    reward=5.5063 delay=2.493 energy=0.734 acc=0.2113 vio=0.377 backlog=30820 wall=23s
+[snr 113/162] ucb seed=1 snr_db=8.0 users=10 slots=400
+    reward=5.3463 delay=10.342 energy=0.534 acc=0.2275 vio=0.486 backlog=161670 wall=22s
+[snr 114/162] ucb seed=2 snr_db=8.0 users=10 slots=400
+    reward=5.6607 delay=1.767 energy=0.597 acc=0.1939 vio=0.317 backlog=17369 wall=21s
+[snr 115/162] dts seed=0 snr_db=8.0 users=10 slots=400
+    reward=4.6199 delay=3.110 energy=0.726 acc=0.1942 vio=0.447 backlog=30655 wall=21s
+[snr 116/162] dts seed=1 snr_db=8.0 users=10 slots=400
+    reward=4.0595 delay=16.344 energy=0.613 acc=0.2298 vio=0.663 backlog=208009 wall=20s
+[snr 117/162] dts seed=2 snr_db=8.0 users=10 slots=400
+    reward=5.5324 delay=3.163 energy=0.656 acc=0.2040 vio=0.391 backlog=44799 wall=21s
+[snr 118/162] gdo seed=0 snr_db=8.0 users=10 slots=400
+    reward=2.6564 delay=46.038 energy=0.730 acc=0.2567 vio=0.954 backlog=731537 wall=11s
+[snr 119/162] gdo seed=1 snr_db=8.0 users=10 slots=400
+    reward=2.8670 delay=51.393 energy=0.561 acc=0.2587 vio=0.941 backlog=843877 wall=9s
+[snr 120/162] gdo seed=2 snr_db=8.0 users=10 slots=400
+    reward=2.6329 delay=49.746 energy=0.624 acc=0.2570 vio=0.952 backlog=818676 wall=9s
+[snr 121/162] rss seed=0 snr_db=8.0 users=10 slots=400
+    reward=2.5353 delay=129.480 energy=0.805 acc=0.2130 vio=0.905 backlog=1061964 wall=10s
+[snr 122/162] rss seed=1 snr_db=8.0 users=10 slots=400
+    reward=3.7526 delay=107.902 energy=0.644 acc=0.2146 vio=0.599 backlog=1108213 wall=10s
+[snr 123/162] rss seed=2 snr_db=8.0 users=10 slots=400
+    reward=3.6865 delay=31.977 energy=0.901 acc=0.2135 vio=0.680 backlog=557369 wall=16s
+[snr 124/162] dqn seed=0 snr_db=8.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=6.1769 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.6153 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=5.0733 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.2591 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=4.3323 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=3.6555 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.8570 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=4.7356 eps=0.169 K=2000
+    reward=3.2075 delay=14.290 energy=0.808 acc=0.2272 vio=0.818 backlog=174374 wall=29s
+[snr 125/162] dqn seed=1 snr_db=8.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.7508 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=3.0881 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=1.8736 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=4.1670 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.8768 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=5.3724 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.3660 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=4.0233 eps=0.169 K=2000
+    reward=3.4673 delay=9.421 energy=0.671 acc=0.2247 vio=0.754 backlog=112776 wall=30s
+[snr 126/162] dqn seed=2 snr_db=8.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.2469 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.0263 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=3.2968 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.8724 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=3.0067 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=4.1864 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=4.4424 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=3.6502 eps=0.169 K=2000
+    reward=3.4279 delay=11.331 energy=0.760 acc=0.2263 vio=0.784 backlog=140100 wall=33s
+[snr 127/162] ppo seed=0 snr_db=8.0 users=10 slots=400
+  [ppo train] slot=0 team_r=3.8262
+  [ppo train] slot=50 team_r=2.8045
+  [ppo train] slot=100 team_r=2.7334
+  [ppo train] slot=150 team_r=4.0085
+  [ppo train] slot=200 team_r=2.8530
+  [ppo train] slot=250 team_r=2.3048
+  [ppo train] slot=300 team_r=2.4131
+  [ppo train] slot=350 team_r=1.9674
+    reward=2.9735 delay=11.535 energy=0.821 acc=0.2247 vio=0.843 backlog=126234 wall=16s
+[snr 128/162] ppo seed=1 snr_db=8.0 users=10 slots=400
+  [ppo train] slot=0 team_r=5.0099
+  [ppo train] slot=50 team_r=4.5559
+  [ppo train] slot=100 team_r=3.4023
+  [ppo train] slot=150 team_r=1.9534
+  [ppo train] slot=200 team_r=3.7678
+  [ppo train] slot=250 team_r=3.5959
+  [ppo train] slot=300 team_r=2.1764
+  [ppo train] slot=350 team_r=2.6810
+    reward=3.0100 delay=12.266 energy=0.689 acc=0.2270 vio=0.831 backlog=134007 wall=14s
+[snr 129/162] ppo seed=2 snr_db=8.0 users=10 slots=400
+  [ppo train] slot=0 team_r=6.1313
+  [ppo train] slot=50 team_r=2.4516
+  [ppo train] slot=100 team_r=3.3611
+  [ppo train] slot=150 team_r=2.9987
+  [ppo train] slot=200 team_r=2.4418
+  [ppo train] slot=250 team_r=2.3985
+  [ppo train] slot=300 team_r=2.3403
+  [ppo train] slot=350 team_r=4.4594
+    reward=2.5294 delay=20.270 energy=0.796 acc=0.2268 vio=0.883 backlog=239963 wall=13s
+[snr 130/162] mappo seed=0 snr_db=8.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.1042
+  [mappo train] slot=50 team_r=2.6296
+  [mappo train] slot=100 team_r=2.0467
+  [mappo train] slot=150 team_r=2.4759
+  [mappo train] slot=200 team_r=2.7605
+  [mappo train] slot=250 team_r=4.8526
+  [mappo train] slot=300 team_r=3.9873
+  [mappo train] slot=350 team_r=3.3572
+    reward=2.7918 delay=16.426 energy=0.834 acc=0.2279 vio=0.864 backlog=193030 wall=14s
+[snr 131/162] mappo seed=1 snr_db=8.0 users=10 slots=400
+  [mappo train] slot=0 team_r=6.7596
+  [mappo train] slot=50 team_r=2.8768
+  [mappo train] slot=100 team_r=3.5084
+  [mappo train] slot=150 team_r=2.7827
+  [mappo train] slot=200 team_r=3.5658
+  [mappo train] slot=250 team_r=3.4780
+  [mappo train] slot=300 team_r=2.6665
+  [mappo train] slot=350 team_r=4.0200
+    reward=3.2811 delay=9.469 energy=0.680 acc=0.2244 vio=0.797 backlog=101537 wall=13s
+[snr 132/162] mappo seed=2 snr_db=8.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.7718
+  [mappo train] slot=50 team_r=3.1338
+  [mappo train] slot=100 team_r=3.1806
+  [mappo train] slot=150 team_r=6.9955
+  [mappo train] slot=200 team_r=3.7615
+  [mappo train] slot=250 team_r=5.4792
+  [mappo train] slot=300 team_r=2.8131
+  [mappo train] slot=350 team_r=2.2033
+    reward=3.0895 delay=8.470 energy=0.766 acc=0.2234 vio=0.815 backlog=84720 wall=15s
+[snr 133/162] cto seed=0 snr_db=8.0 users=10 slots=400
+    reward=5.1465 delay=2.151 energy=0.728 acc=0.1946 vio=0.395 backlog=16177 wall=32s
+[snr 134/162] cto seed=1 snr_db=8.0 users=10 slots=400
+    reward=5.5593 delay=2.098 energy=0.585 acc=0.1964 vio=0.320 backlog=17240 wall=32s
+[snr 135/162] cto seed=2 snr_db=8.0 users=10 slots=400
+    reward=5.2960 delay=2.075 energy=0.678 acc=0.1948 vio=0.429 backlog=16011 wall=32s
+[snr 136/162] causal seed=0 snr_db=10.0 users=10 slots=400
+    reward=6.8714 delay=1.699 energy=0.664 acc=0.2275 vio=0.222 backlog=19344 wall=17s
+[snr 137/162] causal seed=1 snr_db=10.0 users=10 slots=400
+    reward=6.6122 delay=2.052 energy=0.519 acc=0.2289 vio=0.259 backlog=24746 wall=17s
+[snr 138/162] causal seed=2 snr_db=10.0 users=10 slots=400
+    reward=6.7852 delay=1.915 energy=0.579 acc=0.2320 vio=0.260 backlog=22427 wall=17s
+[snr 139/162] ucb seed=0 snr_db=10.0 users=10 slots=400
+    reward=5.6159 delay=2.673 energy=0.729 acc=0.2236 vio=0.416 backlog=38001 wall=21s
+[snr 140/162] ucb seed=1 snr_db=10.0 users=10 slots=400
+    reward=5.1738 delay=5.170 energy=0.589 acc=0.2117 vio=0.414 backlog=75851 wall=20s
+[snr 141/162] ucb seed=2 snr_db=10.0 users=10 slots=400
+    reward=5.6404 delay=2.668 energy=0.539 acc=0.2016 vio=0.366 backlog=31495 wall=18s
+[snr 142/162] dts seed=0 snr_db=10.0 users=10 slots=400
+    reward=4.5199 delay=3.669 energy=0.726 acc=0.2159 vio=0.551 backlog=36230 wall=18s
+[snr 143/162] dts seed=1 snr_db=10.0 users=10 slots=400
+    reward=5.3157 delay=6.154 energy=0.573 acc=0.2276 vio=0.443 backlog=95035 wall=18s
+[snr 144/162] dts seed=2 snr_db=10.0 users=10 slots=400
+    reward=4.8010 delay=6.050 energy=0.642 acc=0.2211 vio=0.538 backlog=74435 wall=17s
+[snr 145/162] gdo seed=0 snr_db=10.0 users=10 slots=400
+    reward=3.2258 delay=32.320 energy=0.717 acc=0.2568 vio=0.842 backlog=546049 wall=8s
+[snr 146/162] gdo seed=1 snr_db=10.0 users=10 slots=400
+    reward=3.4674 delay=29.812 energy=0.543 acc=0.2590 vio=0.840 backlog=512133 wall=8s
+[snr 147/162] gdo seed=2 snr_db=10.0 users=10 slots=400
+    reward=3.1858 delay=33.004 energy=0.609 acc=0.2571 vio=0.851 backlog=570406 wall=8s
+[snr 148/162] rss seed=0 snr_db=10.0 users=10 slots=400
+    reward=2.6507 delay=129.306 energy=0.802 acc=0.2129 vio=0.897 backlog=1060431 wall=8s
+[snr 149/162] rss seed=1 snr_db=10.0 users=10 slots=400
+    reward=3.8342 delay=96.467 energy=0.634 acc=0.2140 vio=0.597 backlog=1040783 wall=10s
+[snr 150/162] rss seed=2 snr_db=10.0 users=10 slots=400
+    reward=3.6926 delay=31.971 energy=0.901 acc=0.2134 vio=0.680 backlog=557367 wall=14s
+[snr 151/162] dqn seed=0 snr_db=10.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=6.3877 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.7367 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=5.3238 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=2.3776 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=4.4132 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=4.0102 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=3.8046 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=4.6095 eps=0.169 K=2000
+    reward=3.5824 delay=11.721 energy=0.801 acc=0.2262 vio=0.751 backlog=149756 wall=25s
+[snr 152/162] dqn seed=1 snr_db=10.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.8460 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=3.6572 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=1.9844 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=4.9301 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=3.2813 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=5.1888 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=4.8276 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=4.5904 eps=0.169 K=2000
+    reward=4.0269 delay=6.202 energy=0.658 acc=0.2242 vio=0.660 backlog=70444 wall=25s
+[snr 153/162] dqn seed=2 snr_db=10.0 users=10 slots=400
+  [dqn-joint] slot=0 team_r=5.3894 eps=1.000 K=2000
+  [dqn-joint] slot=50 team_r=2.5106 eps=0.881 K=2000
+  [dqn-joint] slot=100 team_r=4.4436 eps=0.762 K=2000
+  [dqn-joint] slot=150 team_r=3.8632 eps=0.644 K=2000
+  [dqn-joint] slot=200 team_r=2.6307 eps=0.525 K=2000
+  [dqn-joint] slot=250 team_r=5.1792 eps=0.406 K=2000
+  [dqn-joint] slot=300 team_r=4.4732 eps=0.288 K=2000
+  [dqn-joint] slot=350 team_r=3.7827 eps=0.169 K=2000
+    reward=3.7742 delay=10.250 energy=0.752 acc=0.2251 vio=0.733 backlog=127245 wall=33s
+[snr 154/162] ppo seed=0 snr_db=10.0 users=10 slots=400
+  [ppo train] slot=0 team_r=3.9393
+  [ppo train] slot=50 team_r=3.2201
+  [ppo train] slot=100 team_r=3.0607
+  [ppo train] slot=150 team_r=5.0442
+  [ppo train] slot=200 team_r=2.6515
+  [ppo train] slot=250 team_r=3.3331
+  [ppo train] slot=300 team_r=2.5658
+  [ppo train] slot=350 team_r=2.1676
+    reward=3.2966 delay=8.871 energy=0.810 acc=0.2246 vio=0.790 backlog=98153 wall=13s
+[snr 155/162] ppo seed=1 snr_db=10.0 users=10 slots=400
+  [ppo train] slot=0 team_r=5.1033
+  [ppo train] slot=50 team_r=4.6550
+  [ppo train] slot=100 team_r=3.8662
+  [ppo train] slot=150 team_r=2.1326
+  [ppo train] slot=200 team_r=3.7914
+  [ppo train] slot=250 team_r=5.5476
+  [ppo train] slot=300 team_r=3.6029
+  [ppo train] slot=350 team_r=3.1328
+    reward=3.3918 delay=8.883 energy=0.681 acc=0.2272 vio=0.769 backlog=96025 wall=10s
+[snr 156/162] ppo seed=2 snr_db=10.0 users=10 slots=400
+  [ppo train] slot=0 team_r=6.1681
+  [ppo train] slot=50 team_r=2.4998
+  [ppo train] slot=100 team_r=4.4067
+  [ppo train] slot=150 team_r=3.5196
+  [ppo train] slot=200 team_r=2.3219
+  [ppo train] slot=250 team_r=2.6445
+  [ppo train] slot=300 team_r=2.1062
+  [ppo train] slot=350 team_r=3.6011
+    reward=2.8692 delay=14.942 energy=0.788 acc=0.2268 vio=0.843 backlog=185900 wall=10s
+[snr 157/162] mappo seed=0 snr_db=10.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.6904
+  [mappo train] slot=50 team_r=4.0863
+  [mappo train] slot=100 team_r=2.1724
+  [mappo train] slot=150 team_r=2.8111
+  [mappo train] slot=200 team_r=3.3264
+  [mappo train] slot=250 team_r=5.3262
+  [mappo train] slot=300 team_r=4.8967
+  [mappo train] slot=350 team_r=4.4110
+    reward=3.0933 delay=12.358 energy=0.824 acc=0.2279 vio=0.813 backlog=146211 wall=9s
+[snr 158/162] mappo seed=1 snr_db=10.0 users=10 slots=400
+  [mappo train] slot=0 team_r=6.7877
+  [mappo train] slot=50 team_r=3.6604
+  [mappo train] slot=100 team_r=3.8607
+  [mappo train] slot=150 team_r=2.8931
+  [mappo train] slot=200 team_r=4.2512
+  [mappo train] slot=250 team_r=4.3081
+  [mappo train] slot=300 team_r=2.7713
+  [mappo train] slot=350 team_r=4.6431
+    reward=3.6319 delay=7.140 energy=0.674 acc=0.2250 vio=0.738 backlog=76624 wall=9s
+[snr 159/162] mappo seed=2 snr_db=10.0 users=10 slots=400
+  [mappo train] slot=0 team_r=5.7718
+  [mappo train] slot=50 team_r=3.9911
+  [mappo train] slot=100 team_r=3.4173
+  [mappo train] slot=150 team_r=6.9391
+  [mappo train] slot=200 team_r=4.0770
+  [mappo train] slot=250 team_r=5.9328
+  [mappo train] slot=300 team_r=4.0779
+  [mappo train] slot=350 team_r=2.6955
+    reward=3.4252 delay=6.460 energy=0.757 acc=0.2231 vio=0.768 backlog=64369 wall=9s
+[snr 160/162] cto seed=0 snr_db=10.0 users=10 slots=400
+    reward=5.4183 delay=2.002 energy=0.724 acc=0.1964 vio=0.363 backlog=16349 wall=26s
+[snr 161/162] cto seed=1 snr_db=10.0 users=10 slots=400
+    reward=5.8215 delay=1.909 energy=0.575 acc=0.1980 vio=0.280 backlog=16145 wall=26s
+[snr 162/162] cto seed=2 snr_db=10.0 users=10 slots=400
+    reward=5.5793 delay=1.905 energy=0.673 acc=0.1968 vio=0.376 backlog=15961 wall=29s
+[snr] done in 54.0 min → figures/sweeps/snr/

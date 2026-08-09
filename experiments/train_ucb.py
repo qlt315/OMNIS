@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Train / evaluate the ucb scheme. Writes/merges CSVs + series under --out (no plots; use plot_results.py)."""
+"""Train / evaluate the ucb scheme.
+
+Writes CSVs + series + ``plot_data.mat`` under ``--out`` (default figures/train).
+PyCharm: Run with empty parameters. Optional: ``--plot`` to also emit PNGs.
+"""
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+_EXP = os.path.dirname(os.path.abspath(__file__))
+if _EXP not in sys.path:
+    sys.path.insert(0, _EXP)
+
+from repo_util import ensure_repo_root
+
+ensure_repo_root()
+
 from train_lib import cli_main
 
 if __name__ == "__main__":
