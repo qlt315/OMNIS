@@ -1,0 +1,6 @@
+plotting: ['causal', 'ucb', 'dts', 'gdo', 'rss', 'dqn', 'ppo', 'mappo', 'cto']
+comm model: users=10 RTT=1ms R_ctrl=1e+06bps
+wrote plots -> figures/train/
+runtime stack -> figures/train/runtime.png
+mean bars -> 6 files (*_bar.png)
+wrote MATLAB data -> figures/train/plot_data.mat

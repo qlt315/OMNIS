@@ -16,9 +16,9 @@ class ContextualBayesianOptimization():
         # Private RNG for candidate subsampling: keeps the global RNG stream
         # (tasks, noise realizations) identical to the exhaustive-search version
         self._candidate_rng = np.random.RandomState(2024)
-        # gp_burn_in <= 0: always L-BFGS ARD every fit (full joint CBO cost).
+        # gp_burn_in <= 0: always L-BFGS ARD every fit.
         # gp_burn_in > 0: optimize for the first N observations, then freeze.
-        # Per-user Causal/UCB keep burn-in freeze; CTO passes 0 for full cost.
+        # Per-user CBO and joint CTO both use a positive burn-in by default.
         self.gp_burn_in = int(gp_burn_in)
         self._gp_hypers_frozen = False
         
@@ -43,8 +43,8 @@ class ContextualBayesianOptimization():
             # warnings.warn('Kernel hyperparameters will be computed during the optimization.')
             optimizer = 'fmin_l_bfgs_b'
 
-        # FastGP: BLAS predict for light per-user CBO (Causal/UCB). CTO sets
-        # use_fast_gp=False so joint K-candidate scoring keeps centralized cost.
+        # FastGP: BLAS predict for CBO (per-user and joint CTO). CTO still
+        # scores K joint candidates centrally — cost scales with K, not U∥.
         gp_cls = FastGaussianProcessRegressor if use_fast_gp else GaussianProcessRegressor
         self._gp = gp_cls(
             kernel=kernel,

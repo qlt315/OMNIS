@@ -76,15 +76,26 @@ class BranchingActor(nn.Module):
         ])
 
     def logits(self, state):
+        """Return [U, A] for a single state or [B, U, A] for a batch.
+
+        Important: unbatched state must be unsqueezed before the trunk. Otherwise
+        ``stack(..., dim=1)`` on per-head ``[A]`` tensors yields ``[A, U]``, which
+        breaks when ``U > A`` (e.g. 20 users, 18 local actions).
+        """
+        single = state.dim() == 1
+        if single:
+            state = state.unsqueeze(0)
         h = self.trunk(state)
-        return torch.stack([head(h) for head in self.heads], dim=1)  # [B, U, A]
+        out = torch.stack([head(h) for head in self.heads], dim=1)  # [B, U, A]
+        return out.squeeze(0) if single else out
 
     def dist(self, state):
-        # Independent categoricals per agent; returns list of Categorical or batched
-        logits = self.logits(state)  # [B, U, A] or [U, A] if no batch
+        # Independent categoricals per agent; returns list of Categorical
+        logits = self.logits(state)  # [U, A] or [B, U, A]
         if logits.dim() == 2:
+            # [U, A]
             return [Categorical(logits=logits[i]) for i in range(self.n_agents)]
-        # batched: flatten agents into last dims via per-agent Categorical on [B, A]
+        # batched: per-agent Categorical on [B, A]
         return [Categorical(logits=logits[:, i, :]) for i in range(self.n_agents)]
 
     def sample(self, state, deterministic=False):

@@ -6,6 +6,11 @@ Plotting is separate: ``experiments/plot_results.py``.
 Reported **reward** = mean Lyapunov objective V·utility + drift.
 Also logs accuracy, delay, energy, backlog, violation rate, and
 per-slot wall time = decision + BCD + update.
+
+**distributed decision_ms = parallel (max-agent)**: for factorized /
+multi-agent algos (causal, ucb, dts, mappo, …) selection (+ local update)
+is timed per MD and aggregated as max (or batched NN forward for MAPPO).
+Centralized joint methods (cto, dqn, ppo) keep true sequential/joint wall.
 """
 
 from __future__ import annotations
@@ -58,6 +63,13 @@ OPTIONAL_SERIES_KEYS = (
 # MAB family (optional pred-error logging default).
 MAB_BASE_ALGOS = ("causal", "ucb", "dts", "cto")
 
+# Factorized / multi-agent: decision_ms uses parallel (max-agent) timing.
+DISTRIBUTED_DECISION_ALGOS = frozenset({
+    "causal", "ucb", "dts", "mappo", "rss", "gdo",
+})
+# Centralized joint controllers: true sequential/joint decision wall.
+CENTRALIZED_DECISION_ALGOS = frozenset({"cto", "dqn", "ppo"})
+
 SCALAR_FIELDS = [
     "name", "seed", "reward", "acc", "delay", "energy", "backlog", "vio",
     "ms_per_slot", "decision_ms", "comm_ms", "bcd_ms", "update_ms",
@@ -103,11 +115,18 @@ def reward_series(agent):
 
 
 def algo_ms_per_slot(agent, slots, name=None):
-    """Per-slot times [ms]: decision (+update), BCD, and modeled communication."""
+    """Per-slot times [ms]: decision (+update), BCD, and modeled communication.
+
+    For ``DISTRIBUTED_DECISION_ALGOS``, ``agent.decision_time`` /
+    ``update_time`` already store parallel (max-agent) seconds — not the
+    sum of sequential per-user simulator loops. Centralized algos keep
+    joint/sequential wall.
+    """
     dec = float(getattr(agent, "decision_time", 0.0))
     bcd = float(getattr(agent, "bcd_time", 0.0))
     upd = float(getattr(agent, "update_time", 0.0))
     # "decision" bar = agent compute (selection + learning update)
+    # distributed decision_ms = parallel (max-agent)
     decision_ms = 1000.0 * (dec + upd) / max(slots, 1)
     bcd_ms = 1000.0 * bcd / max(slots, 1)
     local_dim = int(getattr(agent, "local_obs_dim", 4 + agent.top_l_cells + 2))

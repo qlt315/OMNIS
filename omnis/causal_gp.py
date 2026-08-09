@@ -77,7 +77,10 @@ class ResidualGP:
         self._y_res[n] = res
         self._n = n + 1
         self._alpha_dirty = True
-        # Batch trim: rebuild only after growing ~20% past the cap (not every add).
+
+    def maybe_trim(self):
+        """Drop oldest obs if past ``max_obs`` (call once per slot batch)."""
+        # Rebuild only after growing ~20% past the cap (not every add).
         if self.max_obs > 0 and self._n > int(self.max_obs * 1.2):
             self._rebuild_window(self.max_obs)
 
@@ -119,8 +122,14 @@ class ResidualGP:
 
     def predict(self, X):
         X = np.atleast_2d(np.asarray(X, dtype=float))
-        prior = np.array([self.prior_mean_fn(x) for x in X])
+        # Fast path: uninformative prior mean is identically 0 (Causal Acc GP).
         if self._n == 0:
+            # Still evaluate one prior sample so custom priors stay correct.
+            p0 = float(self.prior_mean_fn(X[0]))
+            if p0 == 0.0 and len(X) > 1:
+                prior = np.zeros(len(X))
+            else:
+                prior = np.array([self.prior_mean_fn(x) for x in X])
             return prior, np.full(len(X), self.empty_prior_std)
 
         self._sync_alpha()
@@ -130,6 +139,11 @@ class ResidualGP:
         v = solve_triangular(self._L[:n, :n], k_star, lower=True)
         var = self.signal_var - np.sum(v * v, axis=0)
         std = np.sqrt(np.maximum(var, 1e-12))
+        p0 = float(self.prior_mean_fn(X[0]))
+        if p0 == 0.0:
+            # Assume constant-zero prior (Acc-table prior banned).
+            return mean_res, std
+        prior = np.array([self.prior_mean_fn(x) for x in X])
         return prior + mean_res, std
 
     def sample(self, X):

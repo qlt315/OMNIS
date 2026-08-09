@@ -1,0 +1,34 @@
+=== dts seed=0 ===
+    reward=5.3706 acc=0.2272 delay=3.090 energy=0.712 backlog=31445 vio=0.456 ms/slot=32.07 (dec=3.39 comm=4.24 bcd=24.44) wall=13s
+=== dts seed=1 ===
+    reward=6.0041 acc=0.2227 delay=4.933 energy=0.530 backlog=85494 vio=0.347 ms/slot=28.90 (dec=2.61 comm=4.24 bcd=22.05) wall=12s
+=== dts seed=2 ===
+    reward=6.1200 acc=0.2075 delay=2.092 energy=0.598 backlog=23297 vio=0.313 ms/slot=27.90 (dec=2.54 comm=4.24 bcd=21.12) wall=12s
+=== dts seed=3 ===
+    reward=5.8085 acc=0.2137 delay=2.212 energy=0.599 backlog=23908 vio=0.381 ms/slot=28.30 (dec=2.65 comm=4.24 bcd=21.41) wall=12s
+=== dts seed=4 ===
+    reward=3.8718 acc=0.2206 delay=3.416 energy=1.199 backlog=35051 vio=0.667 ms/slot=26.40 (dec=2.75 comm=4.24 bcd=19.41) wall=11s
+=== cto seed=0 ===
+    reward=5.6330 acc=0.1976 delay=1.801 energy=0.712 backlog=14507 vio=0.316 ms/slot=60.40 (dec=31.23 comm=6.48 bcd=22.69) wall=16s
+=== cto seed=1 ===
+    reward=6.0571 acc=0.2003 delay=1.782 energy=0.571 backlog=15712 vio=0.246 ms/slot=61.51 (dec=31.04 comm=6.48 bcd=23.99) wall=17s
+=== cto seed=2 ===
+    reward=5.7341 acc=0.1989 delay=1.811 energy=0.659 backlog=15432 vio=0.368 ms/slot=64.22 (dec=32.37 comm=6.48 bcd=25.36) wall=17s
+=== cto seed=3 ===
+    reward=5.6101 acc=0.1973 delay=1.922 energy=0.639 backlog=17138 vio=0.350 ms/slot=70.86 (dec=36.76 comm=6.48 bcd=27.62) wall=19s
+=== cto seed=4 ===
+    reward=4.4779 acc=0.1937 delay=1.571 energy=1.463 backlog=13911 vio=0.508 ms/slot=63.83 (dec=32.70 comm=6.48 bcd=24.64) wall=17s
+
+=== SUMMARY (mean ± std) ===
+name         reward      acc    delay   energy    backlog      vio    ms/slot
+causal        6.416±0.85    0.230±0.01    2.026±0.24    0.715±0.31  24565.880±2333.12    0.314±0.13     30.692±0.84
+ucb           5.703±0.91    0.218±0.01    2.778±0.76    0.708±0.28  34531.980±5342.85    0.352±0.14     54.644±33.28
+dts           5.435±0.92    0.218±0.01    3.149±1.15    0.728±0.27  39839.127±26005.65    0.433±0.14     28.715±2.09
+gdo           3.638±0.64    0.257±0.00   17.955±3.25    0.710±0.25 313073.800±61385.92    0.766±0.08     25.877±1.40
+rss           3.222±0.56    0.215±0.01   49.629±31.54    0.908±0.33 502758.800±244971.08    0.792±0.16     24.634±3.08
+dqn           3.601±1.04    0.226±0.00    6.391±0.87    0.920±0.42  73594.420±13699.37    0.707±0.08     49.753±0.71
+ppo           3.012±1.01    0.227±0.00    8.522±2.13    0.938±0.42  96797.120±31001.40    0.780±0.06     29.043±0.26
+mappo         3.104±1.14    0.226±0.00    7.874±2.38    0.936±0.44  88478.040±31991.93    0.769±0.08     25.606±0.30
+cto           5.502±0.60    0.198±0.00    1.777±0.13    0.809±0.37  15339.909±1236.29    0.358±0.10     64.162±4.07
+wrote/merged CSVs + series -> figures/train/
+plot with: PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train

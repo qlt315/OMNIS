@@ -6,6 +6,8 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 from sys_data.config import Config
 from omnis import cbo
+from omnis.bcd_loop import run_bcd_slot
+import omnis.bcd_loop as bcd_loop
 from sklearn.gaussian_process.kernels import WhiteKernel, Matern
 seed = 42
 np.random.seed(seed)
@@ -70,6 +72,7 @@ class CTO:
         self.action_freq = config.action_freq
         self.decision_time = 0.0
         self.bcd_time = 0.0
+        self.bcd_iters = 0.0  # running avg BCD iterations / slot
         self.update_time = 0.0
 
         # BCD (Block Coordinate Descent) algorithm parameters
@@ -103,13 +106,12 @@ class CTO:
         self.beta_function = config.beta_function
         self.beta_const_val = config.beta_const_val
         # Joint space is (n_models * L)^U — never materialize; sample K on the fly.
-        # GP hypers: cto_gp_burn_in<=0 keeps full L-BFGS ARD every slot (joint CBO
-        # cost); positive N freezes after burn-in. Stock sklearn predict (not FastGP)
-        # so scoring K joint candidates retains centralized wall time. No sleep().
+        # Defaults via config: K≈12288, FastGP predict, ARD burn-in then freeze.
+        # Wall: ~1.3–1.6× joint DQN, ≫ distributed Causal/UCB. No sleep().
         self.max_candidates = getattr(config, 'cto_max_candidates', None)
-        self.gp_burn_in = int(getattr(config, 'cto_gp_burn_in', 0))
-        self.gp_n_restarts = int(getattr(config, 'cto_gp_n_restarts', 5))
-        self.use_fast_gp = bool(getattr(config, 'cto_use_fast_gp', False))
+        self.gp_burn_in = int(getattr(config, 'cto_gp_burn_in', 30))
+        self.gp_n_restarts = int(getattr(config, 'cto_gp_n_restarts', 2))
+        self.use_fast_gp = bool(getattr(config, 'cto_use_fast_gp', True))
         self.optimizer = cbo.ContextualBayesianOptimization(
             all_actions_dict=self.action, contexts=self.contexts, kernel=self.kernel,
             init_random=int(getattr(config, 'gp_init_random', 15)),
@@ -130,6 +132,7 @@ class CTO:
         self.energy_queue = {user: 0.0 for user in self.users}
         self._last_bandwidth = {}
         self._last_gpu = {}
+        self._last_mcs = {}
         # MAB ablations + optional reward prediction-error logging
         self.mab_no_update = bool(getattr(config, 'mab_no_update', False))
         self.mab_freeze_after = int(getattr(config, 'mab_freeze_after', 0) or 0)
@@ -400,13 +403,10 @@ class CTO:
 
     def allocate_bandwidth_all_cells(self, task_dic, model_selection_dic, trans_rate_dic,
                                      phy_choice_dic, cell_dic, snr_dic=None):
-        """Per-cell bandwidth allocation; each cell has a full bandwidth pool."""
-        bandwidth_allocation_dic = {}
-        for _cell, users in self._users_by_cell(cell_dic).items():
-            bandwidth_allocation_dic.update(
-                self.allocate_bandwidth(task_dic, model_selection_dic, trans_rate_dic,
-                                        phy_choice_dic, users=users, snr_dic=snr_dic))
-        return bandwidth_allocation_dic
+        """Per-cell bandwidth allocation; cells independent after association."""
+        return bcd_loop.allocate_bandwidth_all_cells(
+            self, task_dic, model_selection_dic, trans_rate_dic, phy_choice_dic,
+            cell_dic, snr_dic=snr_dic)
 
 
     def gpu_resource_allocation(self, task_dic, model_selection_dic, users=None):
@@ -446,12 +446,9 @@ class CTO:
         return gpu_allocation_dict
 
     def gpu_resource_allocation_all_cells(self, task_dic, model_selection_dic, cell_dic):
-        """Per-cell GPU allocation; each cell has a full ES GPU pool."""
-        gpu_allocation_dic = {}
-        for _cell, users in self._users_by_cell(cell_dic).items():
-            gpu_allocation_dic.update(
-                self.gpu_resource_allocation(task_dic, model_selection_dic, users=users))
-        return gpu_allocation_dic
+        """Per-cell GPU allocation; cells independent after association."""
+        return bcd_loop.gpu_resource_allocation_all_cells(
+            self, task_dic, model_selection_dic, cell_dic)
 
     def mcs_selection(self, task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                       local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic, users=None):
@@ -505,13 +502,10 @@ class CTO:
                                 local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic,
                                 cell_dic):
         """Per-cell MCS selection using each user's associated-cell SINR."""
-        mcs_dic = {}
-        for _cell, users in self._users_by_cell(cell_dic).items():
-            mcs_dic.update(self.mcs_selection(
-                task_dic, snr_dic, trans_rate_dic, model_selection_dic,
-                local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic,
-                users=users))
-        return mcs_dic
+        return bcd_loop.mcs_selection_all_cells(
+            self, task_dic, snr_dic, trans_rate_dic, model_selection_dic,
+            local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic,
+            cell_dic)
 
     def get_accuracy(self, snr_dic, mcs_dic, model_selection_dic):
         """Environment Acc realization from the PHY Acc table (not for decisions)."""
@@ -791,60 +785,14 @@ class CTO:
             # Calculate the local processing overhead
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
 
-            # The ES performs BCD-based optimization
-            t_bcd = time.time()
-            bcd_obj_last = float('inf')  # Previous objective function value (used for convergence check)
-            bcd_iter = 1  # Iteration counter
-
-            while True:
-                # Choose initialization or update step based on the current iteration
-                if bcd_iter == 1:
-                    init_mcs_dic = {user: random.choice(self.available_mcs) for user in self.users}
-                    bandwidth_allocation_dic = self.allocate_bandwidth_all_cells(
-                        task_dic, model_selection_dic, trans_rate_dic, init_mcs_dic, cell_dic,
-                        snr_dic=snr_dic)
-                else:
-                    bandwidth_allocation_dic = self.allocate_bandwidth_all_cells(
-                        task_dic, model_selection_dic, trans_rate_dic, phy_choice_dic, cell_dic,
-                        snr_dic=snr_dic)
-
-                gpu_allocation_dic = self.gpu_resource_allocation_all_cells(
-                    task_dic, model_selection_dic, cell_dic)
-
-                phy_choice_dic = self.mcs_selection_all_cells(
-                    task_dic, snr_dic, trans_rate_dic, model_selection_dic,
-                    local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic, cell_dic)
-
-                # Get the transmission overhead for each user
-                trans_overhead_dic = self.get_trans_overhead(trans_rate_dic, model_selection_dic,
-                                                             bandwidth_allocation_dic, phy_choice_dic,
-                                                             snr_dic=snr_dic)
-
-                # Get the edge processing overhead for each user
-                edge_overhead_dic = self.get_edge_overhead(model_selection_dic, gpu_allocation_dic)
-
-                # Calculate the total overhead for each user (queue wait + local + transmission + edge)
-                queue_wait_dic = {user: self.backlog[user] / (bandwidth_allocation_dic[user] * self._goodput_se(user, model_selection_dic[user]["model"], phy_choice_dic[user], snr_dic))
-                                  for user in self.users}
-                total_overhead_dic = self.get_total_overhead(local_overhead_dic, trans_overhead_dic,
-                                                             edge_overhead_dic, queue_wait_dic)
-
-                # BCD objective: QoS penalties only (no Acc-table term; learns reward via GP)
-                bcd_delay_penalty = sum(
-                    erf(total_overhead_dic[user]['delay'] - task_dic[user]['delay_constraint']) for user in
-                    self.users)
-
-                bcd_energy_penalty = sum(
-                    erf(total_overhead_dic[user]['energy'] - task_dic[user]['energy_constraint']) for user in
-                    self.users)
-
-                bcd_obj = bcd_delay_penalty + bcd_energy_penalty
-                if abs(bcd_obj - bcd_obj_last) <= self.bcd_flag or bcd_iter >= self.bcd_max_iter:
-                    break
-
-                bcd_iter += 1
-                bcd_obj_last = bcd_obj
-            self.bcd_time += time.time() - t_bcd
+            # ES BCD (shared optimized loop: warm-start MCS, GPU once/slot, per-cell pool)
+            bcd_out = run_bcd_slot(
+                self, task_dic, model_selection_dic, trans_rate_dic,
+                local_overhead_dic, snr_dic, cell_dic)
+            bandwidth_allocation_dic = bcd_out["bandwidth"]
+            gpu_allocation_dic = bcd_out["gpu"]
+            phy_choice_dic = bcd_out["phy_choice"]
+            total_overhead_dic = bcd_out["total_overhead"]
 
             # Record the realized PHY diagnostics
             for user in self.users:

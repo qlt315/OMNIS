@@ -35,6 +35,8 @@ class McsTable:
                 self.se[idx] = float(r["spectral_efficiency"])
         self.num_mcs = len(self.se)
         self.mcs_indices = sorted(self.se.keys())
+        self._se_arr = np.array(
+            [self.se[m] for m in self.mcs_indices], dtype=float)
 
         self.acc_clean = {}
         with open(os.path.join(table_dir, "acc_clean.csv")) as f:
@@ -42,6 +44,12 @@ class McsTable:
                 self.acc_clean[r["model"]] = float(r["accuracy"])
 
         self._bler = self._load_curves("bler_table.csv", "bler")
+        # Decision-time caches: identical (model, mcs, snr) lookups dominate
+        # U×M×L×|MCS| arm scoring; table is immutable so cache is always valid.
+        self._bler_cache = {}
+        self._goodput_cache = {}
+        self._all_mcs_cache = {}  # (model, snr_q) -> (bler[M], goodput[M])
+        self._build_dense_grids()
 
     def _load_curves(self, filename, value_col):
         curves = {}
@@ -60,13 +68,88 @@ class McsTable:
                 )
         return curves
 
+    def _build_dense_grids(self):
+        """Pre-sample BLER on the native 1 dB grid for O(1) nearest-bin lookup."""
+        self._model_ids = {m: i for i, m in enumerate(sorted(self._bler.keys()))}
+        # Infer SNR grid from first curve.
+        any_model = next(iter(self._bler))
+        any_mcs = next(iter(self._bler[any_model]))
+        snr_grid = self._bler[any_model][any_mcs][0]
+        self._snr_min = float(snr_grid[0])
+        self._snr_max = float(snr_grid[-1])
+        self._snr_step = float(snr_grid[1] - snr_grid[0]) if len(snr_grid) > 1 else 1.0
+        n_snr = len(snr_grid)
+        n_model = len(self._model_ids)
+        n_mcs = len(self.mcs_indices)
+        self._bler_grid = np.zeros((n_model, n_mcs, n_snr), dtype=float)
+        for model, mi in self._model_ids.items():
+            for j, mcs in enumerate(self.mcs_indices):
+                snr, val = self._bler[model][mcs]
+                self._bler_grid[mi, j, :] = np.clip(
+                    np.interp(snr_grid, snr, val), 0.0, 1.0)
+        self._goodput_grid = self._bler_grid.copy()
+        for j, mcs in enumerate(self.mcs_indices):
+            self._goodput_grid[:, j, :] = self.se[mcs] * (1.0 - self._bler_grid[:, j, :])
+
+    def _snr_lerp_weights(self, snr_db):
+        """Return (i0, i1, w) for linear interp on the dense SNR grid (clamped)."""
+        n = self._bler_grid.shape[2]
+        x = (float(snr_db) - self._snr_min) / self._snr_step
+        if x <= 0.0:
+            return 0, 0, 0.0
+        if x >= n - 1:
+            return n - 1, n - 1, 0.0
+        i0 = int(np.floor(x))
+        i1 = i0 + 1
+        return i0, i1, float(x - i0)
+
+    def _grid_lookup(self, grid, model, mcs_idx, snr_db):
+        mi = self._model_ids[model]
+        mcs_i = int(mcs_idx)
+        i0, i1, w = self._snr_lerp_weights(snr_db)
+        v0 = grid[mi, mcs_i, i0]
+        if w == 0.0 or i0 == i1:
+            return float(v0)
+        return float((1.0 - w) * v0 + w * grid[mi, mcs_i, i1])
+
     def _interp(self, curves, model, mcs_idx, snr_db):
         snr, val = curves[model][mcs_idx]
         return float(np.interp(snr_db, snr, val))  # clamps outside the grid
 
     def bler(self, model, mcs_idx, snr_db):
         """Interpolated transport-block error rate."""
-        return float(np.clip(self._interp(self._bler, model, mcs_idx, snr_db), 0.0, 1.0))
+        key = (model, int(mcs_idx), float(snr_db))
+        hit = self._bler_cache.get(key)
+        if hit is not None:
+            return hit
+        mcs_i = int(mcs_idx)
+        if (model in self._model_ids and 0 <= mcs_i < len(self.mcs_indices)
+                and self.mcs_indices[mcs_i] == mcs_i):
+            val = self._grid_lookup(self._bler_grid, model, mcs_i, snr_db)
+        else:
+            val = float(np.clip(
+                self._interp(self._bler, model, mcs_idx, snr_db), 0.0, 1.0))
+        self._bler_cache[key] = val
+        return val
+
+    def bler_goodput_all_mcs(self, model, snr_db):
+        """Vector BLER and goodput-SE for every MCS at ``snr_db`` (decision hot path)."""
+        snr_q = round(float(snr_db), 3)
+        key = (model, snr_q)
+        hit = self._all_mcs_cache.get(key)
+        if hit is not None:
+            return hit
+        mi = self._model_ids[model]
+        i0, i1, w = self._snr_lerp_weights(snr_db)
+        if w == 0.0 or i0 == i1:
+            bler = self._bler_grid[mi, :, i0].copy()
+            goodput = self._goodput_grid[mi, :, i0].copy()
+        else:
+            bler = (1.0 - w) * self._bler_grid[mi, :, i0] + w * self._bler_grid[mi, :, i1]
+            goodput = ((1.0 - w) * self._goodput_grid[mi, :, i0]
+                       + w * self._goodput_grid[mi, :, i1])
+        self._all_mcs_cache[key] = (bler, goodput)
+        return bler, goodput
 
     def accuracy(self, model, mcs_idx, snr_db):
         """BLER-gated expected task accuracy (COCO mAP).
@@ -80,7 +163,18 @@ class McsTable:
 
     def goodput_se(self, model, mcs_idx, snr_db):
         """Effective spectral efficiency after TB erasures [bit/s/Hz]."""
-        return self.se[mcs_idx] * (1.0 - self.bler(model, mcs_idx, snr_db))
+        key = (model, int(mcs_idx), float(snr_db))
+        hit = self._goodput_cache.get(key)
+        if hit is not None:
+            return hit
+        mcs_i = int(mcs_idx)
+        if (model in self._model_ids and 0 <= mcs_i < len(self.mcs_indices)
+                and self.mcs_indices[mcs_i] == mcs_i):
+            val = self._grid_lookup(self._goodput_grid, model, mcs_i, snr_db)
+        else:
+            val = self.se[mcs_idx] * (1.0 - self.bler(model, mcs_idx, snr_db))
+        self._goodput_cache[key] = val
+        return val
 
     def best_mcs_by_acc(self, model, snr_db):
         """MCS with the highest BLER-gated accuracy (ties -> higher raw SE)."""

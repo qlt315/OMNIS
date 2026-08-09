@@ -7,14 +7,13 @@ Hooks:
 
 from __future__ import annotations
 
-import random
 import time
 
 import numpy as np
-from scipy.special import erf
 
 from baselines.rss_main import RSS
 from baselines.rl_nets import RunningMeanStd
+from omnis.bcd_loop import run_bcd_slot
 
 
 class OnlineRLBaseline(RSS):
@@ -35,6 +34,7 @@ class OnlineRLBaseline(RSS):
         self.train_rewards = []
         self.decision_time = 0.0
         self.bcd_time = 0.0
+        self.bcd_iters = 0.0
         self.update_time = 0.0
         self.static_model_dic = {}
         self.static_cell_rank_dic = {}
@@ -98,6 +98,8 @@ class OnlineRLBaseline(RSS):
             snr_dic, trans_rate_dic, cand_cells_dic, sinr_db_all_dic = self.get_trans_rate(t)
             task_dic = self.generate_tasks(t)
 
+            # MAPPO: batched actor forward ≈ parallel MD cost (not U× sequential).
+            # DQN/PPO: joint/centralized wall (cannot factor across users).
             t_decision = time.time()
             model_selection_dic, cell_dic = self.select_actions(
                 cand_cells_dic, task_dic, sinr_db_all_dic, t)
@@ -111,58 +113,13 @@ class OnlineRLBaseline(RSS):
             }
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
 
-            t_bcd = time.time()
-            bcd_obj_last = float("inf")
-            bcd_iter = 1
-            phy_choice_dic = {}
-            bandwidth_allocation_dic = {}
-            gpu_allocation_dic = {}
-            while True:
-                if bcd_iter == 1:
-                    init_mcs_dic = {user: random.choice(self.available_mcs)
-                                    for user in self.users}
-                    bandwidth_allocation_dic = self.allocate_bandwidth_all_cells(
-                        task_dic, model_selection_dic, trans_rate_dic,
-                        init_mcs_dic, cell_dic, snr_dic=snr_dic)
-                else:
-                    bandwidth_allocation_dic = self.allocate_bandwidth_all_cells(
-                        task_dic, model_selection_dic, trans_rate_dic,
-                        phy_choice_dic, cell_dic, snr_dic=snr_dic)
-                gpu_allocation_dic = self.gpu_resource_allocation_all_cells(
-                    task_dic, model_selection_dic, cell_dic)
-                phy_choice_dic = self.mcs_selection_all_cells(
-                    task_dic, snr_dic, trans_rate_dic, model_selection_dic,
-                    local_overhead_dic, bandwidth_allocation_dic,
-                    gpu_allocation_dic, cell_dic)
-                trans_overhead_dic = self.get_trans_overhead(
-                    trans_rate_dic, model_selection_dic,
-                    bandwidth_allocation_dic, phy_choice_dic, snr_dic=snr_dic)
-                edge_overhead_dic = self.get_edge_overhead(
-                    model_selection_dic, gpu_allocation_dic)
-                queue_wait_dic = {
-                    user: self.backlog[user] / (
-                        bandwidth_allocation_dic[user]
-                        * self._goodput_se(
-                            user, model_selection_dic[user]["model"],
-                            phy_choice_dic[user], snr_dic))
-                    for user in self.users
-                }
-                total_overhead_dic = self.get_total_overhead(
-                    local_overhead_dic, trans_overhead_dic,
-                    edge_overhead_dic, queue_wait_dic)
-                # BCD: QoS only (Acc table is env-only, realized after loop)
-                bcd_delay_penalty = sum(
-                    erf(total_overhead_dic[u]["delay"] - task_dic[u]["delay_constraint"])
-                    for u in self.users)
-                bcd_energy_penalty = sum(
-                    erf(total_overhead_dic[u]["energy"] - task_dic[u]["energy_constraint"])
-                    for u in self.users)
-                bcd_obj = bcd_delay_penalty + bcd_energy_penalty
-                if abs(bcd_obj - bcd_obj_last) <= self.bcd_flag or bcd_iter >= self.bcd_max_iter:
-                    break
-                bcd_iter += 1
-                bcd_obj_last = bcd_obj
-            self.bcd_time += time.time() - t_bcd
+            bcd_out = run_bcd_slot(
+                self, task_dic, model_selection_dic, trans_rate_dic,
+                local_overhead_dic, snr_dic, cell_dic)
+            bandwidth_allocation_dic = bcd_out["bandwidth"]
+            gpu_allocation_dic = bcd_out["gpu"]
+            phy_choice_dic = bcd_out["phy_choice"]
+            total_overhead_dic = bcd_out["total_overhead"]
 
             for user in self.users:
                 self.instant_metrics[user]["mcs"].append(phy_choice_dic[user])

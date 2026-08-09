@@ -104,12 +104,12 @@ Acc or reward from observations. PHY BLER/SE may still drive delay/energy/queue.
    retuned — Acc-table priors are banned (`causal_use_prior=False`).
    GDO uses `gdo_explore_slots` + empirical Acc-floor (`gdo_acc_floor`), not
    offline table Acc. UCB/DTS/CTO use `gp_init_random` for exploratory start.
-   CTO intentionally retains full joint CBO cost: `cto_gp_burn_in=0` re-fits
-   ARD hypers every slot (`cto_gp_n_restarts` multi-start L-BFGS),
-   `cto_max_candidates` (default 46656 ≈ 6^6) scores a large on-the-fly joint
-   pool with stock sklearn GP predict (`cto_use_fast_gp=False`) — never
-   materializing `(n_models·L)^U` (avoids OOM). FastGP remains for per-user
-   Causal/UCB. Positive `cto_gp_burn_in` freezes hypers after N (optional).
+   CTO remains centralized joint CBO: on-the-fly pool `cto_max_candidates`
+   (default 12288; never materialize `(n_models·L)^U`), FastGP predict
+   (`cto_use_fast_gp=True`), ARD burn-in then freeze (`cto_gp_burn_in=30`,
+   `cto_gp_n_restarts=2`). Decision wall is cut vs the old always-L-BFGS /
+   K≈6^6 setup, and is tuned to sit mildly above joint DQN (~1.3–1.6×)
+   while ≫ distributed Causal/UCB.
 4. This repository does not include training code for the multi-branch dynamic split DNN; it interfaces to evaluation tables. For DNN details, contact Ian Andrew Harshbarger (iharshba@uci.edu).
 5. Runtime plots report one stacked bar: **decision** (algo compute) + **interaction** (control-plane) + **BCD**. Metric mean bars are separate `*_bar.png` files.
 

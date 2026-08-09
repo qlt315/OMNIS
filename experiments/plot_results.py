@@ -47,7 +47,8 @@ SCALAR_METRICS = (
 
 # Stacked runtime segments (decision = algo compute; interaction = control-plane)
 RUNTIME_STACK = ("decision_ms", "comm_ms", "bcd_ms")
-RUNTIME_STACK_LABELS = ("decision", "interaction", "BCD")
+# decision = parallel (max-agent) for distributed algos; joint wall for cto/dqn/ppo
+RUNTIME_STACK_LABELS = ("decision (∥)", "interaction", "BCD")
 RUNTIME_STACK_COLORS = ("#4c78a8", "#54a24b", "#f58518")
 
 
@@ -77,7 +78,7 @@ def bandplot(ax, series_list, color, label, sliding=None, lw=1.8, alpha=0.15):
 def _comm_defaults(user_num=None):
     """RTT / rate / user_num / local_obs_dim (match Config; no full PHY init)."""
     # Defaults aligned with sys_data.config.Config control-plane fields.
-    rtt_s, rate, users, top_l = 1e-3, 1e6, 8, 3
+    rtt_s, rate, users, top_l = 1e-3, 1e6, 10, 3
     try:
         # Prefer live Config attrs when available without constructing Config()
         # (Config.__init__ loads SINR traces). Fall back to parsing source.
@@ -92,9 +93,8 @@ def _comm_defaults(user_num=None):
         m = re.search(r"self\.comm_ctrl_rate_bps\s*=\s*([0-9.eE+-]+)", text)
         if m:
             rate = float(m.group(1))
-        m = re.search(r"self\.user_num\s*=\s*(\d+)", text)
-        if m:
-            users = int(m.group(1))
+        # Do not parse Config.user_num / ue_pool_size here (pool=25 ≠ train U).
+        # Prefer CLI --users; else default 10 (train_all default).
         m = re.search(r"self\.top_l_cells\s*=\s*(\d+)", text)
         if m:
             top_l = int(m.group(1))
@@ -134,32 +134,25 @@ def enrich_runtime_rows(rows, user_num=None):
         ms = float(r.get("ms_per_slot", 0.0) or 0.0)
         has_comm = "comm_ms" in r and r["comm_ms"] is not None
 
+        # Always recompute interaction from the control-plane model so protocol
+        # changes (rounds / payloads) apply without a full retrain. Decision /
+        # BCD stay as measured wall-clock from the CSV.
+        comm = comm_ms_per_slot(
+            name,
+            user_num=cfg["user_num"],
+            local_obs_dim=cfg["local_obs_dim"],
+            rtt_s=cfg["rtt_s"],
+            ctrl_rate_bps=cfg["ctrl_rate_bps"],
+        )
         if has_comm:
             # New format: decision_ms already folds update into compute time.
             decision_stack = dec
-            comm = {
-                "comm_ms": float(r["comm_ms"]),
-                "comm_uplink_B": float(r.get("comm_uplink_B", 0.0) or 0.0),
-                "comm_downlink_B": float(r.get("comm_downlink_B", 0.0) or 0.0),
-                "comm_rounds": float(r.get("comm_rounds", 1.0) or 1.0),
-            }
         else:
-            # Derive control-plane time for legacy CSVs.
-            comm = comm_ms_per_slot(
-                name,
-                user_num=cfg["user_num"],
-                local_obs_dim=cfg["local_obs_dim"],
-                rtt_s=cfg["rtt_s"],
-                ctrl_rate_bps=cfg["ctrl_rate_bps"],
-            )
             # Old: ms ≈ decision + bcd + update (decision excludes update).
             if _approx_eq(ms, dec + bcd + upd):
                 decision_stack = dec + upd
             else:
-                # Already folded, or update missing/zero.
                 decision_stack = dec
-            # Recompute total with modeled interaction.
-            ms = decision_stack + float(comm["comm_ms"]) + bcd
 
         r["decision_ms"] = float(decision_stack)
         r["bcd_ms"] = bcd
@@ -168,7 +161,7 @@ def enrich_runtime_rows(rows, user_num=None):
         r["comm_uplink_B"] = float(comm["comm_uplink_B"])
         r["comm_downlink_B"] = float(comm["comm_downlink_B"])
         r["comm_rounds"] = float(comm["comm_rounds"])
-        r["ms_per_slot"] = float(ms)
+        r["ms_per_slot"] = float(decision_stack + bcd + float(comm["comm_ms"]))
     return rows, cfg
 
 
@@ -408,7 +401,9 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS.get(n, n) for n in names], rotation=18, ha="right")
     ax.set_ylabel("Time per slot [ms]")
-    ax.set_title("Runtime per slot (decision + interaction + BCD)")
+    ax.set_title(
+        "Runtime per slot (decision∥ + interaction + BCD)\n"
+        "decision∥ = parallel max-agent for distributed algos")
     ax.legend(fontsize=9)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
