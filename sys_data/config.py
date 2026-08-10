@@ -11,7 +11,7 @@ class Config:
         self.seed = seed
         np.random.seed(self.seed)  # Set random seed for reproducibility
         # Overnight hard scenario (Phase 1): longer horizon so queues reach
-        # steady state under heavier load; train_all CLI can override.
+        # steady state under heavier load; convergence_all CLI can override.
         self.time_slot_num = 300  # Number of time slots
 
         # Model configuration: Different quantization methods and channels

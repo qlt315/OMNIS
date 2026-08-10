@@ -2,7 +2,7 @@
 
 GDO in ``gdo_main.py`` is the online empirical Acc-floor + SF-ESP greedy.
 This module keeps queue-aware argmax(V·u+drift) scoring for optional ablation
-— not imported by sweeps or train_all. Acc estimates use last realized Acc
+— not imported by sweeps or convergence_all. Acc estimates use last realized Acc
 per model (or 0.5 before any obs); never the Acc table at decision time.
 """
 

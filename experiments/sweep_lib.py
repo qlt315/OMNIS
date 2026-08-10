@@ -1,12 +1,12 @@
 """Shared parameter-sweep evaluation for OMNIS schemes.
 
 Honest eval: **re-runs online simulation** for every (algo, seed, setting).
-MAB / most DRL checkpoints are not persisted by ``train_all`` (only DQN has
+MAB / most DRL checkpoints are not persisted by ``convergence_all`` (only DQN has
 optional ``save_pretrained`` after an explicit ``pretrain()`` path, which
-``train_all`` does not call). Do not invent fake checkpoints.
+``convergence_all`` does not call). Do not invent fake checkpoints.
 
 Metrics (aligned with paper Sec. VI + journal queueing extension):
-  reward   — mean Lyapunov V·u + drift (same as ``train_lib.reward_series``)
+  reward   — mean Lyapunov V·u + drift (same as ``convergence_lib.reward_series``)
   delay    — mean latency [s]
   energy   — mean energy [J]
   acc      — mean inference accuracy
@@ -14,7 +14,10 @@ Metrics (aligned with paper Sec. VI + journal queueing extension):
              (not a separate accuracy-violation metric)
   backlog  — mean backlog [bits] (journal extension; not in conference paper)
 
-Outputs under ``figures/sweeps/<sweep_name>/``: PNGs + ``.mat`` + CSV.
+Outputs under ``figures/sweeps/<sweep_name>/``:
+  - ``perseed.csv`` — Python source table (kept across replot)
+  - ``*.png`` — figures
+  - ``<name>.mat`` / ``.pkl`` / ``.npz`` — aggregated exports
 """
 
 from __future__ import annotations
@@ -30,9 +33,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.io import savemat
 
-from experiments.train_lib import (
+from experiments.convergence_lib import (
     ALGOS,
     ALGO_NAMES,
     algo_ms_per_slot,
@@ -41,6 +43,7 @@ from experiments.train_lib import (
     reward_series,
     cumulative_mean,
 )
+from experiments.result_io import load_mat_extras, save_mat_and_python
 from sys_data.config import Config
 
 # Paper Fig. 6 SNR axis: offset maps target ≈ mean *best-cell* / serving SINR.
@@ -53,7 +56,7 @@ SWEEP_UE_POOL_SIZE = 25
 DEFAULT_SLOTS = 400
 DEFAULT_USERS = 10                    # SNR / arrival default MD count
 DEFAULT_USER_LIST = (5, 10, 15, 20, 25)
-# Full scheme set (same order as train_lib.ALGOS).
+# Full scheme set (same order as convergence_lib.ALGOS).
 DEFAULT_SWEEP_ALGOS = tuple(ALGO_NAMES)
 METRICS = ("reward", "delay", "energy", "acc", "vio", "backlog")
 # Log-y helps when Acc-chasing / heavy-queue algos crush linear scale.
@@ -68,7 +71,7 @@ METRIC_YLABEL = {
 }
 LABELS = {
     "causal": "OMNIS-Causal", "ucb": "OMNIS-UCB",
-    "dqn": "DQN (joint)", "ppo": "PPO", "mappo": "MAPPO",
+    "dqn": "DQN", "ppo": "PPO", "mappo": "MAPPO",
     "gdo": "GDO", "rss": "RSS", "dts": "OMNIS-TS", "cto": "CTO",
 }
 COLORS = {
@@ -126,7 +129,7 @@ def configure_sweep(
     beta_const=None,
     dqn_eps_end=None,
 ):
-    """Build Config like ``train_lib.configure``, plus sweep knobs."""
+    """Build Config like ``convergence_lib.configure``, plus sweep knobs."""
     c = Config(seed)
     c.time_slot_num = slots
     c.update_users(users)
@@ -384,8 +387,10 @@ def replot_sweep_dir(out_dir, sweep_name=None, axis_key=None, xlabel=None,
     agg = aggregate_by_axis(rows, axis_key, algos)
     plot_metric_vs_axis(agg, algos, axis_key, xlabel, out_dir, plot_stem)
     mat_path = os.path.join(out_dir, f"{plot_stem}.mat")
-    save_sweep_mat(mat_path, agg, algos, axis_key, rows)
-    print(f"[replot] {plot_stem}: PNGs + {mat_path}", flush=True)
+    # Preserve pick_* (and Python twin) extras — replot must not wipe them.
+    extra = load_mat_extras(mat_path)
+    save_sweep_mat(mat_path, agg, algos, axis_key, rows, extra=extra or None)
+    print(f"[replot] {plot_stem}: PNGs + {mat_path} (+ .pkl/.npz)", flush=True)
     return mat_path
 
 
@@ -417,7 +422,7 @@ def replot_action_pick_dir(out_dir, algos=None):
 
 
 def save_sweep_mat(path, agg, algos, axis_key, rows, extra=None):
-    """MATLAB-friendly mat: axis + per-algo mean/std arrays + raw rows."""
+    """Write ``.mat`` + Python ``.pkl``/``.npz``: axis + per-algo mean/std + raw rows."""
     payload = {
         "axis_key": axis_key,
         "algos": np.array(algos, dtype=object),
@@ -452,7 +457,7 @@ def save_sweep_mat(path, agg, algos, axis_key, rows, extra=None):
 
     if extra:
         payload.update(extra)
-    savemat(path, payload, long_field_names=True, do_compression=True)
+    save_mat_and_python(path, payload, long_field_names=True)
     return path
 
 
@@ -805,7 +810,7 @@ def sweep_action_pick(
                             break
                     arr.append(np.nan if found is None else found)
                 payload[f"pick_{algo}_{m}"] = np.asarray(arr, dtype=float)
-        savemat(path, payload, long_field_names=True, do_compression=True)
+        save_mat_and_python(path, payload, long_field_names=True)
 
     _pick_mat(os.path.join(out_dir, "action_pick_snr.mat"), pick_snr, "snr")
     _pick_mat(os.path.join(out_dir, "action_pick_users.mat"), pick_users, "users")

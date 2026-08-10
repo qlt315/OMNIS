@@ -1,14 +1,10 @@
-"""Centralized joint-action Double DQN (CTO-aligned).
+"""Centralized Double DQN baseline (CTO-aligned decision structure).
 
-Matches CTO's decision structure:
   - One learner sees the **global state**
   - One **joint action** a = (a_1, …, a_U) over all MDs
   - One **team reward** R = mean_u (V·r_u + drift_u)
-  - Joint space A^U is intractable (18^6); like CTO we score a random
+  - Joint space A^U is intractable; like CTO we score a random
     candidate pool of size ``dqn_max_candidates`` (default = cto_max_candidates)
-
-Differs from the previous branching DQN (factored heads), which was centralized
-only in state/reward, not in the joint action.
 """
 
 from __future__ import annotations
@@ -190,7 +186,7 @@ class DQN(OnlineRLBaseline):
         t = slot_info["t"]
         if t % self.log_every == 0:
             raw = slot_info.get("team_r_raw", r)
-            print(f'  [dqn-joint] slot={t} team_r={raw:.4f} '
+            print(f'  [dqn] slot={t} team_r={raw:.4f} '
                   f'eps={self._epsilon(t):.3f} K={self.max_candidates}')
 
 

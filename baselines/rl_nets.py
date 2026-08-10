@@ -7,28 +7,8 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 
-class BranchingQNet(nn.Module):
-    """Shared trunk + per-agent Q heads (branching DQN). Legacy / ablation."""
-
-    def __init__(self, state_dim, n_agents, n_actions, hidden=64):
-        super().__init__()
-        self.n_agents = n_agents
-        self.n_actions = n_actions
-        self.trunk = nn.Sequential(
-            nn.Linear(state_dim, hidden), nn.ReLU(),
-            nn.Linear(hidden, hidden), nn.ReLU(),
-        )
-        self.heads = nn.ModuleList([
-            nn.Linear(hidden, n_actions) for _ in range(n_agents)
-        ])
-
-    def forward(self, x):
-        h = self.trunk(x)
-        return torch.stack([head(h) for head in self.heads], dim=1)  # [B, U, A]
-
-
 class JointQNet(nn.Module):
-    """Centralized joint-action Q(s, a_1..a_U), aligned with CTO's joint decision.
+    """Centralized Q(s, a_1..a_U) for DQN (same decision structure as CTO).
 
     Action encoding: flattened one-hot of all agents' local discrete actions.
     Scores a scalar Q for each (state, joint-action) pair — same decision

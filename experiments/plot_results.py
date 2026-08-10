@@ -1,15 +1,15 @@
-"""Plot comparison figures from saved train outputs.
+"""Plot comparison figures from saved convergence outputs.
 
-Reads ``perseed.csv`` + ``series/*.npz`` under ``--indir``.
-Missing algorithms are skipped (plots whatever is available).
-Also writes ``plot_data.mat`` for MATLAB figure scripts.
+Reads ``perseed.csv`` + ``series/*.npz`` under ``--indir`` (Python source data;
+never deleted by this script). Missing algorithms are skipped.
+Also writes ``plot_data.mat`` + ``.pkl`` / ``.npz`` sidecars for exports.
 
 PyCharm: edit ``PYCHARM_*`` below, Run with empty parameters.
 
 Usage:
   PYTHONPATH=. python3 experiments/plot_results.py
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train --algos causal ucb cto
+  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/convergence
+  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/convergence --algos causal ucb cto
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.io import savemat
 
 try:
     from repo_util import ensure_repo_root
@@ -31,16 +30,20 @@ except ImportError:
 
 ensure_repo_root()
 
-from train_lib import ALGO_NAMES, SERIES_KEYS, series_dir  # noqa: E402
+from convergence_lib import ALGO_NAMES, SERIES_KEYS, series_dir  # noqa: E402
 try:
     from comm_model import comm_ms_per_slot
 except ImportError:  # when imported as experiments.plot_results
     from experiments.comm_model import comm_ms_per_slot  # noqa: E402
+try:
+    from result_io import save_mat_and_python
+except ImportError:
+    from experiments.result_io import save_mat_and_python  # noqa: E402
 
 # =============================================================================
 # PyCharm defaults (CLI flags override these)
 # =============================================================================
-PYCHARM_INDIR = "figures/train"
+PYCHARM_INDIR = "figures/convergence"
 PYCHARM_OUT = None                 # None → same as indir
 PYCHARM_ALGOS = None               # None → all in CSV; or ["causal","ucb"] / "all"
 PYCHARM_SLIDE = 5
@@ -50,7 +53,7 @@ PYCHARM_WRITE_MAT = True
 
 LABELS = {
     "causal": "OMNIS-Causal", "ucb": "OMNIS-UCB",
-    "dqn": "DQN (joint)", "ppo": "PPO", "mappo": "MAPPO",
+    "dqn": "DQN", "ppo": "PPO", "mappo": "MAPPO",
     "gdo": "GDO", "rss": "RSS", "dts": "OMNIS-TS", "cto": "CTO",
 }
 COLORS = {
@@ -114,7 +117,7 @@ def _comm_defaults(user_num=None):
         if m:
             rate = float(m.group(1))
         # Do not parse Config.user_num / ue_pool_size here (pool=25 ≠ train U).
-        # Prefer CLI --users; else default 10 (train_all default).
+        # Prefer CLI --users; else default 10 (convergence_all default).
         m = re.search(r"self\.top_l_cells\s*=\s*(\d+)", text)
         if m:
             top_l = int(m.group(1))
@@ -123,7 +126,7 @@ def _comm_defaults(user_num=None):
               flush=True)
     if user_num is not None:
         users = int(user_num)
-    # Same estimate as train_lib.algo_ms_per_slot when agent has no local_obs_dim
+    # Same estimate as convergence_lib.algo_ms_per_slot when agent has no local_obs_dim
     local_obs_dim = 4 + top_l + 2
     return {
         "rtt_s": rtt_s,
@@ -140,7 +143,7 @@ def _approx_eq(a, b, rtol=1e-3, atol=1e-3):
 def enrich_runtime_rows(rows, user_num=None):
     """Fill / normalize runtime fields for stacking (old + new CSV formats).
 
-    New train_lib: decision_ms already includes update; ms = decision+comm+bcd.
+    New convergence_lib: decision_ms already includes update; ms = decision+comm+bcd.
     Old CSV: decision_ms is decision-only; ms = decision+bcd+update; no comm_*.
 
     Stack segments: decision (algo compute) + interaction/comm + BCD.
@@ -328,7 +331,7 @@ def export_mat(path, rows, series_root, names, slide):
         "comm_rounds": summary["comm_rounds"],
     }
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    savemat(path, payload, long_field_names=True, do_compression=True)
+    save_mat_and_python(path, payload, long_field_names=True)
     return path
 
 
@@ -486,14 +489,14 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     if not no_mat:
         mat = mat_path or os.path.join(out_dir, "plot_data.mat")
         export_mat(mat, rows, sroot, names, slide)
-        print(f"wrote MATLAB data -> {mat}")
+        print(f"wrote plot exports -> {mat} (+ .pkl/.npz)")
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Plot OMNIS train results")
     p.add_argument("--indir", default=None,
                    help="directory with perseed.csv and series/ "
-                        "(default: PYCHARM_INDIR / figures/train)")
+                        "(default: PYCHARM_INDIR / figures/convergence)")
     p.add_argument("--out", default=None,
                    help="plot output dir (default: same as --indir)")
     p.add_argument("--algos", nargs="+", default=None,
@@ -502,7 +505,7 @@ def main(argv=None):
     p.add_argument("--mat", default=None,
                    help="output .mat path (default: <out>/plot_data.mat)")
     p.add_argument("--no-mat", action="store_true",
-                   help="skip writing plot_data.mat")
+                   help="skip writing plot_data.mat/.pkl/.npz")
     p.add_argument("--users", type=int, default=None,
                    help="user count for deriving comm_ms on old CSVs "
                         "(default: Config.user_num)")

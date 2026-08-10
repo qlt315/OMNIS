@@ -78,7 +78,7 @@ def write_readme(out_root):
     text = f"""# OMNIS parameter sweeps
 
 Honest **online re-simulation** for every (algo, seed, setting). Checkpoints from
-`train_all` are **not** reused.
+`convergence_all` are **not** reused.
 
 ## Paper alignment (Sec. VI)
 

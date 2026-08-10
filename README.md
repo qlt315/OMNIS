@@ -4,7 +4,7 @@
 
 Edge computing enables resource-constrained devices to execute machine learning applications via task offloading. To this aim, radio access network (RAN) slicing is instrumental to provide the necessary communication and computing resources. However, current RAN slicing approaches rely on static computing models, thereby constraining their ability to leverage the dynamic semantic data representation capabilities enabled by recent neural architectures. In this paper, we propose OMNIS, a semantic RAN slicing framework for edge computing built on a new generation of dynamic split neural models. In contrast to prior work, OMNIS embeds a dynamic form of neural compression paired with adaptive data encoding for task offloading, which provides an ample set of communication payload and computing options for RAN slicing. Differently from prior methodologies for semantic communications, we explicitly study the interplay between neural compression and information quantization in determining the performance of computer vision tasks. In this context, we design a new quantization approach, named ``box'' quantization, which improves resiliency to bit errors as a function of the compression rate compared to current state of the art. Considering the partial observability and differing objectives of the network nodes, we formulate two interdependent optimization problems to achieve optimal inference performance: (i) the mobile devices (MDs) maximize inference accuracy under quality of service (QoS) constraints by controlling the dynamic split deep neural networks (DNNs), and (ii) the edge server (ES) allocates bandwidth and computing resources to maximize the worst inference accuracy among all MDs. To solve these problems, we propose a multi-agent distributed optimization framework, where MDs act as contextual multi-armed bandit (MAB) agents using Bayesian optimization, and the ES performs resource allocation via convex optimization. Compared to existing RAN slicing schemes for edge computing, OMNIS improves inference accuracy by up to 22.85\% while reducing the QoS constraint violation probability by up to 10x. Compared to existing RAN slicing frameworks, OMNIS improves inference accuracy by up to 22.85\% while reducing the QoS constraint violation probability by up to 10x.
 
-Journal extension: multi-cell Top-L association, queueing + Lyapunov control, causal MAB, Sionna PHY tables/traces, RL baselines. Reported **reward** is the Lyapunov objective \(V\cdot u+\mathrm{drift}\) (not the QoS utility alone). Plots/CSVs: `figures/train/`.
+Journal extension: multi-cell Top-L association, queueing + Lyapunov control, causal MAB, Sionna PHY tables/traces, RL baselines. Reported **reward** is the Lyapunov objective \(V\cdot u+\mathrm{drift}\) (not the QoS utility alone). Convergence curves/CSVs: `figures/convergence/`.
 
 ## Structure
 ```bash
@@ -12,17 +12,17 @@ OMNIS/
 │── baselines/                      # RSS, DTS, CTO, GDO, DQN, PPO, MAPPO
 │── omnis/                          # Simulator, causal MAB, PHY helpers
 │── experiments/
-│   ├── train_lib.py                # Shared runner (+ PYCHARM_* defaults)
-│   ├── train_all.py / train_*.py   # Train → CSV + series + plot_data.mat
+│   ├── convergence_lib.py          # Shared online runner (+ PYCHARM_CONV_*)
+│   ├── convergence_all.py / convergence_*.py  # → CSV + series + exports
 │   ├── run_sweeps.py / sweep_*.py  # Parameter sweeps → figures/sweeps/
-│   ├── plot_results.py             # Train PNGs + plot_data.mat
-│   ├── plot_sweeps.py              # Sweep PNGs + <name>.mat from CSV
+│   ├── plot_results.py             # Convergence PNGs + plot_data.mat/.pkl/.npz
+│   ├── plot_sweeps.py              # Sweep PNGs + <name>.mat/.pkl/.npz from CSV
 │   └── comm_model.py               # Control-plane bytes / RTT → comm_ms
 │── phy_sim/                        # Sionna PHY; see phy_sim/README.md
 │── sys_data/
 │   ├── config.py                   # Config
 │   └── acc_data/                   # Optional seed curves for phy_sim/synth_acc
-│── figures/train/                  # train output + plots (default)
+│── figures/convergence/            # online convergence curves (default)
 │── figures/sweeps/                 # sweep outputs (snr/users/arrival/…)
 │── observations/                   # Observation figure scripts
 ```
@@ -31,9 +31,9 @@ OMNIS/
 
 CLI: set `PYTHONPATH=.` and run from the repository root.
 
-**PyCharm:** open any `experiments/train_*.py`, `train_all.py`, `run_sweeps.py`,
+**PyCharm:** open any `experiments/convergence_*.py`, `convergence_all.py`, `run_sweeps.py`,
 `plot_results.py`, or `plot_sweeps.py` → Run with empty parameters. Edit the
-`PYCHARM_*` block at the top of the script (or in `train_lib.py` for train).
+`PYCHARM_*` block at the top of the script (or `PYCHARM_CONV_*` in `convergence_lib.py`).
 Scripts `chdir` to the repo root automatically.
 
 ### 1. PHY tables / SINR traces
@@ -44,38 +44,37 @@ python3 phy_sim/run_acc.py ...
 python3 phy_sim/run_traces.py ...
 ```
 
-### 2. Train one scheme
+### 2. Convergence for one scheme
 ```bash
-PYTHONPATH=. python3 experiments/train_causal.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures/train
-PYTHONPATH=. python3 experiments/train_dqn.py --slots 80 --seeds 0 --out figures/train
-# same flags for: train_ucb / train_dts / train_gdo / train_rss / train_ppo / train_mappo / train_cto
+PYTHONPATH=. python3 experiments/convergence_causal.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures/convergence
+PYTHONPATH=. python3 experiments/convergence_dqn.py --slots 80 --seeds 0 --out figures/convergence
+# same flags for: convergence_ucb / _dts / _gdo / _rss / _ppo / _mappo / _cto
 ```
 
-### 3. Train selected / all schemes
+### 3. Convergence for selected / all schemes
 ```bash
 # all schemes
-PYTHONPATH=. python3 experiments/train_all.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures/train
+PYTHONPATH=. python3 experiments/convergence_all.py --slots 200 --users 6 --seeds 0 1 2 3 4 --out figures/convergence
 # subset (merges into existing perseed.csv; does not wipe other algos)
-PYTHONPATH=. python3 experiments/train_all.py --algos causal ucb gdo dqn ppo mappo --out figures/train
-PYTHONPATH=. python3 experiments/train_all.py --algos cto --out figures/train
+PYTHONPATH=. python3 experiments/convergence_all.py --algos causal ucb gdo dqn ppo mappo --out figures/convergence
+PYTHONPATH=. python3 experiments/convergence_all.py --algos cto --out figures/convergence
 ```
 
-### 4. Plot train results (also refreshes `plot_data.mat`)
+### 4. Plot convergence results (refreshes exports; keeps CSV/series)
 ```bash
 PYTHONPATH=. python3 experiments/plot_results.py
-PYTHONPATH=. python3 experiments/plot_results.py --indir figures/train --algos causal ucb cto
+PYTHONPATH=. python3 experiments/plot_results.py --indir figures/convergence --algos causal ucb cto
 ```
 
 ### 5. Parameter sweeps + re-plot
 ```bash
 PYTHONPATH=. python3 experiments/run_sweeps.py --algos all --only snr users
-PYTHONPATH=. python3 experiments/plot_sweeps.py          # PNGs + *.mat from CSV
+PYTHONPATH=. python3 experiments/plot_sweeps.py          # PNGs + *.mat/.pkl/.npz from CSV
 ```
 
-Outputs under `--out` / `--indir` (default `figures/train/`):
-- `perseed.csv` / `summary.csv` — reward, acc, delay, energy, backlog, vio, ms/slot
-  (incl. `decision_ms`, `comm_ms`, `bcd_ms`; new runs fold update into `decision_ms`)
-- `series/{name}_seed{k}.npz` — time series for curves
+Outputs under `--out` / `--indir` (default `figures/convergence/`):
+- `perseed.csv` / `summary.csv` — **Python source** tables (reward, acc, delay, …)
+- `series/{name}_seed{k}.npz` — **Python source** time series for curves
 - plots from `plot_results.py`:
   - series: `reward.png`, `reward_sliding.png`, `accuracy.png`, `delay.png`,
     `energy.png`, `backlog.png`, `violation.png`
@@ -85,9 +84,9 @@ Outputs under `--out` / `--indir` (default `figures/train/`):
     control-plane RTT+bytes via `comm_model.py`, **BCD** = resource allocation).
     Old CSVs without `comm_*` derive interaction at plot time. Optional `--users`
     overrides Config.user_num for that derivation.
-- `plot_data.mat` — MATLAB export (`algo_names`, `summary.*`, `series.<algo>.*`,
-  plus flat `decision_ms` / `comm_ms` / `bcd_ms` / …)
-- sweeps (`figures/sweeps/<name>/`): `perseed.csv`, metric PNGs, `<name>.mat`
+- `plot_data.mat` + `plot_data.pkl` / `.npz` — MATLAB + Python aggregated exports
+- sweeps (`figures/sweeps/<name>/`): `perseed.csv`, metric PNGs,
+  `<name>.mat` + `.pkl` / `.npz`
 
 ## Algorithms
 
@@ -99,7 +98,7 @@ Outputs under `--out` / `--indir` (default `figures/train/`):
 | **cto** | Centralized joint GP-UCB (learns reward; random burn-in) |
 | **gdo** | Online empirical Acc + SF-ESP Acc-floor greedy (not Acc-table oracle) |
 | **rss** | Static random arms |
-| **dqn** | Centralized **joint-action** Double-DQN (candidate pool like CTO) |
+| **dqn** | Centralized Double-DQN (candidate pool like CTO) |
 | **ppo** | Centralized branching PPO |
 | **mappo** | Multi-agent PPO (CTDE) |
 
