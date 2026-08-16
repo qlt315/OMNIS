@@ -88,7 +88,7 @@ CENTRALIZED_DECISION_ALGOS = frozenset({"cto", "dqn", "ppo"})
 
 SCALAR_FIELDS = [
     "name", "seed", "reward", "acc", "delay", "energy", "backlog", "vio",
-    "ms_per_slot", "decision_ms", "comm_ms", "bcd_ms", "update_ms",
+    "ms_per_slot", "decision_ms", "select_ms", "comm_ms", "bcd_ms", "update_ms",
     "comm_uplink_B", "comm_downlink_B", "comm_rounds", "sec",
 ]
 
@@ -154,8 +154,9 @@ def algo_ms_per_slot(agent, slots, name=None):
         ctrl_rate_bps=float(getattr(agent, "comm_ctrl_rate_bps", 1e6)),
     )
     return {
-        "decision_ms": decision_ms,
-        "update_ms": 1000.0 * upd / max(slots, 1),  # kept for diagnostics
+        "decision_ms": decision_ms,  # selection + update (legacy combined)
+        "select_ms": max(decision_ms - 1000.0 * upd / max(slots, 1), 0.0),
+        "update_ms": 1000.0 * upd / max(slots, 1),
         "bcd_ms": bcd_ms,
         "comm_ms": float(comm["comm_ms"]),
         "comm_uplink_B": float(comm["comm_uplink_B"]),
@@ -298,7 +299,7 @@ def rebuild_summary(out_dir, rows):
     """Write summary.csv from full per-seed rows (any subset of algos)."""
     agg = defaultdict(lambda: defaultdict(list))
     metrics = ["reward", "acc", "delay", "energy", "backlog", "vio",
-               "ms_per_slot", "decision_ms", "comm_ms", "bcd_ms", "update_ms",
+               "ms_per_slot", "decision_ms", "select_ms", "comm_ms", "bcd_ms", "update_ms",
                "comm_uplink_B", "comm_downlink_B", "comm_rounds", "sec"]
     names = []
     for r in rows:
@@ -333,13 +334,23 @@ def merge_results(out_dir, new_rows):
     replaced = {(r["name"], int(r["seed"])) for r in new_rows}
     kept = [r for r in existing
             if (r["name"], int(r["seed"])) not in replaced]
-    # normalize types for kept rows
+    # normalize types for kept rows (backfill fields added after older CSVs)
     merged = []
     for r in kept:
-        merged.append({
-            "name": r["name"], "seed": int(r["seed"]),
-            **{k: float(r[k]) for k in SCALAR_FIELDS if k not in ("name", "seed")},
-        })
+        row = {"name": r["name"], "seed": int(r["seed"])}
+        for k in SCALAR_FIELDS:
+            if k in ("name", "seed"):
+                continue
+            if k in r and r[k] not in (None, ""):
+                row[k] = float(r[k])
+            elif k == "select_ms":
+                # Older CSV: selection ≈ decision − update
+                dec = float(r.get("decision_ms", 0.0) or 0.0)
+                upd = float(r.get("update_ms", 0.0) or 0.0)
+                row[k] = max(dec - upd, 0.0)
+            else:
+                row[k] = 0.0
+        merged.append(row)
     for r in new_rows:
         merged.append({k: r[k] for k in SCALAR_FIELDS})
         save_series(out_dir, r)

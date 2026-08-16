@@ -120,7 +120,9 @@ def run_bcd_slot(agent, task_dic, model_selection_dic, trans_rate_dic,
     -------
     dict with keys bandwidth, gpu, phy_choice, total_overhead, bcd_iter, bcd_obj
     """
-    t_bcd = time.time()
+    # perf_counter: monotonic; still wall-ish under contention, but better than
+    # time.time(). Cross-algo BCD bars are normalized at plot time (shared median).
+    t_bcd = time.perf_counter()
     bcd_obj_last = float("inf")
     bcd_iter = 1
     phy_choice_dic = {}
@@ -178,7 +180,7 @@ def run_bcd_slot(agent, task_dic, model_selection_dic, trans_rate_dic,
         bcd_iter += 1
         bcd_obj_last = bcd_obj
 
-    agent.bcd_time += time.time() - t_bcd
+    agent.bcd_time += time.perf_counter() - t_bcd
     agent._last_mcs = dict(phy_choice_dic)
     _track_bcd_iters(agent, bcd_iter)
 

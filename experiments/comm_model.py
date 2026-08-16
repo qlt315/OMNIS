@@ -17,13 +17,18 @@ bandits / MAPPO piggybacks on the next slot's Round-1 uplink.
 
 Byte accounting:
   - Per-MD payloads are multiplied by U (shared control channel → TDMA).
-  - One-shot broadcasts (e.g. Causal shared-GP summary) are counted once.
+  - One-shot broadcasts (e.g. optional Causal GP sync) are counted once if used.
   - Centralized joint controllers upload a larger local observation vector;
     distributed MDs that decide locally only upload a compact action / obs.
 
-Reported ``decision_ms`` for factorized / multi-agent schemes (causal, ucb,
-dts, mappo, …) is **parallel** compute: max over agents, not the sequential
-sum. Centralized joint methods (cto, dqn, ppo) keep true joint wall.
+**Distributed bandits (UCB / DTS / Causal / MAPPO / RSS):**
+  MD-local decision (GP predict + ILLA / analytic delay-energy) needs no extra
+  control exchange beyond notifying the ES of the chosen action and receiving
+  resource allocation. Learning labels (reward or Acc) piggyback on the next
+  slot's uplink — same pattern for Causal Acc registration as for UCB reward.
+  A *shared* Acc GP is an implementation choice (pool observations in the
+  simulator); it does **not** require a heavier per-slot control plane than UCB
+  when each MD can run the mechanism GP locally (or sync infrequently offline).
 """
 
 from __future__ import annotations
@@ -33,8 +38,6 @@ B_ACTION = 4          # model_idx + cell_rank
 B_REWARD = 8          # scalar learning feedback (piggyback next uplink)
 B_ALLOC = 16          # bandwidth + GPU (+ MCS ack)
 B_CONTEXT = 32        # QoS weights / constraints / coarse SNR
-B_CAUSAL_OBS = 20     # SINR, model, MCS, acc for shared GP
-B_GP_BROADCAST = 256  # compressed shared-GP posterior / scores (once / slot)
 B_FLOAT = 4
 
 # Request/report then allocate (see module docstring).
@@ -51,16 +54,12 @@ def profile_bytes(name: str, user_num: int, local_obs_dim: int = 9):
     local = local_obs_bytes(local_obs_dim)
     rounds = CONTROL_ROUNDS
 
-    # Distributed MD-local decision: R1 action (+ reward piggyback), R2 alloc.
-    if name in ("ucb", "dts", "mappo", "rss"):
+    # Distributed MD-local decision (UCB / DTS / Causal / MAPPO / RSS):
+    # R1 action + learning label piggyback; R2 alloc. Causal Acc feedback uses
+    # the same piggyback slot as UCB/DTS reward — ILLA / Acc-GP predict are local.
+    if name in ("ucb", "dts", "causal", "mappo", "rss"):
         up = U * (B_ACTION + B_REWARD)
         down = U * B_ALLOC
-        return up, down, rounds
-
-    # Causal-shared: R1 interventional obs to pool GP; R2 alloc + one GP summary.
-    if name == "causal":
-        up = U * B_CAUSAL_OBS
-        down = U * B_ALLOC + B_GP_BROADCAST
         return up, down, rounds
 
     # GDO / SEM-O-RAN: R1 context/offers; R2 ES-chosen action + alloc.

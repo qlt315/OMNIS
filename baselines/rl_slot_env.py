@@ -174,7 +174,6 @@ class OnlineRLBaseline(RSS):
             self._last_gpu = gpu_allocation_dic
 
             if not self.eval_mode:
-                t_update = time.time()
                 next_state = self.global_state(task_dic, cand_cells_dic, sinr_db_all_dic)
                 next_local = {
                     u: self.local_obs(u, task_dic[u], cand_cells_dic, sinr_db_all_dic)
@@ -196,6 +195,8 @@ class OnlineRLBaseline(RSS):
                     "cand_cells_dic": cand_cells_dic,
                     "sinr_db_all_dic": sinr_db_all_dic,
                 }
+                # update_time = learning only (not next-obs construction)
+                t_update = time.time()
                 self.learn_after_slot(slot_info)
                 self.update_time += time.time() - t_update
 

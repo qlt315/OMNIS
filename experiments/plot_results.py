@@ -64,15 +64,16 @@ COLORS = {
 
 SCALAR_METRICS = (
     "reward", "acc", "delay", "energy", "backlog", "vio",
-    "ms_per_slot", "decision_ms", "comm_ms", "bcd_ms", "update_ms",
+    "ms_per_slot", "decision_ms", "select_ms", "comm_ms", "bcd_ms",
+    "bcd_ms_wall", "update_ms",
     "comm_uplink_B", "comm_downlink_B", "comm_rounds", "sec",
 )
 
-# Stacked runtime segments (decision = algo compute; interaction = control-plane)
-RUNTIME_STACK = ("decision_ms", "comm_ms", "bcd_ms")
-# decision = parallel (max-agent) for distributed algos; joint wall for cto/dqn/ppo
-RUNTIME_STACK_LABELS = ("decision (∥)", "interaction", "BCD")
-RUNTIME_STACK_COLORS = ("#4c78a8", "#54a24b", "#f58518")
+# Stacked runtime: selection + learning update + interaction + BCD.
+# Use median across seeds (mean is dominated by rare wall-clock outliers).
+RUNTIME_STACK = ("select_ms", "update_ms", "comm_ms", "bcd_ms")
+RUNTIME_STACK_LABELS = ("selection", "update", "interaction", "BCD")
+RUNTIME_STACK_COLORS = ("#4c78a8", "#9ecae9", "#54a24b", "#f58518")
 
 
 def sliding_mean(x, w=5):
@@ -140,26 +141,68 @@ def _approx_eq(a, b, rtol=1e-3, atol=1e-3):
     return abs(float(a) - float(b)) <= atol + rtol * max(abs(float(a)), abs(float(b)), 1e-12)
 
 
+def _shared_bcd_ms(rows):
+    """Scenario-level BCD [ms/slot]: median wall over all (algo, seed) rows.
+
+    BCD is the same BW/GPU/MCS loop for every algorithm; per-algo wall times
+    differ mainly from OS contention / association noise, not from the MAB.
+    Runtime stacks therefore use one shared estimate so bars isolate selection
+    vs update vs interaction. Raw walls are kept as ``bcd_ms_wall``.
+    """
+    walls = []
+    for r in rows:
+        v = r.get("bcd_ms")
+        if v is None or v == "":
+            continue
+        walls.append(float(v))
+    if not walls:
+        return 0.0
+    return float(np.median(np.asarray(walls, dtype=float)))
+
+
 def enrich_runtime_rows(rows, user_num=None):
     """Fill / normalize runtime fields for stacking (old + new CSV formats).
 
     New convergence_lib: decision_ms already includes update; ms = decision+comm+bcd.
     Old CSV: decision_ms is decision-only; ms = decision+bcd+update; no comm_*.
 
-    Stack segments: decision (algo compute) + interaction/comm + BCD.
+    Stack segments: selection + update + interaction/comm + BCD (shared).
     """
     cfg = _comm_defaults(user_num=user_num)
+    bcd_shared = _shared_bcd_ms(rows)
+
+    # Diagnose wall-clock contamination before overwriting bcd_ms.
+    by_algo = {}
+    for r in rows:
+        name = r["name"]
+        v = r.get("bcd_ms")
+        if v is None or v == "":
+            continue
+        by_algo.setdefault(name, []).append(float(v))
+    if by_algo:
+        algo_meds = {k: float(np.median(v)) for k, v in by_algo.items()}
+        meds = list(algo_meds.values())
+        spread = max(meds) - min(meds)
+        if spread > 2.0:  # ms
+            parts = ", ".join(f"{k}={v:.1f}" for k, v in sorted(algo_meds.items()))
+            print(
+                f"note: BCD wall medians differ across algos "
+                f"(spread={spread:.1f}ms: {parts}); "
+                f"runtime uses shared median bcd_ms={bcd_shared:.2f}",
+                flush=True,
+            )
+
     for r in rows:
         name = r["name"]
         dec = float(r.get("decision_ms", 0.0) or 0.0)
-        bcd = float(r.get("bcd_ms", 0.0) or 0.0)
+        bcd_wall = float(r.get("bcd_ms", 0.0) or 0.0)
         upd = float(r.get("update_ms", 0.0) or 0.0)
         ms = float(r.get("ms_per_slot", 0.0) or 0.0)
         has_comm = "comm_ms" in r and r["comm_ms"] is not None
 
         # Always recompute interaction from the control-plane model so protocol
-        # changes (rounds / payloads) apply without a full retrain. Decision /
-        # BCD stay as measured wall-clock from the CSV.
+        # changes (rounds / payloads) apply without a full retrain. Decision
+        # stays measured; BCD is scenario-shared (see _shared_bcd_ms).
         comm = comm_ms_per_slot(
             name,
             user_num=cfg["user_num"],
@@ -172,19 +215,24 @@ def enrich_runtime_rows(rows, user_num=None):
             decision_stack = dec
         else:
             # Old: ms ≈ decision + bcd + update (decision excludes update).
-            if _approx_eq(ms, dec + bcd + upd):
+            if _approx_eq(ms, dec + bcd_wall + upd):
                 decision_stack = dec + upd
             else:
                 decision_stack = dec
 
         r["decision_ms"] = float(decision_stack)
-        r["bcd_ms"] = bcd
-        r["update_ms"] = upd  # diagnostic only; not a stack segment
+        r["bcd_ms_wall"] = bcd_wall
+        r["bcd_ms"] = float(bcd_shared)
+        r["update_ms"] = upd  # parallel learning update [ms/slot]
+        # selection-only = folded decision minus update (floored at 0)
+        r["select_ms"] = float(max(decision_stack - upd, 0.0))
         r["comm_ms"] = float(comm["comm_ms"])
         r["comm_uplink_B"] = float(comm["comm_uplink_B"])
         r["comm_downlink_B"] = float(comm["comm_downlink_B"])
         r["comm_rounds"] = float(comm["comm_rounds"])
-        r["ms_per_slot"] = float(decision_stack + bcd + float(comm["comm_ms"]))
+        r["ms_per_slot"] = float(
+            decision_stack + bcd_shared + float(comm["comm_ms"]))
+    cfg["bcd_ms_shared"] = bcd_shared
     return rows, cfg
 
 
@@ -351,6 +399,9 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     print(f"comm model: users={comm_cfg['user_num']} "
           f"RTT={comm_cfg['rtt_s']*1e3:.2g}ms "
           f"R_ctrl={comm_cfg['ctrl_rate_bps']:.3g}bps", flush=True)
+    print(f"BCD (shared scenario median): "
+          f"{comm_cfg.get('bcd_ms_shared', float('nan')):.2f} ms/slot",
+          flush=True)
 
     # Reward curves (need series)
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
@@ -408,26 +459,45 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
             fig.savefig(os.path.join(out_dir, fname), dpi=160)
         plt.close(fig)
 
-    # Runtime stacked bar: decision (algo compute) + interaction + BCD
-    stack_vals = {
-        key: [np.mean([r[key] for r in rows if r["name"] == n]) for n in names]
-        for key in RUNTIME_STACK
-    }
+    # Runtime stacked bar: median across seeds (robust to wall-clock outliers).
+    # Previously used mean → one UCB seed with decision_ms≈80ms dominated the bar.
+    def _seed_vals(name, key):
+        return np.asarray(
+            [r[key] for r in rows if r["name"] == name and key in r],
+            dtype=float)
+
+    stack_med = {key: [] for key in RUNTIME_STACK}
+    for n in names:
+        for key in RUNTIME_STACK:
+            v = _seed_vals(n, key)
+            if v.size == 0:
+                stack_med[key].append(0.0)
+                continue
+            stack_med[key].append(float(np.median(v)))
+            if key in ("select_ms", "update_ms"):
+                # flag wall-clock contamination / outliers
+                med = float(np.median(v))
+                mx = float(np.max(v))
+                if med > 1e-9 and mx > 3.0 * med:
+                    print(f"warning: {n}.{key} max/median="
+                          f"{mx/med:.1f}x (max={mx:.2f}, median={med:.2f}); "
+                          f"runtime bar uses median", flush=True)
+
     x = np.arange(len(names))
-    fig, ax = plt.subplots(figsize=(8.0, 4.6))
+    fig, ax = plt.subplots(figsize=(8.2, 4.8))
     bottom = np.zeros(len(names), dtype=float)
     for key, label, color in zip(RUNTIME_STACK, RUNTIME_STACK_LABELS,
                                  RUNTIME_STACK_COLORS):
-        vals = np.asarray(stack_vals[key], dtype=float)
+        vals = np.asarray(stack_med[key], dtype=float)
         ax.bar(x, vals, bottom=bottom, label=label, color=color)
         bottom = bottom + vals
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS.get(n, n) for n in names], rotation=18, ha="right")
     ax.set_ylabel("Time per slot [ms]")
     ax.set_title(
-        "Runtime per slot (decision∥ + interaction + BCD)\n"
-        "decision∥ = parallel max-agent for distributed algos")
-    ax.legend(fontsize=9)
+        "Runtime per slot (median across seeds)\n"
+        "BCD = scenario median (algo-independent)")
+    ax.legend(fontsize=8)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     runtime_path = os.path.join(out_dir, "runtime.png")
