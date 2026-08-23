@@ -1,0 +1,53 @@
+=== causal seed=0 ===
+    reward=7.0782 acc=0.1898 delay=10.947 energy=1.692 backlog=26363 vio=0.213 ms/slot=31.96 (dec=2.04 comm=4.69 bcd=25.24) wall=21s
+=== causal seed=1 ===
+    reward=7.2148 acc=0.1985 delay=15.163 energy=1.970 backlog=34144 vio=0.189 ms/slot=32.52 (dec=1.91 comm=4.69 bcd=25.92) wall=22s
+=== causal seed=2 ===
+    reward=7.2931 acc=0.1919 delay=10.582 energy=1.586 backlog=31398 vio=0.285 ms/slot=32.39 (dec=2.10 comm=4.69 bcd=25.60) wall=22s
+=== causal seed=3 ===
+    reward=6.8076 acc=0.1892 delay=15.221 energy=2.033 backlog=26859 vio=0.235 ms/slot=32.44 (dec=2.31 comm=4.69 bcd=25.44) wall=22s
+=== causal seed=4 ===
+    reward=4.6227 acc=0.1856 delay=16.638 energy=2.922 backlog=30551 vio=0.572 ms/slot=31.25 (dec=2.08 comm=4.69 bcd=24.48) wall=21s
+=== ucb seed=0 ===
+    reward=5.5375 acc=0.1764 delay=17.482 energy=2.360 backlog=29342 vio=0.306 ms/slot=35.41 (dec=3.66 comm=4.69 bcd=27.06) wall=27s
+=== ucb seed=1 ===
+    reward=4.5874 acc=0.1840 delay=25.902 energy=3.065 backlog=41758 vio=0.364 ms/slot=34.56 (dec=3.61 comm=4.69 bcd=26.26) wall=26s
+=== ucb seed=2 ===
+    reward=4.4646 acc=0.1891 delay=23.702 energy=2.930 backlog=46967 vio=0.475 ms/slot=35.41 (dec=3.77 comm=4.69 bcd=26.95) wall=27s
+=== ucb seed=3 ===
+    reward=5.0847 acc=0.1824 delay=15.366 energy=2.069 backlog=40687 vio=0.455 ms/slot=39.51 (dec=4.61 comm=4.69 bcd=30.21) wall=30s
+=== ucb seed=4 ===
+    reward=2.0661 acc=0.1772 delay=24.493 energy=3.837 backlog=42466 vio=0.703 ms/slot=38.72 (dec=4.23 comm=4.69 bcd=29.80) wall=30s
+=== gdo seed=0 ===
+    reward=-4.3087 acc=0.2383 delay=83.828 energy=8.990 backlog=153104 vio=0.687 ms/slot=38.89 (dec=0.12 comm=6.61 bcd=32.17) wall=16s
+=== gdo seed=1 ===
+    reward=-0.6232 acc=0.2352 delay=59.232 energy=6.393 backlog=193205 vio=0.621 ms/slot=37.70 (dec=0.10 comm=6.61 bcd=30.99) wall=41s
+=== gdo seed=2 ===
+    reward=-3.9301 acc=0.2470 delay=83.918 energy=8.969 backlog=228037 vio=0.702 ms/slot=30.51 (dec=0.10 comm=6.61 bcd=23.80) wall=12s
+=== gdo seed=3 ===
+    reward=-3.3166 acc=0.2412 delay=78.044 energy=8.361 backlog=196646 vio=0.736 ms/slot=30.32 (dec=0.09 comm=6.61 bcd=23.62) wall=12s
+=== gdo seed=4 ===
+    reward=-5.6150 acc=0.2152 delay=74.015 energy=8.688 backlog=143286 vio=0.897 ms/slot=28.97 (dec=0.05 comm=6.61 bcd=22.31) wall=12s
+
+=== SUMMARY (mean ± std) ===
+name         reward      acc    delay   energy    backlog      vio    ms/slot
+causal        6.603±1.12    0.191±0.00   13.710±2.76    2.040±0.53  29862.757±3256.97    0.299±0.16     32.113±0.53
+ucb           4.348±1.34    0.182±0.01   21.389±4.66    2.852±0.69  40244.152±6547.46    0.461±0.15     36.721±2.23
+dts           0.405±1.25    0.181±0.00   31.131±7.33    3.829±0.82  42829.500±6560.52    0.591±0.09     37.674±2.61
+gdo          -3.559±1.84    0.235±0.01   75.807±10.16    8.280±1.09 182855.755±34603.26    0.729±0.10     33.278±4.64
+rss          -4.512±1.53    0.197±0.01   60.758±11.73    6.699±1.19 150872.360±66888.75    0.779±0.06     35.206±2.86
+dqn          -6.690±1.56    0.205±0.00   76.902±7.23    8.322±0.95 140842.800±11557.87    0.810±0.07     76.805±4.47
+ppo          -6.711±1.66    0.207±0.00   76.712±12.00    8.317±1.24 165701.400±28342.42    0.814±0.06     40.160±1.73
+mappo        -6.643±1.49    0.206±0.00   76.370±8.87    8.281±0.95 152211.400±29588.20    0.810±0.07     33.582±2.14
+cto           0.020±1.96    0.186±0.00   35.801±5.98    4.290±0.96  47182.920±17573.58    0.571±0.15    105.267±10.30
+wrote/merged CSVs + series -> figures/convergence/
+note: BCD wall medians differ across algos (spread=12.4ms: causal=25.4, cto=34.7, dqn=36.2, dts=29.4, gdo=23.8, mappo=27.5, ppo=29.8, rss=30.4, ucb=27.1); runtime uses shared median bcd_ms=29.80
+wrote plot exports -> figures/convergence/plot_data.mat (+ .pkl/.npz)
+note: BCD wall medians differ across algos (spread=12.4ms: causal=25.4, cto=34.7, dqn=36.2, dts=29.4, gdo=23.8, mappo=27.5, ppo=29.8, rss=30.4, ucb=27.1); runtime uses shared median bcd_ms=29.80
+plotting: ['causal', 'ucb', 'dts', 'gdo', 'rss', 'dqn', 'ppo', 'mappo', 'cto']
+comm model: users=10 RTT=1ms R_ctrl=1e+06bps
+BCD (shared scenario median): 29.80 ms/slot
+wrote plots -> figures/convergence/
+runtime stack -> figures/convergence/runtime.png
+mean bars -> 6 files (*_bar.png)
+wrote plot exports -> figures/convergence/plot_data.mat (+ .pkl/.npz)

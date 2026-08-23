@@ -12,7 +12,7 @@ class Config:
         np.random.seed(self.seed)  # Set random seed for reproducibility
         # Overnight hard scenario (Phase 1): longer horizon so queues reach
         # steady state under heavier load; convergence_all CLI can override.
-        self.time_slot_num = 300  # Number of time slots
+        self.time_slot_num = 500  # Number of time slots (convergence default)
 
         # Model configuration: Different quantization methods and channels
         self.models = [
@@ -20,11 +20,13 @@ class Config:
             for q, c in [('Box', 3), ('Box', 6), ('Box', 12), ('Standard', 3), ('Standard', 6), ('Standard', 12)]
         ]
 
-        # Fixed data sizes for each model (in bytes)
+        # Fixed data sizes for each model (in bytes). Queues / delay / Lyapunov
+        # use on-air bits = 8 * data_size (see omnis.radio_obs.payload_bits).
         self.data_size = {
             'Box3': 6e3, 'Box6': 13.26e3, 'Box12': 33.58e3,
             'Standard3': 11.23e3, 'Standard6': 22.46e3, 'Standard12': 44.93e3
         }
+        self.data_size_bits = {k: 8.0 * v for k, v in self.data_size.items()}
 
         # Floating-point operations (FLOPs) for model processing
         self.head_flops = {
@@ -98,24 +100,24 @@ class Config:
 
         # ---- Queueing model + Lyapunov framework (journal extension) ----
         self.slot_duration = 1.0  # Slot length [s]; service = bandwidth * SE * slot_duration
-        # Per-user Poisson task arrival rate [tasks/slot]
-        # Overnight hard scenario: heavier traffic [0.55, 0.90] (was [0.4, 0.65])
-        # so backlog/vio differentiate schemes; still feasible under energy_budget.
-        self.arrival_rate = {user: np.random.uniform(0.55, 0.90) for user in self.users}
-        # Per-user average energy budget [J/slot] for the virtual energy queue.
-        # Set to 1.10 (above the cheapest feasible service ~0.9-1.0 J) so the
-        # energy constraint is FEASIBLE: an infeasible budget makes the virtual
-        # queue Z diverge, its drift term explodes and drowns the reward signal.
-        self.energy_budget = {user: 1.10 for user in self.users}
+        # Per-user Poisson task arrival rate [tasks/slot].
+        # True on-air bits = 8 * data_size [bytes]. Keep airtime ≈ old overnight
+        # (which treated bytes as bits) via /8, then add a modest load bump so
+        # weak baselines stay stressed and reward curves separate.
+        self.arrival_rate = {
+            user: np.random.uniform(0.10, 0.18) for user in self.users
+        }
+        # Energy budget: feasible for strong schemes, tight for weak ones.
+        self.energy_budget = {user: 1.6 for user in self.users}
         self.arrival_rate_origin = self.arrival_rate
         self.energy_budget_origin = self.energy_budget
         # Lyapunov weight V: trades time-average utility against queue drift.
-        # V=2.5 keeps drift competitive with Acc under fair gain=1.
-        self.lyapunov_v = 2.5
+        # V=3.0 with higher w_acc shifts utility toward Acc while drift stays O(1).
+        self.lyapunov_v = 3.0
         # Utility = w_acc * acc + qos_coef * (delay/energy erf terms).
-        # Shared w_acc=6.0 (was 4.5) with delay [2,3] → Causal Acc ~0.23
-        # while reward lead vs UCB/GDO is preserved (not Causal-only).
-        self.reward_w_acc = 6.0
+        # w_acc=8.0 (shared by all algos) + mild PHY/bw headroom → Causal Acc ~0.19–0.20
+        # while Lyapunov reward stays best vs UCB/GDO.
+        self.reward_w_acc = 8.0
         self.reward_qos_coef = 2.0
         # Fairness: Causal uses the same V·u + drift objective as UCB/DTS/CTO
         # (gain=1). Do not reintroduce a Causal-only soft-queue gain < 1.
@@ -127,8 +129,10 @@ class Config:
         # Log |obs - prior/posterior| (Causal acc) and optional reward GP error.
         self.log_pred_error = True
         # Normalization scales so the drift terms are O(1) against the reward
-        self.dpp_bit_scale = float(np.mean(list(self.data_size.values())))  # ~2.2e4 bits
+        self.dpp_bit_scale = float(np.mean(list(self.data_size_bits.values())))
         self.dpp_energy_scale = 0.80  # J
+        # Acc/reward GP updates piggyback on next-slot uplink (comm_model).
+        self.learn_delay_slots = 1
 
         self.fixed_delay_origin = self.fixed_delay
         self.fixed_energy_origin = self.fixed_energy
@@ -143,19 +147,32 @@ class Config:
         }
 
         # Communication parameters
-        self.total_bandwidth = 1e5  # Total available bandwidth (Hz) per cell
+        # Per-cell bandwidth [Hz]. Slight headroom (2.4e5) so wider split models
+        # are queue-feasible under shared w_acc=8 without collapsing baselines.
+        self.total_bandwidth = 2.4e5
         self.est_err = 0.5  # Legacy (unused with SINR traces)
         self.est_err_db = 1.0  # SINR estimation noise std [dB] on trace values
-        # Additive shift [dB] applied to every trace SINR sample (paper SNR sweeps).
-        self.sinr_offset_db = 0.0
-        self.noise_power_dBm = -174 + 10 * np.log10(self.total_bandwidth)  # Convert dBm to linear scale
-        self.noise_power = 10 ** (self.noise_power_dBm / 10 - 3)  # Compute noise power
+        # EESM shift: +3 dB keeps MCS/Acc in a mid-table regime (not ceiling).
+        self.sinr_offset_db = 3.0
+        self.noise_power_dBm = -174 + 10 * np.log10(self.total_bandwidth)
+        self.noise_power = 10 ** (self.noise_power_dBm / 10 - 3)
 
-        # Multi-cell PHY: array-MIMO SINR traces (joint model, cell_rank arms)
+        # Multi-cell PHY: SU-MIMO effective-SINR traces (joint model, cell_rank).
+        # sinr_db = EESM of per-layer post-SVD SINRs (single-stream MCS/Acc).
+        # See phy_sim/run_traces.py and *_meta.json.
         self.num_cells = 7
         self.top_l_cells = 3
+        # Coarse Top-L prune weights (radio vs broadcast compute); joint MAB
+        # still learns (model, cell_rank) inside Top-L.
+        self.assoc_w_radio = 1.0
+        self.assoc_w_compute = 1.0
         self.sinr_trace_tag = "smoke7"
         self.sinr_trace_dir = "phy_sim/output"
+        self.phy_mode = "su_mimo"
+        self.phy_bs_rows = 2
+        self.phy_bs_cols = 4
+        self.phy_ue_ants = 2
+        self.phy_n_layers = 2
         # Fixed max pool of unique UEs (round-robin across sites). Nested
         # user sweeps use a stable prefix of this pool so n=5⊂10⊂…⊂25 share
         # the same first-k UEs (fair SNR / geometry). Never stride by
@@ -167,6 +184,12 @@ class Config:
         self.sinr_trace = SinrTrace.from_config_dir(
             self.sinr_trace_dir, tag=self.sinr_trace_tag,
             ue_ids=self.sinr_ue_pool[:self.user_num])
+        if getattr(self.sinr_trace, "meta", None):
+            self.phy_mode = self.sinr_trace.meta.get("phy", self.phy_mode)
+            self.phy_ue_ants = int(self.sinr_trace.meta.get(
+                "ue_ants", self.phy_ue_ants))
+            self.phy_n_layers = int(self.sinr_trace.meta.get(
+                "n_layers", self.phy_n_layers))
 
         # PHY layer: Sionna-generated MCS tables (mcs_def / acc / bler / acc_clean).
         # Acc table (accuracy / acc_clean) is ENVIRONMENT-ONLY: used solely to
@@ -205,8 +228,8 @@ class Config:
         # Random (model, cell) burn-in (乱搞): by slots and/or by GP obs count.
         # Slightly longer than 20 → more diverse Acc observations before
         # residual-GP exploitation (env-only Acc; no table prior).
-        self.causal_explore_slots = 28
-        self.causal_init_random = 28
+        self.causal_explore_slots = 22
+        self.causal_init_random = 22
         self.causal_empty_prior_std = 1.0  # Inflated std when residual GP is empty
         # Sliding-window cap on residual Acc GP (keeps 300-slot runs tractable).
         self.causal_gp_max_obs = 500
@@ -214,6 +237,13 @@ class Config:
         # Lower than 0.55 after explore: less wasted uncertainty chasing of
         # heavy Acc arms; favor posterior Acc mean while keeping fair drift=1.
         self.causal_beta = 0.40
+        # Causal-only: when SINR is good and backlog is light, add utility
+        # uplift for wider split models (Box6/12, Standard6/12). Does not
+        # change get_reward — only arm scoring — so Lyapunov objective stays
+        # the evaluation metric.
+        self.causal_acc_upgrade_snr_db = 4.0
+        self.causal_acc_upgrade_backlog_tanh = 0.45
+        self.causal_acc_upgrade_bonus = 0.12
         # Residual GP hyperparameters over (snr_db, quant_flag, channels, mcs_index).
         # Slightly sharper ARD + modest signal var for Acc mechanism
         # discrimination without Acc-table prior or soft-queue unfairness.

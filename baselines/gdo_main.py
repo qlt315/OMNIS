@@ -57,6 +57,7 @@ class GDO(RSS):
 
     def get_trans_rate(self, t):
         out = super().get_trans_rate(t)
+        # Index 3 = estimated SINR (association / decisions); 4 = true (env).
         self._last_sinr_db_all = out[3]
         return out
 

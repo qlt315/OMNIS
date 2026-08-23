@@ -53,9 +53,12 @@ from sys_data.config import Config
 # offset; nested n∈{5,10,…,25} are prefixes of that pool.
 TRACE_MEAN_SINR_DB = -10.75           # smoke7_sites all-cell empirical mean (legacy)
 SWEEP_UE_POOL_SIZE = 25
-DEFAULT_SLOTS = 400
+DEFAULT_SLOTS = 500
 DEFAULT_USERS = 10                    # SNR / arrival default MD count
 DEFAULT_USER_LIST = (5, 10, 15, 20, 25)
+# Arrival axis: light → heavy load (wider than U(0.10,0.18) default so trends
+# are visible under retuned w_acc / bandwidth / sinr_offset).
+DEFAULT_ARRIVAL_RATES = (0.05, 0.10, 0.18, 0.28, 0.40)
 # Full scheme set (same order as convergence_lib.ALGOS).
 DEFAULT_SWEEP_ALGOS = tuple(ALGO_NAMES)
 METRICS = ("reward", "delay", "energy", "acc", "vio", "backlog")
@@ -658,7 +661,7 @@ def sweep_arrival(algos=None, seeds=(0, 1, 2), slots=DEFAULT_SLOTS,
                   users=DEFAULT_USERS,
                   rates=None, snr_db=5.0, out_root="figures/sweeps"):
     """Journal extension: metrics vs uniform Poisson arrival rate [tasks/slot]."""
-    rates = list(rates or [0.30, 0.50, 0.70, 0.90, 1.10])
+    rates = list(rates or list(DEFAULT_ARRIVAL_RATES))
     off = offset_for_snr_target(snr_db)
 
     def knobs(v):

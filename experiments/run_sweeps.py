@@ -29,6 +29,7 @@ sys.path.insert(0, _ROOT)
 
 from sweep_lib import (  # noqa: E402
     ALGO_NAMES,
+    DEFAULT_ARRIVAL_RATES,
     DEFAULT_SLOTS,
     DEFAULT_SWEEP_ALGOS,
     DEFAULT_USER_LIST,
@@ -223,14 +224,14 @@ def main(argv=None):
         users = min(users, 10)
         snr_targets = [0, 6, 10]
         user_list = [5, 15, 25]
-        rates = [0.4, 0.7, 1.0]
+        rates = [0.08, 0.16, 0.24]
         pick_snr = [2, 6]
         pick_users = [10, 20]
         betas = [0.55, 1.0]
     else:
         snr_targets = [0, 2, 4, 6, 8, 10]
         user_list = list(DEFAULT_USER_LIST)
-        rates = [0.30, 0.50, 0.70, 0.90, 1.10]
+        rates = list(DEFAULT_ARRIVAL_RATES)
         pick_snr = [2, 4, 6]
         pick_users = [10, 15, 20]
         betas = [0.55, 1.0, 2.0]

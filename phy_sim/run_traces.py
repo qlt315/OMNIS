@@ -1,38 +1,37 @@
-"""Multi-cell SINR trace generation with Sionna's official 3GPP hex-grid.
+"""Multi-cell SU-MIMO effective-SINR traces (Sionna 3GPP hex-grid).
 
-Uses ``sionna.sys.gen_hexgrid_topology`` (spiral hexagonal grid WITH wraparound,
-3 sectors per cell) so interference and topology are 3GPP-compliant and free of
-edge effects — replacing the previous hand-rolled 1-ring layout that had no
-wraparound and produced unrealistically low, edge-biased SINR.
+Uses ``sionna.sys.gen_hexgrid_topology`` (wraparound hex grid, 3 sectors/site).
 
-Key realism choices:
-  * Official hex topology + wraparound (no boundary SINR inflation).
-  * Frequency reuse factor ``reuse``: only co-channel cells interfere with each
-    other. reuse=1 (full reuse) is interference-limited and pins the median SINR
-    near -10 dB, which is degenerate for the MCS/accuracy tables. reuse=3
-    (textbook sector reuse) lifts the serving-SINR median to ~0 dB, landing the
-    links in the discriminative region of the accuracy table.
-  * Each SECTOR is a logical serving cell (independent ES / bandwidth pool),
-    matching the system model's per-cell ES assumption.
-  * Interference is computed per-slot from the actual co-channel UEs (not a
-    time-averaged expectation), preserving interference time-variation.
-  * Post-MRC scalar SINR: signal and noise combine coherently/incoherently over
-    the receive array, so the post-combining noise floor stays a single N0
-    (array gain appears only as larger ||h||^2). Documented simplification vs
-    per-subcarrier LMMSE post-equalization SINR.
+SU-MIMO uplink (default)
+------------------------
+  * BS: ``bs_rows × bs_cols`` panel (default 2×4 = 8 Rx).
+  * UE: ``ue_ants`` antennas (default 2 Tx) — true SU-MIMO, not SIMO.
+  * Per link (sector, UE, slot): sum multipath → H ∈ C^{Nr×Nt}, SVD,
+    equal-power on the strongest ``n_layers`` eigenmodes, white N0+I,
+    **EESM** of per-layer SINRs → ``sinr_db`` for single-stream MCS/Acc:
+        SINR_eff = -β ln( mean_ℓ exp(-SINR_ℓ / β) ),  β=1 by default.
+  * Optional column ``se_bps_hz`` = Shannon sum-rate (diagnostics only).
 
-Outputs (per dataset tag):
-  sinr_trace_<tag>.csv : slot,cell_id,ue_id,sinr_db   (all candidate links)
-  link_info_<tag>.csv  : cell_id,ue_id,distance_m
+Interference / topology (unchanged spirit)
+------------------------------------------
+  * Frequency reuse ``reuse``; co-channel sectors only.
+  * Intra-sector UEs orthogonal (bandwidth slicing); co-channel power
+    averaged per slice.
+  * Site-level files: max effective SINR over 3 co-sited sectors.
 
-Smoke test:
-    python run_traces.py --cells 7 --ues-per-cell 2 --slots 20 --tag smoke
-Full run:
-    python run_traces.py --slots 1000 --tag full
+SIMO fallback: ``--ue-ants 1 --n-layers 1``.
+
+Smoke::
+    python run_traces.py --ues-per-cell 2 --slots 20 --tag smoke_mimo
+Full (matches Config smoke7 UE pool ≈ 42)::
+    python run_traces.py --ues-per-cell 2 --slots 1000 --tag smoke7
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import os
 
@@ -40,104 +39,193 @@ import torch
 from sionna.phy.channel.tr38901 import PanelArray, UMa, UMi
 from sionna.sys import gen_hexgrid_topology
 
-P_TX = 0.1            # transmit power per UE (W), mirrors config.py trans_power
-BANDWIDTH = 1e5       # Hz, mirrors config.py total_bandwidth
-NOISE_POWER = 10 ** ((-174 + 10 * math.log10(BANDWIDTH)) / 10 - 3)  # W
+P_TX = 0.1
+BANDWIDTH = 1e5
+NOISE_POWER = 10 ** ((-174 + 10 * math.log10(BANDWIDTH)) / 10 - 3)
 CARRIER_FREQ = 3.5e9
-SLOT_S = 1e-3         # 1 ms slots -> one SINR sample per slot
+SLOT_S = 1e-3
 
 
-def make_channel_model(scenario, bs_rows, bs_cols):
-    """Uplink SIMO / receive-array channel under 3GPP 38.901.
+def make_channel_model(scenario, bs_rows, bs_cols, ue_ants):
+    """Uplink SU-MIMO channel under 3GPP 38.901 (Nr × Nt)."""
+    bs_array = PanelArray(
+        num_rows_per_panel=bs_rows, num_cols_per_panel=bs_cols,
+        polarization="single", polarization_type="V",
+        antenna_pattern="38.901", carrier_frequency=CARRIER_FREQ)
+    ut_array = PanelArray(
+        num_rows_per_panel=1, num_cols_per_panel=int(ue_ants),
+        polarization="single", polarization_type="V",
+        antenna_pattern="omni", carrier_frequency=CARRIER_FREQ)
+    cls = {"umi": UMi, "uma": UMa}[scenario]
+    return cls(
+        carrier_frequency=CARRIER_FREQ, o2i_model="low",
+        ut_array=ut_array, bs_array=bs_array, direction="uplink",
+        enable_pathloss=True, enable_shadow_fading=True)
 
-    Default BS panel is 2x4 = 8 antennas (single-pol). UE stays single-antenna
-    omni. The system sim consumes a scalar post-MRC SINR, so spatial
-    multiplexing is intentionally out of scope; larger arrays only raise the
-    array / diversity gain folded into sinr_db.
+
+def _cochannel_interference(prx, cell_of, K, U, reuse, ues_per_sector, slots):
+    """Per-sector interference power [W]; shape (K, T)."""
+    cell_of_list = [int(cell_of[u]) for u in range(U)]
+    interf = torch.zeros(K, slots, dtype=prx.dtype, device=prx.device)
+    for c in range(K):
+        co = {cc for cc in range(K) if cc % reuse == c % reuse and cc != c}
+        if not co:
+            continue
+        mask = torch.tensor(
+            [cell_of_list[u] in co for u in range(U)],
+            dtype=torch.bool, device=prx.device)
+        if mask.any():
+            interf[c] = prx[c][mask].sum(dim=0) / float(ues_per_sector)
+    return interf
+
+
+def _svd_eff_sinr(H, interf, n_lay, p_tx, n0, svd_batch, eesm_beta=1.0):
+    """H (K,Nr,U,Nt,Tc), interf (K,Tc) → sinr_eff (EESM), se (Shannon sum).
+
+    Per-layer SINR after equal-power SVD; ``sinr_eff`` is Exponential Effective
+    SINR Mapping for single-stream MCS/Acc tables (not capacity mapping):
+        SINR_eff = -β ln( mean_ℓ exp(-SINR_ℓ / β) ),  β = eesm_beta.
+    ``se`` remains Σ log2(1+SINR_ℓ) for diagnostics only.
     """
-    bs_array = PanelArray(num_rows_per_panel=bs_rows, num_cols_per_panel=bs_cols,
-                          polarization='single', polarization_type='V',
-                          antenna_pattern='38.901',
-                          carrier_frequency=CARRIER_FREQ)
-    ut_array = PanelArray(num_rows_per_panel=1, num_cols_per_panel=1,
-                          polarization='single', polarization_type='V',
-                          antenna_pattern='omni',
-                          carrier_frequency=CARRIER_FREQ)
-    cls = {'umi': UMi, 'uma': UMa}[scenario]
-    return cls(carrier_frequency=CARRIER_FREQ, o2i_model='low',
-               ut_array=ut_array, bs_array=bs_array, direction='uplink',
-               enable_pathloss=True, enable_shadow_fading=True)
+    K, Nr, U, Nt, Tc = H.shape
+    Hb = H.permute(0, 2, 4, 1, 3).contiguous().reshape(K * U * Tc, Nr, Nt)
+    sigma2_b = (n0 + interf).clamp_min(1e-30)[:, None, :].expand(
+        K, U, Tc).reshape(K * U * Tc)
+    p_layer = float(p_tx) / float(n_lay)
+    B = Hb.shape[0]
+    se = torch.empty(B, dtype=torch.float32, device=Hb.device)
+    sinr_eff = torch.empty(B, dtype=torch.float32, device=Hb.device)
+    beta = max(float(eesm_beta), 1e-6)
+    for s0 in range(0, B, svd_batch):
+        s1 = min(s0 + svd_batch, B)
+        _u, S, _vh = torch.linalg.svd(Hb[s0:s1], full_matrices=False)
+        S_use = S[:, :n_lay].clamp_min(0.0)
+        sinr_l = (p_layer * S_use.square()) / sigma2_b[s0:s1, None]
+        se[s0:s1] = torch.log2(1.0 + sinr_l).sum(dim=-1)
+        # EESM → demapper-equivalent single-stream SNR
+        sinr_eff[s0:s1] = -beta * torch.log(
+            torch.exp(-sinr_l / beta).mean(dim=-1).clamp_min(1e-30))
+    return sinr_eff.reshape(K, U, Tc), se.reshape(K, U, Tc)
 
 
 def generate_traces(args):
     torch.manual_seed(args.seed)
+    ue_ants = max(1, int(args.ue_ants))
+    n_layers_req = max(1, int(args.n_layers))
+    time_chunk = max(1, int(args.time_chunk))
+    svd_batch = max(256, int(args.svd_batch))
 
-    cm = make_channel_model(args.scenario, args.bs_rows, args.bs_cols)
+    cm = make_channel_model(
+        args.scenario, args.bs_rows, args.bs_cols, ue_ants)
     n_rx = args.bs_rows * args.bs_cols
-
-    # Official 3GPP hex grid: num_rings=1 -> 7 cells -> 21 sector BSs.
-    # Each sector serves num_ut_per_sector UTs. Wraparound is built in.
     ues_per_sector = args.ues_per_cell
-    topo = gen_hexgrid_topology(batch_size=1, num_rings=args.num_rings,
-                                num_ut_per_sector=ues_per_sector,
-                                scenario=args.scenario, isd=args.isd,
-                                min_ut_velocity=args.speed,
-                                max_ut_velocity=args.speed,
-                                downtilt_to_sector_center=True)
+    topo = gen_hexgrid_topology(
+        batch_size=1, num_rings=args.num_rings,
+        num_ut_per_sector=ues_per_sector,
+        scenario=args.scenario, isd=args.isd,
+        min_ut_velocity=args.speed, max_ut_velocity=args.speed,
+        downtilt_to_sector_center=True)
     cm.set_topology(*topo)
 
-    h, _ = cm(args.slots, 1.0 / SLOT_S)
-    # h: [batch, num_rx=K, num_rx_ant, num_tx=U, num_tx_ant, num_paths, T]
-    # Post-MRC uplink gain under spatially-white interference: sum |h|^2 over
-    # receive antennas, transmit antennas, and paths (SIMO power combining).
-    g_link = h[0].abs().square().sum(dim=(1, 3, 4))      # (K, U, T)
-    prx = P_TX * g_link                                   # received power (W)
+    print(
+        f"generating CIR in chunks of {time_chunk} slots "
+        f"(SU-MIMO {n_rx}x{ue_ants}, L≤{n_layers_req}) …",
+        flush=True)
 
-    K, U = prx.shape[0], prx.shape[1]
-    # Sector c serves UTs [c*ups, (c+1)*ups): each sector is a logical cell.
+    # Probe one slot for shapes (then discard)
+    h0, _ = cm(1, 1.0 / SLOT_S)
+    K, Nr, U, Nt, _Np, _ = h0[0].shape
+    del h0
+    if Nt != ue_ants:
+        raise RuntimeError(f"expected Nt={ue_ants}, got Nt={Nt}")
+    n_lay = max(1, min(n_layers_req, Nr, Nt))
+    reuse = int(args.reuse)
     cell_of = torch.arange(U) // ues_per_sector
+    T = int(args.slots)
 
-    # Frequency reuse: cell c uses frequency band (c % reuse); only cells on the
-    # same band interfere. Co-channel set for cell c = {cc != c : cc%reuse == c%reuse}.
-    reuse = args.reuse
-    cochannel = {c: [cc for cc in range(K)
-                     if cc % reuse == c % reuse and cc != c]
-                 for c in range(K)}
+    sinr_db = torch.empty(K, U, T, dtype=torch.float32)
+    se_bps = torch.empty(K, U, T, dtype=torch.float32)
 
-    sinr_db = torch.empty(K, U, args.slots)
-    for c in range(K):
-        # Per-slot interference from co-channel UEs in OTHER cells on the same band.
-        # Within a cell, UTs are orthogonal (bandwidth slicing); each slice sees the
-        # coincident co-channel UTs. We take the actual per-slot sum over co-channel
-        # UEs (full co-channel load), which is the standard worst-case reuse model.
-        co = cochannel[c]
-        if co:
-            mask = torch.tensor([cell_of[u].item() in co for u in range(U)],
-                                dtype=torch.bool)
-            # Average per-slice: divide co-channel power by #UTs per co-channel cell
-            interf = prx[c][mask].sum(dim=0) / ues_per_sector
-        else:
-            interf = torch.zeros(args.slots)
-        # Post-MRC scalar SINR: prx already = P*||h||^2 (summed over the array);
-        # noise floor stays a single N0 (coherent signal / incoherent-noise MRC).
-        sinr_db[c] = 10 * torch.log10(prx[c] / (NOISE_POWER + interf))
+    for t0 in range(0, T, time_chunk):
+        t1 = min(t0 + time_chunk, T)
+        tc = t1 - t0
+        h, _ = cm(tc, 1.0 / SLOT_S)
+        H = h[0].sum(dim=4).to(torch.complex64).cpu()
+        del h
+        g_fro = H.abs().square().sum(dim=(1, 3))
+        prx = P_TX * g_fro
+        interf = _cochannel_interference(
+            prx, cell_of, K, U, reuse, ues_per_sector, tc)
+        sinr_lin, se = _svd_eff_sinr(
+            H, interf, n_lay, P_TX, NOISE_POWER, svd_batch)
+        sinr_db[:, :, t0:t1] = 10.0 * torch.log10(sinr_lin.clamp_min(1e-30))
+        se_bps[:, :, t0:t1] = se
+        del H, g_fro, prx, interf, sinr_lin, se
+        if (t0 // time_chunk) % 5 == 0:
+            print(f"  slots {t0}:{t1}/{T}", flush=True)
 
-    os.makedirs(os.path.dirname(args.out_dir) or '.', exist_ok=True)
+    # shapes for meta / prints (reuse from loop)
+    Nt = ue_ants
+
+    os.makedirs(args.out_dir, exist_ok=True)
+    meta = {
+        "phy": "su_mimo",
+        "direction": "uplink",
+        "scenario": args.scenario,
+        "bs_rows": args.bs_rows,
+        "bs_cols": args.bs_cols,
+        "n_rx": n_rx,
+        "ue_ants": ue_ants,
+        "n_tx": int(Nt),
+        "n_layers": n_lay,
+        "effective_sinr": "eesm",
+        "eesm_beta": 1.0,
+        "formula": "SINR_eff = -beta * ln(mean_l exp(-SINR_l/beta))",
+        "p_tx_W": P_TX,
+        "bandwidth_Hz": BANDWIDTH,
+        "noise_W": NOISE_POWER,
+        "reuse": reuse,
+        "num_rings": args.num_rings,
+        "ues_per_sector": ues_per_sector,
+        "slots": args.slots,
+        "speed_mps": args.speed,
+        "seed": args.seed,
+        "tag": args.tag,
+        "time_chunk": time_chunk,
+        "note": (
+            "sinr_db is EESM of per-layer post-SVD SINRs for single-stream "
+            "MCS/Acc tables; se_bps_hz is Shannon sum SE (diagnostics). "
+            "CIR is generated in time_chunk windows to bound RAM; with "
+            "speed>0, fading is not continuous across chunk boundaries."
+        ),
+    }
+    meta_path = os.path.join(args.out_dir, f"sinr_trace_{args.tag}_meta.json")
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+    def write_sinr_csv(path, cube_db, cube_se, n_cells):
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow([
+                "slot", "cell_id", "ue_id", "sinr_db", "se_bps_hz", "n_layers",
+            ])
+            for t in range(T):
+                for c in range(n_cells):
+                    for u in range(U):
+                        w.writerow([
+                            t, c, u,
+                            f"{float(cube_db[c, u, t]):.2f}",
+                            f"{float(cube_se[c, u, t]):.4f}",
+                            n_lay,
+                        ])
+
     trace_path = os.path.join(args.out_dir, f"sinr_trace_{args.tag}.csv")
-    with open(trace_path, 'w', newline='') as f:
-        w = csv.writer(f)
-        w.writerow(["slot", "cell_id", "ue_id", "sinr_db"])
-        for t in range(args.slots):
-            for c in range(K):
-                for u in range(U):
-                    w.writerow([t, c, u, f"{sinr_db[c, u, t]:.2f}"])
+    write_sinr_csv(trace_path, sinr_db, se_bps, K)
 
-    # Distances use the wraparound-corrected virtual positions for realism.
-    bs_loc = topo[1][0]            # (K, 3) serving-sector BS positions
-    ut_loc = topo[0][0]            # (U, 3)
-    bs_virtual = topo[7][0]        # (K, U, 3) wraparound virtual BS positions
+    bs_virtual = topo[7][0]
+    ut_loc = topo[0][0]
     info_path = os.path.join(args.out_dir, f"link_info_{args.tag}.csv")
-    with open(info_path, 'w', newline='') as f:
+    with open(info_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["cell_id", "ue_id", "distance_m"])
         for c in range(K):
@@ -145,75 +233,66 @@ def generate_traces(args):
                 d = (bs_virtual[c, u] - ut_loc[u]).norm().item()
                 w.writerow([c, u, f"{d:.1f}"])
 
-    own = sinr_db[cell_of, torch.arange(U)]               # serving-link SINR
-
-    # --- Aggregate the 3 co-sited sectors of each SITE into one logical cell ---
-    # The system model assumes `num_cells` independent serving cells (one ES and
-    # one bandwidth pool each), while gen_hexgrid_topology yields 3 sector-BSs
-    # per hexagonal site. We fold each site's 3 sectors into a single logical
-    # cell: that cell's SINR to a UE is the MAX over its 3 sector receivers
-    # (standard 3-sector site abstraction), so the output trace has
-    # num_sites cells and is directly consumable by the existing system config.
+    own = sinr_db[cell_of, torch.arange(U)]
     num_sites = K // 3
-    site_sinr = sinr_db.reshape(num_sites, 3, U, args.slots).amax(dim=1)  # (sites,U,T)
-    # Re-key UEs to their serving SITE (sector c -> site c//3)
+    site_sinr = sinr_db.reshape(num_sites, 3, U, T).amax(dim=1)
+    site_se = se_bps.reshape(num_sites, 3, U, T).amax(dim=1)
     site_of = cell_of // 3
     own_site = site_sinr[site_of, torch.arange(U)]
 
     site_trace = os.path.join(args.out_dir, f"sinr_trace_{args.tag}_sites.csv")
-    with open(site_trace, 'w', newline='') as f:
-        w = csv.writer(f)
-        w.writerow(["slot", "cell_id", "ue_id", "sinr_db"])
-        for t in range(args.slots):
-            for s in range(num_sites):
-                for u in range(U):
-                    w.writerow([t, s, u, f"{site_sinr[s, u, t]:.2f}"])
-
+    write_sinr_csv(site_trace, site_sinr, site_se, num_sites)
     site_info = os.path.join(args.out_dir, f"link_info_{args.tag}_sites.csv")
-    with open(site_info, 'w', newline='') as f:
+    with open(site_info, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["cell_id", "ue_id", "distance_m"])
         for s in range(num_sites):
             for u in range(U):
-                # distance to the site's (co-sited) sector position
                 d = (bs_virtual[s * 3, u] - ut_loc[u]).norm().item()
                 w.writerow([s, u, f"{d:.1f}"])
 
-    print(f"scenario={args.scenario} rings={args.num_rings} sectors={K} U={U} "
-          f"slots={args.slots} speed={args.speed} m/s reuse={reuse} "
-          f"BS-array={n_rx}ant ({args.bs_rows}x{args.bs_cols})")
-    print(f"sector-level serving SINR: p5={own.quantile(0.05):.1f} "
-          f"median={own.median():.1f} p95={own.quantile(0.95):.1f} dB")
-    print(f"site-level ({num_sites} logical cells) serving SINR: "
-          f"p5={own_site.quantile(0.05):.1f} median={own_site.median():.1f} "
-          f"p95={own_site.quantile(0.95):.1f} dB")
-    print(f"wrote {trace_path} and {info_path} (sector-level)")
-    print(f"wrote {site_trace} and {site_info} (site-level, use this for system sim)")
+    print(
+        f"phy=SU-MIMO {n_rx}x{Nt} layers={n_lay} scenario={args.scenario} "
+        f"rings={args.num_rings} sectors={K} sites={num_sites} U={U} "
+        f"slots={T} speed={args.speed} reuse={reuse}",
+        flush=True)
+    print(
+        f"sector serving SINR_eff: p5={own.quantile(0.05):.1f} "
+        f"median={own.median():.1f} p95={own.quantile(0.95):.1f} dB",
+        flush=True)
+    print(
+        f"site serving SINR_eff: p5={own_site.quantile(0.05):.1f} "
+        f"median={own_site.median():.1f} p95={own_site.quantile(0.95):.1f} dB",
+        flush=True)
+    print(f"wrote {trace_path} / {info_path}", flush=True)
+    print(f"wrote {site_trace} / {site_info} (system sim uses *_sites)", flush=True)
+    print(f"wrote {meta_path}", flush=True)
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--scenario", choices=["umi", "uma"], default="umi")
-    p.add_argument("--num-rings", type=int, default=1,
-                   help="hex grid rings; 1 -> 7 cells -> 21 sector BSs")
-    p.add_argument("--cells", type=int, default=None,
-                   help="deprecated alias; use --num-rings (kept for compat)")
-    p.add_argument("--ues-per-cell", type=int, default=2,
-                   help="UTs per sector (= per logical serving cell)")
-    p.add_argument("--isd", type=float, default=200.0, help="inter-site distance (m)")
-    p.add_argument("--reuse", type=int, default=3,
-                   help="frequency reuse factor; 3 lifts SINR out of the "
-                        "interference-limited floor (default 3)")
+    p.add_argument("--num-rings", type=int, default=1)
+    p.add_argument("--cells", type=int, default=None)
+    p.add_argument("--ues-per-cell", type=int, default=2)
+    p.add_argument("--isd", type=float, default=200.0)
+    p.add_argument("--reuse", type=int, default=3)
     p.add_argument("--slots", type=int, default=1000)
-    p.add_argument("--speed", type=float, default=0.0, help="UE speed (m/s)")
+    p.add_argument("--speed", type=float, default=0.0)
     p.add_argument("--tag", default="smoke7")
     p.add_argument("--seed", type=int, default=3000)
     p.add_argument("--out-dir", default="output")
-    p.add_argument("--bs-rows", type=int, default=2, help="BS panel rows")
-    p.add_argument("--bs-cols", type=int, default=4, help="BS panel cols -> 8 ant")
-    args = p.parse_args()
-    return args
+    p.add_argument("--bs-rows", type=int, default=2)
+    p.add_argument("--bs-cols", type=int, default=4)
+    p.add_argument("--ue-ants", type=int, default=2)
+    p.add_argument("--n-layers", type=int, default=2)
+    p.add_argument("--time-chunk", type=int, default=20,
+                   help="CIR+SVD slots per window (lower → less RAM)")
+    p.add_argument("--svd-batch", type=int, default=2048,
+                   help="matrices per torch.linalg.svd call")
+    return p.parse_args()
 
 
 if __name__ == "__main__":

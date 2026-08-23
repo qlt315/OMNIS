@@ -14,6 +14,7 @@ import numpy as np
 from baselines.rss_main import RSS
 from baselines.rl_nets import RunningMeanStd
 from omnis.bcd_loop import run_bcd_slot
+from omnis.assoc_info import update_cell_compute_state
 
 
 class OnlineRLBaseline(RSS):
@@ -38,6 +39,9 @@ class OnlineRLBaseline(RSS):
         self.update_time = 0.0
         self.static_model_dic = {}
         self.static_cell_rank_dic = {}
+        # Acc/reward learning piggybacks on next-slot uplink (0 = same-slot).
+        self.learn_delay_slots = int(getattr(config, "learn_delay_slots", 1) or 0)
+        self._pending_learn = None
 
     def local_obs(self, user, task_u, cand_cells, sinr_db_all):
         sinrs = [sinr_db_all[user][cand_cells[user][r]] / 20.0
@@ -90,45 +94,76 @@ class OnlineRLBaseline(RSS):
     def learn_after_slot(self, slot_info):
         raise NotImplementedError
 
+    def _flush_pending_learn(self):
+        """Apply piggybacked RL labels from the previous slot."""
+        pend = self._pending_learn
+        if pend is None:
+            return
+        t_update = time.time()
+        self.learn_after_slot(pend)
+        self.update_time += time.time() - t_update
+        self._pending_learn = None
+
     def simulation(self):
         self._run_simulation()
 
     def _run_simulation(self):
+        self._pending_learn = None
         for t in range(self.time_slot_num):
-            snr_dic, trans_rate_dic, cand_cells_dic, sinr_db_all_dic = self.get_trans_rate(t)
+            (snr_best_est, trans_rate_dic, cand_cells_dic,
+             sinr_est_db_all_dic, sinr_true_db_all_dic) = self.get_trans_rate(t)
             task_dic = self.generate_tasks(t)
+
+            if not self.eval_mode and self.learn_delay_slots > 0:
+                self._flush_pending_learn()
 
             # MAPPO: batched actor forward ≈ parallel MD cost (not U× sequential).
             # DQN/PPO: joint/centralized wall (cannot factor across users).
+            # Association / arm scoring use estimated CSI.
             t_decision = time.time()
             model_selection_dic, cell_dic = self.select_actions(
-                cand_cells_dic, task_dic, sinr_db_all_dic, t)
+                cand_cells_dic, task_dic, sinr_est_db_all_dic, t)
             self.decision_time += time.time() - t_decision
-            snr_dic = self._apply_cell_association(cell_dic, sinr_db_all_dic)
+            snr_est_dic = self._apply_cell_association(cell_dic, sinr_est_db_all_dic)
+            snr_true_dic = self._apply_cell_association(cell_dic, sinr_true_db_all_dic)
 
             arrival_bits_dic = {
                 user: task_dic[user]["n_arrivals"]
-                * self.data_size[model_selection_dic[user]["model"]]
+                * self._payload_bits(model_selection_dic[user]["model"])
                 for user in self.users
             }
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
 
+            # BCD MCS policy uses estimated CSI; realized Acc/goodput use true.
             bcd_out = run_bcd_slot(
                 self, task_dic, model_selection_dic, trans_rate_dic,
-                local_overhead_dic, snr_dic, cell_dic)
+                local_overhead_dic, snr_est_dic, cell_dic)
             bandwidth_allocation_dic = bcd_out["bandwidth"]
             gpu_allocation_dic = bcd_out["gpu"]
             phy_choice_dic = bcd_out["phy_choice"]
-            total_overhead_dic = bcd_out["total_overhead"]
+            trans_oh = self.get_trans_overhead(
+                trans_rate_dic, model_selection_dic, bandwidth_allocation_dic,
+                phy_choice_dic, snr_dic=snr_true_dic)
+            edge_oh = self.get_edge_overhead(model_selection_dic, gpu_allocation_dic)
+            total_overhead_dic = {}
+            for user in self.users:
+                total_overhead_dic[user] = {
+                    "delay": (local_overhead_dic[user]["delay"]
+                              + trans_oh[user]["delay"]
+                              + edge_oh[user]["delay"]),
+                    "energy": (local_overhead_dic[user]["energy"]
+                               + trans_oh[user]["energy"]
+                               + edge_oh[user]["energy"]),
+                }
 
             for user in self.users:
                 self.instant_metrics[user]["mcs"].append(phy_choice_dic[user])
                 self.instant_metrics[user]["cell"].append(cell_dic[user])
-                snr_db_u = 10 * np.log10(max(snr_dic[user], 1e-12))
+                snr_db_u = 10 * np.log10(max(snr_true_dic[user], 1e-12))
                 self.instant_metrics[user]["bler"].append(self.mcs_table.bler(
                     model_selection_dic[user]["model"], phy_choice_dic[user], snr_db_u))
 
-            acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
+            acc_dic = self.get_accuracy(snr_true_dic, phy_choice_dic, model_selection_dic)
             if self.acc_noise_std > 0:
                 acc_dic = {
                     user: float(np.clip(acc + np.random.normal(0.0, self.acc_noise_std), 0.0, 1.0))
@@ -138,10 +173,11 @@ class OnlineRLBaseline(RSS):
 
             dpp_targets = {}
             for user in self.users:
-                snr_db_u = 10 * np.log10(max(snr_dic[user], 1e-12))
+                snr_db_u = 10 * np.log10(max(snr_true_dic[user], 1e-12))
                 _, _, energy_hat = self.predict_md_overheads(
                     user, None, model_selection_dic[user]["model"],
-                    phy_choice_dic[user], snr_db=snr_db_u)
+                    phy_choice_dic[user], snr_db=snr_db_u,
+                    cell_id=cell_dic[user])
                 drift = self.dpp_drift(
                     user, model_selection_dic[user]["model"],
                     phy_choice_dic[user], energy_hat, snr_db=snr_db_u)
@@ -151,7 +187,7 @@ class OnlineRLBaseline(RSS):
                 user: bandwidth_allocation_dic[user]
                 * self._goodput_se(
                     user, model_selection_dic[user]["model"],
-                    phy_choice_dic[user], snr_dic)
+                    phy_choice_dic[user], snr_true_dic)
                 * self.slot_duration
                 for user in self.users
             }
@@ -172,11 +208,14 @@ class OnlineRLBaseline(RSS):
             self.train_rewards.append(slot_mean_reward)
             self._last_bandwidth = bandwidth_allocation_dic
             self._last_gpu = gpu_allocation_dic
+            self._cell_compute_state = update_cell_compute_state(
+                cell_dic, gpu_allocation_dic, self.num_cells,
+                self.es_params["freq"])
 
             if not self.eval_mode:
-                next_state = self.global_state(task_dic, cand_cells_dic, sinr_db_all_dic)
+                next_state = self.global_state(task_dic, cand_cells_dic, sinr_est_db_all_dic)
                 next_local = {
-                    u: self.local_obs(u, task_dic[u], cand_cells_dic, sinr_db_all_dic)
+                    u: self.local_obs(u, task_dic[u], cand_cells_dic, sinr_est_db_all_dic)
                     for u in self.users
                 }
                 team_r_raw = float(np.mean(list(dpp_targets.values()))) if self.dpp_reward \
@@ -193,11 +232,15 @@ class OnlineRLBaseline(RSS):
                     "next_local": next_local,
                     "task_dic": task_dic,
                     "cand_cells_dic": cand_cells_dic,
-                    "sinr_db_all_dic": sinr_db_all_dic,
+                    "sinr_db_all_dic": sinr_est_db_all_dic,
                 }
-                # update_time = learning only (not next-obs construction)
-                t_update = time.time()
-                self.learn_after_slot(slot_info)
-                self.update_time += time.time() - t_update
+                if self.learn_delay_slots > 0:
+                    self._pending_learn = slot_info
+                else:
+                    t_update = time.time()
+                    self.learn_after_slot(slot_info)
+                    self.update_time += time.time() - t_update
 
+        if not self.eval_mode and self.learn_delay_slots > 0 and self._pending_learn is not None:
+            self._flush_pending_learn()
         self.get_average_and_std_metrics()

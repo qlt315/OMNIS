@@ -1,0 +1,33 @@
+=== causal seed=0 ===
+    reward=4.4293 acc=0.1758 delay=11.743 energy=1.779 backlog=23990 vio=0.249 ms/slot=35.97 (dec=2.13 comm=4.69 bcd=29.15) wall=24s
+=== causal seed=1 ===
+    reward=4.6587 acc=0.1836 delay=13.634 energy=1.818 backlog=26238 vio=0.201 ms/slot=35.86 (dec=2.36 comm=4.69 bcd=28.81) wall=24s
+=== causal seed=2 ===
+    reward=4.3643 acc=0.1770 delay=13.955 energy=1.928 backlog=22450 vio=0.298 ms/slot=44.12 (dec=3.34 comm=4.69 bcd=36.09) wall=30s
+=== causal seed=3 ===
+    reward=4.0951 acc=0.1746 delay=16.382 energy=2.155 backlog=23961 vio=0.264 ms/slot=46.59 (dec=3.37 comm=4.69 bcd=38.53) wall=32s
+=== causal seed=4 ===
+    reward=2.9277 acc=0.1732 delay=10.511 energy=2.321 backlog=28254 vio=0.612 ms/slot=35.46 (dec=2.73 comm=4.69 bcd=28.04) wall=24s
+
+=== SUMMARY (mean ± std) ===
+name         reward      acc    delay   energy    backlog      vio    ms/slot
+causal        4.095±0.68    0.177±0.00   13.245±2.25    2.000±0.23  24978.522±2275.79    0.325±0.16     39.598±5.33
+ucb           1.521±1.05    0.176±0.01   25.288±6.68    3.249±0.58  39275.200±7364.40    0.506±0.14     41.164±1.74
+dts           0.405±1.25    0.181±0.00   31.131±7.33    3.829±0.82  42829.500±6560.52    0.591±0.09     37.674±2.61
+gdo         -13.450±3.09    0.239±0.01  132.452±19.10   13.966±2.15 407030.600±164669.91    0.827±0.08     34.351±1.39
+rss          -4.512±1.53    0.197±0.01   60.758±11.73    6.699±1.19 150872.360±66888.75    0.779±0.06     35.206±2.86
+dqn          -6.690±1.56    0.205±0.00   76.902±7.23    8.322±0.95 140842.800±11557.87    0.810±0.07     76.805±4.47
+ppo          -6.711±1.66    0.207±0.00   76.712±12.00    8.317±1.24 165701.400±28342.42    0.814±0.06     40.160±1.73
+mappo        -6.643±1.49    0.206±0.00   76.370±8.87    8.281±0.95 152211.400±29588.20    0.810±0.07     33.582±2.14
+cto           0.020±1.96    0.186±0.00   35.801±5.98    4.290±0.96  47182.920±17573.58    0.571±0.15    105.267±10.30
+wrote/merged CSVs + series -> figures/convergence/
+note: BCD wall medians differ across algos (spread=9.5ms: causal=29.1, cto=34.7, dqn=36.2, dts=29.4, gdo=26.7, mappo=27.5, ppo=29.8, rss=30.4, ucb=31.9); runtime uses shared median bcd_ms=30.82
+wrote plot exports -> figures/convergence/plot_data.mat (+ .pkl/.npz)
+note: BCD wall medians differ across algos (spread=9.5ms: causal=29.1, cto=34.7, dqn=36.2, dts=29.4, gdo=26.7, mappo=27.5, ppo=29.8, rss=30.4, ucb=31.9); runtime uses shared median bcd_ms=30.82
+plotting: ['causal', 'ucb', 'dts', 'gdo', 'rss', 'dqn', 'ppo', 'mappo', 'cto']
+comm model: users=10 RTT=1ms R_ctrl=1e+06bps
+BCD (shared scenario median): 30.82 ms/slot
+wrote plots -> figures/convergence/
+runtime stack -> figures/convergence/runtime.png
+mean bars -> 6 files (*_bar.png)
+wrote plot exports -> figures/convergence/plot_data.mat (+ .pkl/.npz)

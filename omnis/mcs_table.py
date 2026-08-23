@@ -176,6 +176,17 @@ class McsTable:
         self._goodput_cache[key] = val
         return val
 
+    def delay_se(self, model, mcs_idx, snr_db, bler_cap=0.999):
+        """SE for airtime / energy of successful delivery (ARQ-style).
+
+        Same as ``goodput_se`` but clamps BLER ≤ ``bler_cap`` so a single
+        deep fade cannot produce delay/energy ~ 1/1e-12 and explode Lyapunov
+        rewards. Queue *service* should still use uncapped ``goodput_se``.
+        """
+        se = float(self.se[int(mcs_idx)])
+        bler = min(float(self.bler(model, mcs_idx, snr_db)), float(bler_cap))
+        return max(se * (1.0 - bler), 1e-12)
+
     def best_mcs_by_acc(self, model, snr_db):
         """MCS with the highest BLER-gated accuracy (ties -> higher raw SE)."""
         best, best_key = 0, (-np.inf, -np.inf)

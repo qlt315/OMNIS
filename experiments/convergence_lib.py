@@ -152,6 +152,7 @@ def algo_ms_per_slot(agent, slots, name=None):
         local_obs_dim=local_dim,
         rtt_s=float(getattr(agent, "comm_rtt_s", 1e-3)),
         ctrl_rate_bps=float(getattr(agent, "comm_ctrl_rate_bps", 1e6)),
+        num_cells=int(getattr(agent, "num_cells", 7)),
     )
     return {
         "decision_ms": decision_ms,  # selection + update (legacy combined)
@@ -481,7 +482,7 @@ run_training = run_convergence
 
 # PyCharm / zero-arg defaults for convergence_all / convergence_*.py
 PYCHARM_CONV_ALGOS = None        # None → script default_algos; or ["causal","ucb"] / "all"
-PYCHARM_CONV_SLOTS = 300
+PYCHARM_CONV_SLOTS = 500
 PYCHARM_CONV_USERS = 10
 PYCHARM_CONV_SEEDS = [0, 1, 2, 3, 4]
 PYCHARM_CONV_OUT = "figures/convergence"

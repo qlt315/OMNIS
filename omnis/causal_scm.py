@@ -21,7 +21,7 @@ class CausalSCM:
     def __init__(self, models, data_size, mcs_table, prior_snr_step=10,
                  build_prior=False):
         self.models = models
-        self.data_size = data_size  # payload size per model [bytes]
+        self.data_size = data_size  # payload size per model [bytes]; bits = 8×
         self.mcs_table = mcs_table
         self.available_mcs = list(mcs_table.mcs_indices)
 
@@ -67,10 +67,8 @@ class CausalSCM:
         return self._feature_to_name[(quant_flag, channels)]
 
     def payload_bits(self, model_name):
-        """Transmitted payload size; the MCS code rate acts on spectral
-        efficiency, not on the on-air bit count. Keeps the conference-version
-        convention that data_size is the on-air size."""
-        return self.data_size[model_name]
+        """On-air payload [bits] = 8 × Config.data_size [bytes]."""
+        return 8.0 * float(self.data_size[model_name])
 
     def se(self, mcs_idx):
         """Spectral efficiency [bit/s/Hz] of the given MCS."""

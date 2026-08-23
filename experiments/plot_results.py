@@ -83,26 +83,92 @@ def sliding_mean(x, w=5):
     return np.convolve(x, np.ones(w) / w, mode="valid")
 
 
-def bandplot(ax, series_list, color, label, sliding=None, lw=1.8, alpha=0.15):
+def running_mean(x):
+    """Cumulative average: (r_1+...+r_t)/t — standard readable reward curve."""
+    x = np.asarray(x, dtype=float)
+    if x.size == 0:
+        return x.copy()
+    return np.cumsum(x) / np.arange(1, x.size + 1, dtype=float)
+
+
+def windowed_running_mean(x, w):
+    """Trailing-window average of width ``w`` (less smooth than full cummean)."""
+    x = np.asarray(x, dtype=float)
+    n = x.size
+    if n == 0:
+        return x.copy()
+    w = max(1, min(int(w), n))
+    c = np.cumsum(x)
+    out = np.empty(n, dtype=float)
+    for t in range(n):
+        a = max(0, t - w + 1)
+        s = c[t] - (c[a - 1] if a > 0 else 0.0)
+        out[t] = s / float(t - a + 1)
+    return out
+
+
+
+def bandplot(ax, series_list, color, label, sliding=None, lw=1.8, alpha=0.15,
+             robust=False, band=True):
+    """Plot seed curves as a center line + optional band.
+
+    ``robust=False``: mean ± std (legacy).
+    ``robust=True``: per-seed p5–p95 winsorize, then median + IQR [p25, p75].
+    Winsorize removes single-slot explosions; IQR resists a bad seed.
+    ``band=False``: center line only (readable when many noisy schemes share axes).
+    """
     if not series_list:
         return
     L = min(len(s) for s in series_list)
-    arr = np.stack([s[:L] for s in series_list], axis=0)
+    arr = np.stack([np.asarray(s[:L], dtype=float) for s in series_list], axis=0)
     if sliding:
         arr = np.stack([sliding_mean(row, sliding) for row in arr], axis=0)
         x = np.arange(arr.shape[1]) + sliding - 1
     else:
         x = np.arange(arr.shape[1])
-    m = arr.mean(axis=0)
-    sd = arr.std(axis=0, ddof=1) if arr.shape[0] > 1 else np.zeros_like(m)
+    if robust and arr.shape[0] > 1:
+        for i in range(arr.shape[0]):
+            lo_i, hi_i = np.percentile(arr[i], [5, 95])
+            if np.isfinite(lo_i) and np.isfinite(hi_i) and hi_i > lo_i:
+                arr[i] = np.clip(arr[i], lo_i, hi_i)
+        m = np.median(arr, axis=0)
+        lo = np.percentile(arr, 25, axis=0)
+        hi = np.percentile(arr, 75, axis=0)
+    else:
+        m = arr.mean(axis=0)
+        sd = arr.std(axis=0, ddof=1) if arr.shape[0] > 1 else np.zeros_like(m)
+        lo, hi = m - sd, m + sd
     ax.plot(x, m, color=color, lw=lw, label=label)
-    ax.fill_between(x, m - sd, m + sd, color=color, alpha=alpha)
+    if band and alpha > 0:
+        ax.fill_between(x, lo, hi, color=color, alpha=alpha)
+
+
+def _autoscale_ylim(ax, pad_frac=0.10, abs_pad=0.6, q_lo=10.0, q_hi=90.0):
+    """Y-limits from center curves, using percentiles so one scheme's deep
+    valley (e.g. GDO) does not squash everyone else.
+    """
+    ys = []
+    for line in ax.get_lines():
+        y = np.asarray(line.get_ydata(), dtype=float)
+        if y.size:
+            ys.append(y[np.isfinite(y)])
+    if not ys:
+        return
+    y = np.concatenate(ys)
+    if y.size < 2:
+        return
+    lo = float(np.percentile(y, q_lo))
+    hi = float(np.percentile(y, q_hi))
+    if not np.isfinite(lo) or not np.isfinite(hi) or hi <= lo:
+        lo, hi = float(np.min(y)), float(np.max(y))
+    pad = max((hi - lo) * pad_frac, abs_pad)
+    ax.set_ylim(lo - pad, hi + pad)
 
 
 def _comm_defaults(user_num=None):
     """RTT / rate / user_num / local_obs_dim (match Config; no full PHY init)."""
     # Defaults aligned with sys_data.config.Config control-plane fields.
-    rtt_s, rate, users, top_l = 1e-3, 1e6, 10, 3
+    rtt_s, rate, users, top_l, num_cells = 1e-3, 1e6, 10, 3, 7
     try:
         # Prefer live Config attrs when available without constructing Config()
         # (Config.__init__ loads SINR traces). Fall back to parsing source.
@@ -122,6 +188,9 @@ def _comm_defaults(user_num=None):
         m = re.search(r"self\.top_l_cells\s*=\s*(\d+)", text)
         if m:
             top_l = int(m.group(1))
+        m = re.search(r"self\.num_cells\s*=\s*(\d+)", text)
+        if m:
+            num_cells = int(m.group(1))
     except Exception as e:
         print(f"warning: could not read config.py ({e}); using comm defaults",
               flush=True)
@@ -134,6 +203,7 @@ def _comm_defaults(user_num=None):
         "ctrl_rate_bps": rate,
         "user_num": users,
         "local_obs_dim": local_obs_dim,
+        "num_cells": num_cells,
     }
 
 
@@ -209,6 +279,7 @@ def enrich_runtime_rows(rows, user_num=None):
             local_obs_dim=cfg["local_obs_dim"],
             rtt_s=cfg["rtt_s"],
             ctrl_rate_bps=cfg["ctrl_rate_bps"],
+            num_cells=cfg.get("num_cells", 7),
         )
         if has_comm:
             # New format: decision_ms already folds update into compute time.
@@ -403,37 +474,46 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
           f"{comm_cfg.get('bcd_ms_shared', float('nan')):.2f} ms/slot",
           flush=True)
 
-    # Reward curves (need series)
-    fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    any_curve = False
-    for name in names:
-        s = series_of(rows, sroot, name, "cum_reward")
-        if s:
-            bandplot(ax, s, COLORS.get(name, "#333"), LABELS.get(name, name))
-            any_curve = True
-    if any_curve:
-        ax.set_xlabel("Time slot"); ax.set_ylabel("Cumulative mean reward")
-        ax.set_title("Reward (Lyapunov objective)")
-        ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
-        fig.tight_layout()
-        fig.savefig(os.path.join(out_dir, "reward.png"), dpi=160)
-    plt.close(fig)
-
+    # Primary reward: trailing-window running average of per-slot reward
+    # (mean ± std across seeds). W < T → less smooth than full cummean.
+    rew_w = 60
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
     any_curve = False
     for name in names:
         s = series_of(rows, sroot, name, "rew_series")
         if s:
-            bandplot(ax, s, COLORS.get(name, "#333"), LABELS.get(name, name),
-                     sliding=slide)
+            s_avg = [windowed_running_mean(v, rew_w) for v in s]
+            bandplot(ax, s_avg, COLORS.get(name, "#333"), LABELS.get(name, name),
+                     robust=False, band=True, alpha=0.12, lw=1.9)
             any_curve = True
     if any_curve:
-        ax.set_xlabel("Time slot"); ax.set_ylabel(f"Mean reward (W={slide})")
-        ax.set_title("Per-slot reward")
-        ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
+        ax.set_xlabel("Time slot")
+        ax.set_ylabel("Running average reward")
+        ax.set_title("Per-slot reward (Lyapunov objective)")
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=8)
+        # Y-limits from center curves only (t>=50); ignore band extremes.
+        ys = []
+        for line in ax.get_lines():
+            y = np.asarray(line.get_ydata(), dtype=float)
+            if y.size:
+                t0 = min(50, max(0, y.size // 10))
+                ys.append(y[t0:][np.isfinite(y[t0:])])
+        if ys:
+            y = np.concatenate(ys)
+            lo, hi = float(np.min(y)), float(np.max(y))
+            pad = max(0.08 * (hi - lo), 0.4)
+            ax.set_ylim(lo - pad, hi + pad)
         fig.tight_layout()
-        fig.savefig(os.path.join(out_dir, "reward_sliding.png"), dpi=160)
+        fig.savefig(os.path.join(out_dir, "reward.png"), dpi=160)
     plt.close(fig)
+    # Drop obsolete separate sliding figure if present.
+    old_slide = os.path.join(out_dir, "reward_sliding.png")
+    if os.path.isfile(old_slide):
+        try:
+            os.remove(old_slide)
+        except OSError:
+            pass
 
     components = [
         ("acc_series", "accuracy.png", "Mean accuracy (mAP)", "Accuracy", True),
@@ -445,16 +525,21 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     for key, fname, ylabel, title, do_slide in components:
         fig, ax = plt.subplots(figsize=(7.5, 4.5))
         any_curve = False
+        # Delay/energy/backlog: same outlier-seed problem → robust bands.
+        robust = key in ("delay_series", "energy_series", "backlog_series")
         for name in names:
             s = series_of(rows, sroot, name, key)
             if s:
                 bandplot(ax, s, COLORS.get(name, "#333"), LABELS.get(name, name),
-                         sliding=slide if do_slide else None)
+                         sliding=slide if do_slide else None, robust=robust)
                 any_curve = True
         if any_curve:
-            ax.set_xlabel("Time slot"); ax.set_ylabel(ylabel)
+            ylab = ylabel.replace("Mean ", "Median " if robust else "Mean ")
+            ax.set_xlabel("Time slot"); ax.set_ylabel(ylab)
             ax.set_title(title)
             ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
+            if robust:
+                _autoscale_ylim(ax)
             fig.tight_layout()
             fig.savefig(os.path.join(out_dir, fname), dpi=160)
         plt.close(fig)

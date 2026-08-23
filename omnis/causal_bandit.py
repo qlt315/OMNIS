@@ -19,8 +19,11 @@ class CausalMAB:
     Acc-table tie-breaks are banned. GP Acc is scored once per joint arm after
     MCS is chosen — never inside the MCS loop.
 
-    Joint arms are (model, cell_rank); cell_rank indexes the UE's Top-L
-    strongest cells at the current slot.
+    Joint arms are (model, cell_rank) **inside a coarse Top-L** pruned by
+    MD-visible radio + broadcast compute (``omnis.assoc_info.coarse_rank_cells``).
+    Pruning reduces exploration; joint learning is still required because Acc,
+    link adaptation, edge GPU share, and queues are coupled in the Lyapunov
+    objective — coarse scores are not optimality certificates.
 
     Parallel decision model (distributed MDs): ``last_parallel_decision_s`` is
     max over per-MD analytic work (+ shared GP predict amortized by /U).
@@ -29,7 +32,9 @@ class CausalMAB:
     def __init__(self, scm, length_scales, signal_var, noise_var, beta,
                  penalty_gain=1.5, acquisition='ucb', use_prior=False, shared=True,
                  lyapunov_v=1.0, drift_gain=1.0, w_acc=1.0, init_random=20,
-                 empty_prior_std=1.0, explore_slots=20, max_obs=600):
+                 empty_prior_std=1.0, explore_slots=20, max_obs=600,
+                 acc_upgrade_snr_db=4.0, acc_upgrade_backlog_tanh=0.45,
+                 acc_upgrade_bonus=0.10):
         self.scm = scm
         self.beta = beta
         self.penalty_gain = penalty_gain
@@ -45,6 +50,14 @@ class CausalMAB:
         self.init_random = int(init_random)
         self.explore_slots = int(explore_slots)
         self._select_slots = 0
+        # Lyapunov-feasible accuracy upgrade: bias toward wider models when
+        # SINR is good and the bit queue is light (does not change get_reward).
+        self.acc_upgrade_snr_db = float(acc_upgrade_snr_db)
+        self.acc_upgrade_backlog_tanh = float(acc_upgrade_backlog_tanh)
+        self.acc_upgrade_bonus = float(acc_upgrade_bonus)
+        self._channel_tier = {
+            3: 0.0, 6: 0.55, 12: 1.0,
+        }
         max_obs = int(max_obs)
         self._gp_args = dict(
             prior_mean_fn=self._prior_at,
@@ -79,8 +92,12 @@ class CausalMAB:
         return self.scm.acc_prior_mean(snr_db, model_name, int(round(mcs_idx)))
 
     def predict_mcs(self, snr_db, model_name, task, predict_overheads,
-                    model_idx=None, overhead_parts=None):
-        """ILLA MCS forward sim: BLER/SE (+ QoS); no Acc-GP / Acc-table inside."""
+                    model_idx=None, overhead_parts=None, cell_id=None):
+        """ILLA MCS forward sim: BLER/SE (+ QoS); no Acc-GP / Acc-table inside.
+
+        When ``overhead_parts`` is provided (including cell-specific GPU), MCS
+        search is vectorized — same cost class as UCB ``forward_sim_mcs``.
+        """
         del model_idx  # Acc-GP must not run inside the MCS loop
         if overhead_parts is not None:
             return self._predict_mcs_vectorized(
@@ -89,7 +106,8 @@ class CausalMAB:
         feas = []
         best_infeas, best_infeas_score = None, -np.inf
         for mcs in self.scm.available_mcs:
-            service_hat, _, energy_hat = predict_overheads(model_name, mcs, snr_db=snr_db)
+            service_hat, _, energy_hat = predict_overheads(
+                model_name, mcs, snr_db=snr_db, cell_id=cell_id)
             if (service_hat <= task['delay_constraint']
                     and energy_hat <= task['energy_constraint']):
                 bler = self.scm.bler(model_name, mcs, snr_db)
@@ -141,29 +159,60 @@ class CausalMAB:
 
     def _score_user_arms(self, user, top_cells, sinr_db_by_cell, task,
                          predict_overheads, drift_score, overhead_parts_by_model=None):
-        """Per-MD analytic work: M×L×|MCS| ILLA + overhead hats (no GP)."""
+        """Per-MD analytic work: M×L vectorized ILLA + overhead hats (no GP).
+
+        ``overhead_parts_by_model`` may be:
+          * ``None`` — scalar MCS loop (legacy),
+          * ``dict[model_name -> parts]`` — shared GPU (no cell),
+          * ``callable(model_name, cell_id) -> parts`` — cell-aware vectorized ILLA.
+        """
         L = len(top_cells)
         mcs_hats = []
         overhead_hats = []
         arm_meta = []
         xs = []
+        parts_fn = overhead_parts_by_model if callable(overhead_parts_by_model) else None
+        parts_map = None if parts_fn else overhead_parts_by_model
         for model_idx, model in enumerate(self.scm.models):
             name = model['name']
-            parts = None
-            if overhead_parts_by_model is not None:
-                parts = overhead_parts_by_model.get(name)
             for cell_rank in range(L):
                 cell_id = top_cells[cell_rank]
                 snr_db = sinr_db_by_cell[cell_id]
+                if parts_fn is not None:
+                    parts = parts_fn(name, cell_id)
+                elif parts_map is not None:
+                    parts = parts_map.get(name)
+                else:
+                    parts = None
                 mcs_hat = self.predict_mcs(
                     snr_db, name, task, predict_overheads,
-                    model_idx=model_idx, overhead_parts=parts)
+                    model_idx=model_idx, overhead_parts=parts,
+                    cell_id=None if parts is not None else cell_id)
                 mcs_hats.append(mcs_hat)
                 overhead_hats.append(
-                    predict_overheads(name, mcs_hat, snr_db=snr_db))
+                    predict_overheads(name, mcs_hat, snr_db=snr_db,
+                                      cell_id=cell_id))
                 xs.append(self._make_x(snr_db, model_idx, mcs_hat))
                 arm_meta.append((model_idx, cell_id, snr_db))
         return user, task, mcs_hats, overhead_hats, drift_score, arm_meta, xs
+
+    def _acc_upgrade_uplift(self, task, snr_db, model_idx):
+        """Extra utility [same units as get_reward] for wider models when safe."""
+        if self.acc_upgrade_bonus <= 0.0:
+            return 0.0
+        backlog = float(task.get('backlog_bits', 0.0))
+        scale = float(task.get('dpp_bit_scale', 1.0))
+        if scale <= 0.0:
+            return 0.0
+        if snr_db < self.acc_upgrade_snr_db:
+            return 0.0
+        if float(np.tanh(backlog / scale)) >= self.acc_upgrade_backlog_tanh:
+            return 0.0
+        _quant, channels = self.scm.arm_feature(model_idx)
+        tier = self._channel_tier.get(int(channels), 0.0) + 0.20 * float(_quant)
+        if tier <= 0.0:
+            return 0.0
+        return self.acc_upgrade_bonus * tier
 
     def _local_argmax(self, user, task, mcs_hats, overhead_hats, drift_score,
                       arm_meta, acc_scores):
@@ -177,6 +226,7 @@ class CausalMAB:
                           * erf(task['delay_constraint'] - sojourn_hat)
                           + self.penalty_gain * task['energy_weight']
                           * erf(task['energy_constraint'] - energy_hat))
+            reward_hat += self._acc_upgrade_uplift(task, snr_db, model_idx)
             val = self.lyapunov_v * reward_hat
             if drift_score is not None:
                 val += self.drift_gain * drift_score(

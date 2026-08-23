@@ -7,6 +7,13 @@ import matplotlib.pyplot as plt
 from sys_data.config import Config
 from omnis.bcd_loop import run_bcd_slot
 import omnis.bcd_loop as bcd_loop
+from omnis.assoc_info import (
+    init_cell_compute_state,
+    update_cell_compute_state,
+    expected_gpu_if_join,
+    coarse_rank_cells,
+)
+from omnis.radio_obs import observe_cell_sinr_db, payload_bits
 
 class RSS:
     def __init__(self, config):
@@ -58,6 +65,8 @@ class RSS:
         self.sinr_trace = config.sinr_trace
         self.top_l_cells = config.top_l_cells
         self.num_cells = config.num_cells
+        self.assoc_w_radio = float(getattr(config, "assoc_w_radio", 1.0))
+        self.assoc_w_compute = float(getattr(config, "assoc_w_compute", 1.0))
         # Std of the per-task accuracy observation noise (0 disables)
         self.acc_noise_std = getattr(config, 'acc_noise_std', 0.0)
 
@@ -79,6 +88,8 @@ class RSS:
         self._last_bandwidth = {}
         self._last_gpu = {}
         self._last_mcs = {}
+        self._cell_compute_state = init_cell_compute_state(
+            self.num_cells, self.es_params['freq'], self.user_num)
 
         # Static random (model_idx, cell_rank) per user
         self.static_model_dic = {}
@@ -86,6 +97,9 @@ class RSS:
         for user in self.users:
             self.static_model_dic[user] = random.randint(0, len(self.models) - 1)
             self.static_cell_rank_dic[user] = random.randint(0, self.top_l_cells - 1)
+
+    def _payload_bits(self, model_name):
+        return payload_bits(self.data_size, model_name)
 
     def generate_tasks(self, time_slot):
             """Dynamically adjust delay and energy constraints while keeping the base values fixed.
@@ -153,8 +167,17 @@ class RSS:
             cell_dic[user] = cell_id
         return model_selection_dic, cell_dic
 
-    def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0):
-        """Analytic Payload -> {Delay, Energy}; transmission uses goodput SE."""
+    def _gpu_hat_for_association(self, user, cell_id=None):
+        if cell_id is not None:
+            return expected_gpu_if_join(
+                cell_id, self._cell_compute_state,
+                self.es_params['freq'], self.user_num)
+        return float(self._last_gpu.get(
+            user, self.es_params['freq'] / max(self.user_num, 1)))
+
+    def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0,
+                             cell_id=None):
+        """Analytic Payload -> {Delay, Energy}; GPU from cell-compute broadcast."""
         md = self.md_params[user]
 
         head_flops = self.head_flops[model_name]
@@ -162,13 +185,16 @@ class RSS:
         local_energy = md['power_coeff'] * md['freq'] ** 3 * local_delay
 
         bandwidth_hat = self._last_bandwidth.get(user, self.total_bandwidth / self.user_num)
-        se_eff = self.mcs_table.goodput_se(model_name, mcs_idx, snr_db)
-        rate_hat = bandwidth_hat * max(se_eff, 1e-12)
-        trans_delay = self.data_size[model_name] / rate_hat
+        # Delay/energy: clamped delivery SE (avoid 1/1e-12 blow-ups).
+        # Queue drain elsewhere still uses uncapped goodput_se.
+        se_eff = self.mcs_table.delay_se(model_name, mcs_idx, snr_db)
+        rate_hat = bandwidth_hat * se_eff  # [bit/s]
+        bits = self._payload_bits(model_name)
+        trans_delay = bits / rate_hat
         queue_delay = self.backlog[user] / rate_hat
         trans_energy = md['trans_power'] * trans_delay
 
-        gpu_hat = self._last_gpu.get(user, self.es_params['freq'] / self.user_num)
+        gpu_hat = self._gpu_hat_for_association(user, cell_id=cell_id)
         tail_flops = self.tail_flops[model_name]
         edge_delay = tail_flops * 1e-9 / (
             gpu_hat * self.es_params['cores'] * self.es_params['flops_per_cycle'])
@@ -185,7 +211,8 @@ class RSS:
         bandwidth_hat = self._last_bandwidth.get(user, self.total_bandwidth / self.user_num)
         se_eff = self.mcs_table.goodput_se(model_name, mcs_idx, snr_db)
         service_n = bandwidth_hat * se_eff * self.slot_duration / self.dpp_bit_scale
-        arrivals_n = self.arrival_rate[user] * self.data_size[model_name] / self.dpp_bit_scale
+        arrivals_n = (self.arrival_rate[user] * self._payload_bits(model_name)
+                      / self.dpp_bit_scale)
         q_n = float(np.tanh(self.backlog[user] / self.dpp_bit_scale))
         z_n = float(np.tanh(self.energy_queue[user] / self.dpp_energy_scale))
         budget_n = self.energy_budget[user] / self.dpp_energy_scale
@@ -193,7 +220,7 @@ class RSS:
         return q_n * (service_n - arrivals_n) + z_n * (budget_n - energy_n)
 
 
-    def forward_sim_mcs(self, user, snr_db, model_name, task_u):
+    def forward_sim_mcs(self, user, snr_db, model_name, task_u, cell_id=None):
         """ILLA MCS forward sim: BLER/SE + QoS only (no Acc-table scoring).
 
         Acc table is environment-only; learners observe Acc after realization.
@@ -203,7 +230,7 @@ class RSS:
         best_infeas, best_infeas_score = None, -np.inf
         for mcs in self.available_mcs:
             service_hat, _, energy_hat = self.predict_md_overheads(
-                user, None, model_name, mcs, snr_db=snr_db)
+                user, None, model_name, mcs, snr_db=snr_db, cell_id=cell_id)
             if (service_hat <= task_u['delay_constraint']
                     and energy_hat <= task_u['energy_constraint']):
                 bler = self.mcs_table.bler(model_name, mcs, snr_db)
@@ -235,40 +262,56 @@ class RSS:
         return reward_dic
 
     def get_trans_rate(self, time_slot):
-        """Read per-cell SINR from the trace and build Top-L candidate sets."""
+        """Per-UE radio observation + coarse Top-L association candidates.
+
+        Returns snr_best_est, trans_rate, cand_cells, sinr_est_db_all, sinr_true_db_all.
+        Est CSI → association / decisions / BCD MCS; true CSI → Acc / goodput env.
+        """
         trans_rate_dic = {}
         snr_dic = {}
         cand_cells_dic = {}
-        sinr_db_all_dic = {}
+        sinr_est_db_all_dic = {}
+        sinr_true_db_all_dic = {}
 
         for user_idx, user in enumerate(self.users):
-            top_cells = self.sinr_trace.top_cells(time_slot, user_idx, self.top_l_cells)
-            sinr_vec = self.sinr_trace.sinr_vector(time_slot, user_idx)
-            sinr_db_all = {}
-            for cell_idx in range(self.sinr_trace.num_cells):
-                snr_db = float(sinr_vec[cell_idx]) + self.sinr_offset_db
-                if self.est_err_db > 0:
-                    snr_db += self.est_err_db * np.random.randn()
-                sinr_db_all[cell_idx] = snr_db
-
+            true_db, est_db = observe_cell_sinr_db(
+                self.sinr_trace, time_slot, user_idx,
+                sinr_offset_db=self.sinr_offset_db,
+                est_err_db=self.est_err_db)
+            top_cells = coarse_rank_cells(
+                est_db,
+                getattr(self, "_cell_compute_state", None),
+                self.top_l_cells,
+                self.es_params["freq"],
+                self.user_num,
+                w_radio=getattr(self, "assoc_w_radio", 1.0),
+                w_compute=getattr(self, "assoc_w_compute", 1.0),
+            )
             cand_cells_dic[user] = top_cells
-            sinr_db_all_dic[user] = sinr_db_all
+            sinr_est_db_all_dic[user] = est_db
+            sinr_true_db_all_dic[user] = true_db
             best_cell = top_cells[0]
-            best_snr_linear = 10 ** (sinr_db_all[best_cell] / 10)
+            best_snr_linear = 10 ** (est_db[best_cell] / 10)
             snr_dic[user] = best_snr_linear
             trans_rate_dic[user] = best_snr_linear
 
-        return snr_dic, trans_rate_dic, cand_cells_dic, sinr_db_all_dic
+        return (snr_dic, trans_rate_dic, cand_cells_dic,
+                sinr_est_db_all_dic, sinr_true_db_all_dic)
 
 
     def _goodput_se(self, user, model_name, mcs_idx, snr_dic):
-        """Effective SE after TB erasures [bit/s/Hz]."""
+        """Effective SE after TB erasures [bit/s/Hz] (queue service)."""
         snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
-        return max(self.mcs_table.goodput_se(model_name, mcs_idx, snr_db), 1e-12)
+        return max(self.mcs_table.goodput_se(model_name, mcs_idx, snr_db), 0.0)
+
+    def _delay_se(self, user, model_name, mcs_idx, snr_dic):
+        """Clamped delivery SE for delay/energy / BW weights."""
+        snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
+        return self.mcs_table.delay_se(model_name, mcs_idx, snr_db)
 
     def allocate_bandwidth(self, task_dic, model_selection_dic, trans_rate_dic, phy_choice_dic,
                            users=None, snr_dic=None):
-        """Allocate bandwidth within one cell's pool (goodput-weighted)."""
+        """Allocate bandwidth within one cell's pool (delay-SE-weighted)."""
         users = self.users if users is None else users
         d_prime_dic = {}
         for user in users:
@@ -277,9 +320,9 @@ class RSS:
             omega_m_t = task_dic[user]['delay_weight']
             omega_m_e = task_dic[user]['energy_weight']
             q_n = self.backlog[user] / self.dpp_bit_scale
-            se_eff = (self._goodput_se(user, chosen_model_m, phy_choice_dic[user], snr_dic)
+            se_eff = (self._delay_se(user, chosen_model_m, phy_choice_dic[user], snr_dic)
                       if snr_dic is not None else max(self.mcs_table.se[phy_choice_dic[user]], 1e-12))
-            d_prime_dic[user] = ((1 + q_n) * self.data_size[chosen_model_m]
+            d_prime_dic[user] = ((1 + q_n) * self._payload_bits(chosen_model_m)
                                  * (omega_m_t + p_m * omega_m_e) / se_eff)
 
         total_sqrt_d_prime = sum(np.sqrt(d) for d in d_prime_dic.values())
@@ -431,16 +474,19 @@ class RSS:
 
     def get_trans_overhead(self, trans_rate_dic, model_selection_dic, bandwidth_allocation_dic,
                            mcs_dic, snr_dic=None):
-        """Transmission delay/energy using goodput SE (TB erasures)."""
+        """Transmission delay/energy via clamped delivery SE (stable QoS)."""
         trans_overhead_dic = {}
         for user in trans_rate_dic.keys():
             chosen_model_m = model_selection_dic[user]["model"]
             bandwidth_m = bandwidth_allocation_dic[user]
-            data_size_m = self.data_size[chosen_model_m]
+            data_size_m = self._payload_bits(chosen_model_m)
             if snr_dic is not None:
-                se_eff = self._goodput_se(user, chosen_model_m, mcs_dic[user], snr_dic)
+                snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
+                se_eff = self.mcs_table.delay_se(
+                    chosen_model_m, mcs_dic[user], snr_db)
             else:
                 se_eff = max(self.mcs_table.se[mcs_dic[user]], 1e-12)
+            # One-shot airtime / ARQ with BLER capped — queue service uses goodput.
             trans_delay = data_size_m / (bandwidth_m * se_eff)
             trans_energy = self.md_params[user]['trans_power'] * trans_delay
             trans_overhead_dic[user] = {"delay": trans_delay, "energy": trans_energy}
@@ -650,51 +696,65 @@ class RSS:
     def simulation(self):
         """main loop for simulation"""
         for t in range(self.time_slot_num):
-            snr_dic, trans_rate_dic, cand_cells_dic, sinr_db_all_dic = self.get_trans_rate(t)
+            (snr_best_est, trans_rate_dic, cand_cells_dic,
+             sinr_est_db_all_dic, sinr_true_db_all_dic) = self.get_trans_rate(t)
 
             task_dic = self.generate_tasks(t)
 
             t_decision = time.time()
             model_selection_dic, cell_dic = self.model_selection(cand_cells_dic)
             self.decision_time += time.time() - t_decision
-            snr_dic = self._apply_cell_association(cell_dic, sinr_db_all_dic)
+            snr_est_dic = self._apply_cell_association(cell_dic, sinr_est_db_all_dic)
+            snr_true_dic = self._apply_cell_association(cell_dic, sinr_true_db_all_dic)
 
             arrival_bits_dic = {user: task_dic[user]["n_arrivals"]
-                                * self.data_size[model_selection_dic[user]["model"]]
+                                * self._payload_bits(model_selection_dic[user]["model"])
                                 for user in self.users}
 
-            # Calculate the local processing overhead
             local_overhead_dic = self.get_local_overhead(model_selection_dic)
 
-            # The ES performs BCD-based optimization (warm-start MCS, GPU once/slot)
+            # BCD MCS policy uses estimated CSI; realized Acc/goodput use true.
             bcd_out = run_bcd_slot(
                 self, task_dic, model_selection_dic, trans_rate_dic,
-                local_overhead_dic, snr_dic, cell_dic)
+                local_overhead_dic, snr_est_dic, cell_dic)
             bandwidth_allocation_dic = bcd_out["bandwidth"]
             gpu_allocation_dic = bcd_out["gpu"]
             phy_choice_dic = bcd_out["phy_choice"]
-            total_overhead_dic = bcd_out["total_overhead"]
+            trans_oh = self.get_trans_overhead(
+                trans_rate_dic, model_selection_dic, bandwidth_allocation_dic,
+                phy_choice_dic, snr_dic=snr_true_dic)
+            edge_oh = self.get_edge_overhead(model_selection_dic, gpu_allocation_dic)
+            total_overhead_dic = {}
+            for user in self.users:
+                total_overhead_dic[user] = {
+                    "delay": (local_overhead_dic[user]["delay"]
+                              + trans_oh[user]["delay"]
+                              + edge_oh[user]["delay"]),
+                    "energy": (local_overhead_dic[user]["energy"]
+                               + trans_oh[user]["energy"]
+                               + edge_oh[user]["energy"]),
+                }
 
-            # Record the realized PHY diagnostics
             for user in self.users:
                 self.instant_metrics[user]["mcs"].append(phy_choice_dic[user])
                 self.instant_metrics[user]["cell"].append(cell_dic[user])
-                snr_db_u = 10 * np.log10(max(snr_dic[user], 1e-12))
+                snr_db_u = 10 * np.log10(max(snr_true_dic[user], 1e-12))
                 self.instant_metrics[user]["bler"].append(self.mcs_table.bler(
                     model_selection_dic[user]["model"], phy_choice_dic[user], snr_db_u))
 
-            # Env-only Acc realization (rewards / metrics / learners observe this)
-            acc_dic = self.get_accuracy(snr_dic, phy_choice_dic, model_selection_dic)
+            acc_dic = self.get_accuracy(snr_true_dic, phy_choice_dic, model_selection_dic)
             if self.acc_noise_std > 0:
                 acc_dic = {
                     user: float(np.clip(acc + np.random.normal(0.0, self.acc_noise_std), 0.0, 1.0))
                     for user, acc in acc_dic.items()
                 }
 
-            # Calculate the reward for MDs
             reward_dic = self.get_reward(task_dic, acc_dic, total_overhead_dic)
 
-            service_bits_dic = {user: bandwidth_allocation_dic[user] * self._goodput_se(user, model_selection_dic[user]["model"], phy_choice_dic[user], snr_dic) * self.slot_duration
+            service_bits_dic = {user: bandwidth_allocation_dic[user]
+                                * self._goodput_se(user, model_selection_dic[user]["model"],
+                                                   phy_choice_dic[user], snr_true_dic)
+                                * self.slot_duration
                                 for user in self.users}
             queue_info_dic = {}
             for user in self.users:
@@ -709,6 +769,9 @@ class RSS:
             self.get_instant_metrics(task_dic, total_overhead_dic, reward_dic, acc_dic, queue_info_dic)
             self._last_bandwidth = bandwidth_allocation_dic
             self._last_gpu = gpu_allocation_dic
+            self._cell_compute_state = update_cell_compute_state(
+                cell_dic, gpu_allocation_dic, self.num_cells,
+                self.es_params['freq'])
 
         self.get_average_and_std_metrics()
 

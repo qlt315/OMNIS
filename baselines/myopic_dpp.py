@@ -30,6 +30,7 @@ class MyopicDPP(RSS):
 
     def get_trans_rate(self, t):
         out = super().get_trans_rate(t)
+        # Index 3 = estimated SINR (association / decisions); 4 = true (env).
         self._last_sinr_db_all = out[3]
         return out
 
@@ -43,10 +44,10 @@ class MyopicDPP(RSS):
             return 0.5  # uninformative until observations arrive
         return self._emp_acc_sum[model_name] / n
 
-    def _arm_score(self, user, model_name, snr_db, task_u):
-        mcs_hat = self.forward_sim_mcs(user, snr_db, model_name, task_u)
+    def _arm_score(self, user, model_name, snr_db, task_u, cell_id=None):
+        mcs_hat = self.forward_sim_mcs(user, snr_db, model_name, task_u, cell_id=cell_id)
         _svc, sojourn_hat, energy_hat = self.predict_md_overheads(
-            user, None, model_name, mcs_hat, snr_db=snr_db)
+            user, None, model_name, mcs_hat, snr_db=snr_db, cell_id=cell_id)
         acc_hat = self._emp_acc(model_name)
         w_acc = getattr(self, "reward_w_acc", 1.0)
         qos = getattr(self, "reward_qos_coef", 1.5)
@@ -76,7 +77,7 @@ class MyopicDPP(RSS):
                 for cell_rank in range(min(self.top_l_cells, len(top_cells))):
                     cell_id = top_cells[cell_rank]
                     snr_db = float(sinr_db_all[cell_id])
-                    score = self._arm_score(user, mname, snr_db, task_u)
+                    score = self._arm_score(user, mname, snr_db, task_u, cell_id=cell_id)
                     if score > best_val:
                         best_val = score
                         best_model_name = mname

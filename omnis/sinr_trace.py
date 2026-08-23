@@ -1,10 +1,21 @@
 """Loader for multi-cell SINR traces produced by phy_sim/run_traces.py.
 
-Trace schema: slot, cell_id, ue_id, sinr_db  (all candidate links).
-Provides Top-L cell candidates per UE/slot for the joint (model, cell) arm.
+Trace schema (required): ``slot, cell_id, ue_id, sinr_db``.
+
+``sinr_db`` is the per-link SINR [dB] used by MCS/Acc/BLER tables (and by
+``observe_cell_sinr_db`` for true vs estimated CSI). Optional CSV columns
+``se_bps_hz``, ``n_layers`` are loaded when present (diagnostics).
+
+Optional sidecar: ``sinr_trace_<tag>_meta.json`` (phy=su_mimo, antenna counts).
+
+Provides Top-L cell candidates per UE/slot for the joint (model, cell) arm
+(legacy helper; OMNIS coarse-ranks with radio+compute in ``assoc_info``).
 """
 
+from __future__ import annotations
+
 import csv
+import json
 import os
 
 import numpy as np
@@ -45,25 +56,48 @@ def select_spread_ue_ids(n_users, num_ues, num_cells):
     return selected
 
 
+def load_trace_meta(table_dir, tag):
+    """Load optional ``sinr_trace_<tag>_meta.json`` if present."""
+    path = os.path.join(table_dir, f"sinr_trace_{tag}_meta.json")
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 class SinrTrace:
-    def __init__(self, trace_path, link_info_path=None, ue_ids=None):
+    def __init__(self, trace_path, link_info_path=None, ue_ids=None, meta=None):
         """Load a SINR cube.
 
         Parameters
         ----------
         trace_path : str
-            CSV with columns slot, cell_id, ue_id, sinr_db.
+            CSV with columns slot, cell_id, ue_id, sinr_db
+            (optional: se_bps_hz, n_layers).
         link_info_path : str, optional
             CSV with cell_id, ue_id, distance_m (kept for diagnostics).
         ue_ids : sequence of int, optional
             Subset of trace UE indices to keep (maps onto system users in order).
             Must be unique. If None, keep every UE present in the file.
+        meta : dict, optional
+            Trace metadata (SU-MIMO antenna / layer info).
         """
         rows = []
+        has_se = False
+        has_layers = False
         with open(trace_path) as f:
-            for r in csv.DictReader(f):
-                rows.append((int(r["slot"]), int(r["cell_id"]),
-                             int(r["ue_id"]), float(r["sinr_db"])))
+            reader = csv.DictReader(f)
+            fieldnames = set(reader.fieldnames or [])
+            has_se = "se_bps_hz" in fieldnames
+            has_layers = "n_layers" in fieldnames
+            for r in reader:
+                se = float(r["se_bps_hz"]) if has_se and r.get("se_bps_hz") not in (
+                        None, "") else float("nan")
+                n_lay = int(float(r["n_layers"])) if has_layers and r.get(
+                    "n_layers") not in (None, "") else -1
+                rows.append((
+                    int(r["slot"]), int(r["cell_id"]), int(r["ue_id"]),
+                    float(r["sinr_db"]), se, n_lay))
         if not rows:
             raise ValueError(f"empty SINR trace: {trace_path}")
 
@@ -88,15 +122,32 @@ class SinrTrace:
         self.ue_ids = list(ue_ids)
         self._ue_pos = {u: i for i, u in enumerate(self.ue_ids)}
         self._cell_pos = {c: i for i, c in enumerate(self.cell_ids)}
+        self.meta = meta
+        self.phy = (meta or {}).get("phy", "unknown")
 
-        # sinr[slot, cell, ue_local]
+        # sinr[slot, cell, ue_local] — effective SNR [dB] for MCS/Acc tables
         self.sinr_db = np.full((self.num_slots, self.num_cells, self.num_ues),
                                -120.0, dtype=np.float64)
+        self.se_bps_hz = None
+        self.n_layers = None
+        if has_se:
+            self.se_bps_hz = np.full_like(self.sinr_db, np.nan)
+        if has_layers:
+            self.n_layers = np.full(
+                (self.num_slots, self.num_cells, self.num_ues), -1, dtype=np.int16)
+
         slot_pos = {s: i for i, s in enumerate(all_slots)}
-        for slot, cell, ue, snr in rows:
+        for slot, cell, ue, snr, se, n_lay in rows:
             if ue not in self._ue_pos:
                 continue
-            self.sinr_db[slot_pos[slot], self._cell_pos[cell], self._ue_pos[ue]] = snr
+            si = slot_pos[slot]
+            ci = self._cell_pos[cell]
+            ui = self._ue_pos[ue]
+            self.sinr_db[si, ci, ui] = snr
+            if self.se_bps_hz is not None:
+                self.se_bps_hz[si, ci, ui] = se
+            if self.n_layers is not None:
+                self.n_layers[si, ci, ui] = n_lay
 
         self.distances = None
         if link_info_path and os.path.exists(link_info_path):
@@ -113,7 +164,7 @@ class SinrTrace:
         return int(t) % self.num_slots
 
     def sinr_vector(self, t, ue_local):
-        """SINR [dB] from every cell to one UE at slot t."""
+        """Effective SINR [dB] from every cell to one UE at slot t."""
         return self.sinr_db[self.slot_index(t), :, ue_local].copy()
 
     def sinr(self, t, cell, ue_local):
@@ -130,12 +181,14 @@ class SinrTrace:
         # Prefer the site-aggregated trace (3 sectors folded per hex site -> one
         # logical cell), which matches the system model's per-cell ES / bandwidth
         # pool abstraction; fall back to the raw sector-level trace if absent.
+        meta = load_trace_meta(table_dir, tag)
         site_trace = os.path.join(table_dir, f"sinr_trace_{tag}_sites.csv")
         site_info = os.path.join(table_dir, f"link_info_{tag}_sites.csv")
         if os.path.exists(site_trace):
             return SinrTrace(site_trace,
                              site_info if os.path.exists(site_info) else None,
-                             ue_ids=ue_ids)
+                             ue_ids=ue_ids, meta=meta)
         trace = os.path.join(table_dir, f"sinr_trace_{tag}.csv")
         info = os.path.join(table_dir, f"link_info_{tag}.csv")
-        return SinrTrace(trace, info if os.path.exists(info) else None, ue_ids=ue_ids)
+        return SinrTrace(trace, info if os.path.exists(info) else None,
+                         ue_ids=ue_ids, meta=meta)
