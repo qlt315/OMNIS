@@ -1,6 +1,6 @@
 % Stacked runtime bar from figures/convergence/plot_data.mat
 % Stack: selection + update + interaction + BCD (ms/slot). Does not save figures.
-% Plots OMNIS-UCB (better of UCB/TS); omits DQN and OMNIS-TS.
+% Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
 
 clear; close all; clc;
 
@@ -9,7 +9,7 @@ repo_root = fileparts(this_dir);
 S = load(fullfile(repo_root, 'figures', 'convergence', 'plot_data.mat'));
 
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS-Causal', 'OMNIS-UCB', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
+algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
 
 % Map keys -> indices in algo_names
 all_names = cellstr(string(S.algo_names(:)));
@@ -49,7 +49,6 @@ set(gca, 'XTick', 1:numel(algo_labels), 'XTickLabel', algo_labels, ...
     'FontSize', 13, 'FontName', 'Times New Roman');
 xtickangle(18);
 ylabel('Runtime [ms/slot]', 'FontSize', 14, 'FontName', 'Times New Roman');
-title('Control-plane runtime breakdown', 'FontSize', 14, 'FontName', 'Times New Roman');
 grid on;
 ax.GridColor = [0.2 0.2 0.2];
 ax.GridAlpha = 0.5;

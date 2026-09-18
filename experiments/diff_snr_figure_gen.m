@@ -1,6 +1,6 @@
 % SNR sweep from figures/sweeps/snr/snr.mat
 % Style aligned with conference OMNIS scripts; does not save figures.
-% Plots OMNIS-UCB (better of UCB/TS); omits DQN and OMNIS-TS.
+% Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
 
 clear; close all; clc;
 
@@ -10,7 +10,7 @@ data = load(fullfile(repo_root, 'figures', 'sweeps', 'snr', 'snr.mat'));
 
 snr_values = double(data.axis(:)');
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS-Causal', 'OMNIS-UCB', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
+algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
 
 % mat fields use {algo}_{metric}_mean
 metric_keys = {'reward', 'delay', 'energy', 'acc', 'vio', 'backlog'};

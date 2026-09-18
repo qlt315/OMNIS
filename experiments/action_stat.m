@@ -1,6 +1,6 @@
 % Action-pick top-3 bars from action_pick_{snr,users}.mat
 % Style aligned with conference action_stat.m; does not save figures.
-% Algorithms: OMNIS-Causal, OMNIS-UCB, GDO, RSS, PPO, MAPPO, CTO (no DQN/TS).
+% Algorithms: OMNIS+, OMNIS, GDO, RSS, PPO, MAPPO, CTO (no DQN/TS).
 
 clear; close all; clc;
 
@@ -14,9 +14,7 @@ model_keys = {'Box3', 'Box6', 'Box12', 'Standard3', 'Standard6', 'Standard12'};
 model_labels = {'Box-3', 'Box-6', 'Box-12', 'Standard-3', 'Standard-6', 'Standard-12'};
 
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
-algo_ylabels = { ...
-    'OMNIS\newline-Causal', 'OMNIS\newline-UCB', 'GDO', 'RSS', ...
-    'PPO', 'MAPPO', 'CTO'};
+algo_ylabels = {'OMNIS+', 'OMNIS', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
 
 n_algo = numel(algo_keys);
 n_model = numel(model_keys);
@@ -50,8 +48,10 @@ for i = 1:6
 
     row = floor((i - 1) / 3) + 1;
     col = mod(i - 1, 3) + 1;
+    % Slightly wider column stride so y-tick labels do not collide with the
+    % neighboring axes (gap ≈ 0.055 of figure width).
     ax = subplot(2, 3, i, 'Position', ...
-        [0.05 + (col - 1) * 0.31, 0.55 - (row - 1) * 0.45, 0.27, 0.38]);
+        [0.04 + (col - 1) * 0.32, 0.55 - (row - 1) * 0.45, 0.265, 0.38]);
     hold on;
 
     for alg = 1:n_algo
@@ -69,7 +69,6 @@ for i = 1:6
     end
 
     xlabel('Action Pick Probability', 'FontSize', 13, 'FontName', 'Times New Roman');
-    title(condition_label, 'FontSize', 13, 'FontName', 'Times New Roman');
     yticks(1:n_algo);
     yticklabels(algo_ylabels);
     xlim([0, 1.15]);
@@ -84,7 +83,7 @@ for i = 1:6
     for alg = 1:n_algo
         [~, sorted_idx] = sort(data(alg, :), 'descend');
         top3 = sorted_idx(1:3);
-        fprintf('  %s: ', strrep(algo_ylabels{alg}, sprintf('\\newline'), ' '));
+        fprintf('  %s: ', algo_ylabels{alg});
         for j = 1:3
             fprintf('%s=%.3f ', model_labels{top3(j)}, data(alg, top3(j)));
         end

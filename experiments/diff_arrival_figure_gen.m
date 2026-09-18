@@ -1,6 +1,6 @@
 % Arrival-rate sweep from figures/sweeps/arrival/arrival.mat
 % Third sweep axis (with SNR / users). Does not save figures.
-% Plots OMNIS-UCB (better of UCB/TS); omits DQN and OMNIS-TS.
+% Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
 
 clear; close all; clc;
 
@@ -10,7 +10,7 @@ data = load(fullfile(repo_root, 'figures', 'sweeps', 'arrival', 'arrival.mat'));
 
 arrival_rates = double(data.axis(:)');
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS-Causal', 'OMNIS-UCB', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
+algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
 
 metric_keys = {'reward', 'delay', 'energy', 'acc', 'vio', 'backlog'};
 metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Energy [J]', ...

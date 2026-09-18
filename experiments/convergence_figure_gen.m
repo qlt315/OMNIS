@@ -1,7 +1,6 @@
 % Convergence curves from figures/convergence/plot_data.mat
-% Style aligned with conference OMNIS scripts; does not save figures.
-% Algorithms plotted: OMNIS-Causal, OMNIS-UCB (better of UCB/TS), GDO, RSS,
-% PPO, MAPPO, CTO. DQN and OMNIS-TS are omitted.
+% Smoothed mean series (Savitzky-Golay); does not save figures.
+% Algorithms: OMNIS+ (causal), OMNIS (UCB), GDO, RSS, PPO, MAPPO, CTO.
 
 clear; close all; clc;
 
@@ -10,9 +9,8 @@ repo_root = fileparts(this_dir);
 mat_path = fullfile(repo_root, 'figures', 'convergence', 'plot_data.mat');
 S = load(mat_path);
 
-% Internal keys in plot_data.mat / display labels
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS-Causal', 'OMNIS-UCB', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
+algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
 
 % Series field -> ylabel (Acc shown in %)
 series_fields = {'cum_reward_mean', 'delay_series_mean', 'acc_series_mean', ...
@@ -20,9 +18,9 @@ series_fields = {'cum_reward_mean', 'delay_series_mean', 'acc_series_mean', ...
 metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Acc. [%]', ...
     'Avg. Energy [J]', 'Avg. Backlog [bits]', 'Avg. Violation Prob.'};
 acc_scale = [1, 1, 100, 1, 1, 1];  % Acc -> %
+T_max = 500;
 
 colors = lines(numel(algo_keys));
-markers = {'-', '-', '-', '-', '-', '-', '-'};
 
 figure('Position', [100, 100, 1100, 700]);
 tiledlayout(2, 3, 'Padding', 'compact', 'TileSpacing', 'compact');
@@ -45,17 +43,18 @@ for metric_idx = 1:numel(series_fields)
             continue;
         end
         y = double(entry.(field)(:)) * scale;
-        % Light smoothing for readability (optional; raw mean still visible)
-        if numel(y) >= 49
+        T = min(T_max, numel(y));
+        y = y(1:T);
+        if T >= 49
             y_plot = sgolayfilt(y, 3, 49);
         else
             y_plot = y;
         end
-        plot(1:numel(y_plot), y_plot, 'LineWidth', 2.2, ...
-            'LineStyle', markers{alg_idx}, 'Color', colors(alg_idx, :), ...
+        plot(1:T, y_plot, 'LineWidth', 2.2, 'Color', colors(alg_idx, :), ...
             'DisplayName', algo_labels{alg_idx});
     end
 
+    xlim([1, T_max]);
     xlabel('Time Slot', 'FontSize', 14, 'FontName', 'Times New Roman');
     ylabel(metric_labels{metric_idx}, 'FontSize', 14, 'FontName', 'Times New Roman');
     grid on;
