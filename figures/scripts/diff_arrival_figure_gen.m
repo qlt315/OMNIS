@@ -2,10 +2,9 @@
 % Third sweep axis (with SNR / users). Does not save figures.
 % Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
 
-clear; close all; clc;
-
 this_dir = fileparts(mfilename('fullpath'));
-repo_root = fileparts(this_dir);
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
 data = load(fullfile(repo_root, 'figures', 'sweeps', 'arrival', 'arrival.mat'));
 
 arrival_rates = double(data.axis(:)');
@@ -21,7 +20,7 @@ colors = lines(numel(algo_keys));
 markers = {'o', 's', 'd', '^', 'v', 'p', 'h'};
 
 figure('Position', [100, 100, 1100, 520]);
-tiledlayout(2, 3, 'Padding', 'compact', 'TileSpacing', 'compact');
+tiledlayout(2, 3, 'Padding', 'none', 'TileSpacing', 'tight');
 
 for metric_idx = 1:numel(metric_keys)
     ax = nexttile;
@@ -41,7 +40,9 @@ for metric_idx = 1:numel(metric_keys)
             'DisplayName', algo_labels{alg_idx}, 'MarkerSize', 8);
     end
 
-    xlabel('Arrival Rate [tasks/slot]', 'FontSize', 14, 'FontName', 'Times New Roman');
+    if metric_idx > 3
+        xlabel('Arrival Rate [tasks/slot]', 'FontSize', 14, 'FontName', 'Times New Roman');
+    end
     ylabel(metric_labels{metric_idx}, 'FontSize', 14, 'FontName', 'Times New Roman');
     xticks(arrival_rates);
     xlim([min(arrival_rates), max(arrival_rates)]);
@@ -57,3 +58,4 @@ lgd = legend(algo_labels, 'Orientation', 'horizontal', ...
 lgd.Layout.Tile = 'south';
 lgd.Box = 'off';
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
+tighten_lr(gcf);

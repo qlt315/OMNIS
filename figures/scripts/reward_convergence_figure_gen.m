@@ -2,10 +2,9 @@
 % Matches Python reward.png style: running-average Lyapunov reward.
 % Does not save figures. Plots OMNIS; omits DQN and OMNIS-TS.
 
-clear; close all; clc;
-
 this_dir = fileparts(mfilename('fullpath'));
-repo_root = fileparts(this_dir);
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
 S = load(fullfile(repo_root, 'figures', 'convergence', 'plot_data.mat'));
 
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
@@ -72,4 +71,5 @@ if ~isempty(ys_for_ylim)
 end
 
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
+tighten_lr(gcf);
 hold off;

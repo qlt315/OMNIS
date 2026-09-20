@@ -5,7 +5,10 @@
 % acc_snr_7 = zeros(rate_num,model_num);
 % acc_snr_10 = zeros(rate_num,model_num);
 % data_size = zeros(rate_num,model_num);
-load("acc_payload_data.mat")
+this_dir = fileparts(mfilename('fullpath'));
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
+load(fullfile(repo_root, 'observations', 'acc_payload_data.mat'));
 
 
 % Define SNR values and corresponding accuracy matrices
@@ -33,7 +36,7 @@ colors = [  % RGB values
 
 % Create figure with tight layout
 figure;
-tiledlayout(2, 2, 'TileSpacing', 'tight', 'Padding', 'tight'); 
+tiledlayout(2, 2, 'TileSpacing', 'tight', 'Padding', 'none'); 
 
 % Loop through each SNR scenario
 for i = 1:4
@@ -65,3 +68,4 @@ lgd = legend(model_labels, 'FontSize', 12, 'FontName', 'Times New Roman', ...
 
 % Move the legend between the first and second row
 lgd.Layout.Tile = 'north'; % Assign legend to the top space of the tiled layout
+tighten_lr(gcf);

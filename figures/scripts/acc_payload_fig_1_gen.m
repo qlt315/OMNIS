@@ -1,4 +1,7 @@
-load("acc_payload_data.mat");
+this_dir = fileparts(mfilename('fullpath'));
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
+load(fullfile(repo_root, 'observations', 'acc_payload_data.mat'));
 
 % Define SNR values to be plotted (only 3dB and 10dB)
 snr_values = [3, 10];  
@@ -17,7 +20,7 @@ colors = [
 
 % Create figure with a tiled layout
 figure;
-tiledlayout(1, 2, 'TileSpacing', 'tight', 'Padding', 'tight'); % 1 row, 2 columns
+tiledlayout(1, 2, 'TileSpacing', 'tight', 'Padding', 'none'); % 1 row, 2 columns
 
 % Loop through each selected SNR scenario
 for i = 1:2
@@ -48,3 +51,4 @@ end
 lgd = legend(model_labels, 'FontSize', 12, 'FontName', 'Times New Roman', ...
              'NumColumns', 3, 'Location', 'northoutside');
 lgd.Layout.Tile = 'north'; % Assign legend to the top space of the tiled layout
+tighten_lr(gcf);

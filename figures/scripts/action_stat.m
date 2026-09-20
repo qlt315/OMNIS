@@ -2,10 +2,9 @@
 % Style aligned with conference action_stat.m; does not save figures.
 % Algorithms: OMNIS+, OMNIS, GDO, RSS, PPO, MAPPO, CTO (no DQN/TS).
 
-clear; close all; clc;
-
 this_dir = fileparts(mfilename('fullpath'));
-repo_root = fileparts(this_dir);
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
 snr_mat = load(fullfile(repo_root, 'figures', 'sweeps', 'action_pick', 'action_pick_snr.mat'));
 usr_mat = load(fullfile(repo_root, 'figures', 'sweeps', 'action_pick', 'action_pick_users.mat'));
 
@@ -51,7 +50,7 @@ for i = 1:6
     % Slightly wider column stride so y-tick labels do not collide with the
     % neighboring axes (gap ≈ 0.055 of figure width).
     ax = subplot(2, 3, i, 'Position', ...
-        [0.04 + (col - 1) * 0.32, 0.55 - (row - 1) * 0.45, 0.265, 0.38]);
+        [0.035 + (col - 1) * 0.335, 0.53 - (row - 1) * 0.41, 0.285, 0.38]);
     hold on;
 
     for alg = 1:n_algo
@@ -63,16 +62,21 @@ for i = 1:6
             set(b(j), 'FaceColor', color_matrix((alg - 1) * 3 + j, :));
             text(sum(top_vals(1:j)) + 0.01, alg + 0.18 * (j - 2), ...
                 model_labels{top3(j)}, ...
-                'FontSize', 11, 'FontName', 'Times New Roman', ...
+                'FontSize', 13, 'FontName', 'Times New Roman', ...
+                'Color', 'k', 'FontWeight', 'bold', ...
                 'HorizontalAlignment', 'left');
         end
     end
 
-    xlabel('Action Pick Probability', 'FontSize', 13, 'FontName', 'Times New Roman');
+    if row == 2
+        xlabel('Action Pick Probability', 'FontSize', 14, 'FontName', 'Times New Roman');
+    end
     yticks(1:n_algo);
     yticklabels(algo_ylabels);
     xlim([0, 1.15]);
-    set(gca, 'FontSize', 12, 'FontName', 'Times New Roman', 'YDir', 'reverse');
+    % Hug the bars: default ylim [0.5, n+0.5] leaves empty bands above OMNIS+ / below CTO.
+    ylim([0.65, n_algo + 0.35]);
+    set(gca, 'FontSize', 14, 'FontName', 'Times New Roman', 'YDir', 'reverse');
     grid on;
     ax.GridColor = [0.2 0.2 0.2];
     ax.GridAlpha = 0.6;
@@ -92,6 +96,7 @@ for i = 1:6
 end
 
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
+tighten_lr(gcf);
 
 function P = local_pick_matrix(mat, algo_keys, model_keys, setting_idx)
 %LOCAL_PICK_MATRIX Build [n_algo x n_model] pick probs for one setting.

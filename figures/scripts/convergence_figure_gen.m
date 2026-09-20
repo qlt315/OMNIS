@@ -2,10 +2,9 @@
 % Smoothed mean series (Savitzky-Golay); does not save figures.
 % Algorithms: OMNIS+ (causal), OMNIS (UCB), GDO, RSS, PPO, MAPPO, CTO.
 
-clear; close all; clc;
-
 this_dir = fileparts(mfilename('fullpath'));
-repo_root = fileparts(this_dir);
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
 mat_path = fullfile(repo_root, 'figures', 'convergence', 'plot_data.mat');
 S = load(mat_path);
 
@@ -23,7 +22,7 @@ T_max = 500;
 colors = lines(numel(algo_keys));
 
 figure('Position', [100, 100, 1100, 700]);
-tiledlayout(2, 3, 'Padding', 'compact', 'TileSpacing', 'compact');
+tiledlayout(2, 3, 'Padding', 'none', 'TileSpacing', 'compact');
 
 for metric_idx = 1:numel(series_fields)
     ax = nexttile;
@@ -69,3 +68,4 @@ lgd = legend(algo_labels, 'Orientation', 'horizontal', ...
     'NumColumns', numel(algo_labels));
 lgd.Box = 'off';
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
+tighten_lr(gcf);

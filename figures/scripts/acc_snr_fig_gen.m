@@ -4,7 +4,10 @@ rate_num = 3;
 % acc_rate_1 = zeros(model_num, snr_num); % rate = 1
 % acc_rate_2 = zeros(model_num, snr_num); % rate = 2/3
 % acc_rate_3 = zeros(model_num, snr_num);  % rate = 5/6
-load("acc_snr_data.mat")
+this_dir = fileparts(mfilename('fullpath'));
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
+load(fullfile(repo_root, 'observations', 'acc_snr_data.mat'));
 
 
 % Define SNR values and corresponding accuracy matrices
@@ -29,7 +32,7 @@ colors = [  % RGB values
 
 % Create figure with tight layout
 figure;
-tiledlayout(1, 3, 'TileSpacing', 'tight', 'Padding', 'tight'); 
+tiledlayout(1, 3, 'TileSpacing', 'tight', 'Padding', 'none'); 
 
 
 % Loop through each rate scenario
@@ -62,3 +65,4 @@ lgd = legend(model_labels, 'FontSize', 12, 'FontName', 'Times New Roman', ...
 
 % Move the legend between the first and second row
 lgd.Layout.Tile = 'north'; % Assign legend to the top space of the tiled layout
+tighten_lr(gcf);

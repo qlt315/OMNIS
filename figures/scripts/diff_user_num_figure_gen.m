@@ -1,28 +1,26 @@
-% SNR sweep from figures/sweeps/snr/snr.mat
+% User-count sweep from figures/sweeps/users/users.mat
 % Style aligned with conference OMNIS scripts; does not save figures.
 % Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
 
-clear; close all; clc;
-
 this_dir = fileparts(mfilename('fullpath'));
-repo_root = fileparts(this_dir);
-data = load(fullfile(repo_root, 'figures', 'sweeps', 'snr', 'snr.mat'));
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
+data = load(fullfile(repo_root, 'figures', 'sweeps', 'users', 'users.mat'));
 
-snr_values = double(data.axis(:)');
+user_counts = double(data.axis(:)');
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
 algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'RSS', 'PPO', 'MAPPO', 'CTO'};
 
-% mat fields use {algo}_{metric}_mean
 metric_keys = {'reward', 'delay', 'energy', 'acc', 'vio', 'backlog'};
 metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Energy [J]', ...
     'Avg. Acc. [%]', 'Avg. Violation Prob.', 'Avg. Backlog [bits]'};
 acc_scale = [1, 1, 1, 100, 1, 1];
 
 colors = lines(numel(algo_keys));
-marker_styles = {'-o', '-s', '-d', '-^', '-v', '-p', '-h'};
+markers = {'o', 's', 'd', '^', 'v', 'p', 'h'};
 
 figure('Position', [100, 100, 1100, 520]);
-tiledlayout(2, 3, 'Padding', 'compact', 'TileSpacing', 'compact');
+tiledlayout(2, 3, 'Padding', 'none', 'TileSpacing', 'tight');
 
 for metric_idx = 1:numel(metric_keys)
     ax = nexttile;
@@ -37,15 +35,17 @@ for metric_idx = 1:numel(metric_keys)
             continue;
         end
         y = double(data.(fname)(:)') * scale;
-        plot(snr_values, y, marker_styles{alg_idx}, 'LineWidth', 2.5, ...
-            'Color', colors(alg_idx, :), 'DisplayName', algo_labels{alg_idx}, ...
-            'MarkerSize', 8);
+        plot(user_counts, y, '-', 'LineWidth', 2.5, ...
+            'Color', colors(alg_idx, :), 'Marker', markers{alg_idx}, ...
+            'DisplayName', algo_labels{alg_idx}, 'MarkerSize', 8);
     end
 
-    xlabel('SNR [dB]', 'FontSize', 12, 'FontName', 'Times New Roman');
-    ylabel(metric_labels{metric_idx}, 'FontSize', 12, 'FontName', 'Times New Roman');
-    xticks(snr_values);
-    xlim([min(snr_values), max(snr_values)]);
+    if metric_idx > 3
+        xlabel('Number of MDs', 'FontSize', 14, 'FontName', 'Times New Roman');
+    end
+    ylabel(metric_labels{metric_idx}, 'FontSize', 14, 'FontName', 'Times New Roman');
+    xticks(user_counts);
+    xlim([min(user_counts), max(user_counts)]);
     grid on;
     ax.GridColor = [0.2 0.2 0.2];
     ax.GridAlpha = 0.6;
@@ -58,3 +58,4 @@ lgd = legend(algo_labels, 'Orientation', 'horizontal', ...
 lgd.Layout.Tile = 'south';
 lgd.Box = 'off';
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
+tighten_lr(gcf);

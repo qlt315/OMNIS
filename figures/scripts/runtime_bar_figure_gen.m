@@ -2,10 +2,9 @@
 % Stack: selection + update + interaction + BCD (ms/slot). Does not save figures.
 % Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
 
-clear; close all; clc;
-
 this_dir = fileparts(mfilename('fullpath'));
-repo_root = fileparts(this_dir);
+repo_root = fileparts(fileparts(this_dir));
+addpath(this_dir);
 S = load(fullfile(repo_root, 'figures', 'convergence', 'plot_data.mat'));
 
 algo_keys = {'causal', 'ucb', 'gdo', 'rss', 'ppo', 'mappo', 'cto'};
@@ -47,7 +46,7 @@ end
 
 set(gca, 'XTick', 1:numel(algo_labels), 'XTickLabel', algo_labels, ...
     'FontSize', 13, 'FontName', 'Times New Roman');
-xtickangle(18);
+xtickangle(0);
 ylabel('Runtime [ms/slot]', 'FontSize', 14, 'FontName', 'Times New Roman');
 grid on;
 ax.GridColor = [0.2 0.2 0.2];
@@ -56,6 +55,7 @@ ax.Box = 'on';
 lgd = legend('Location', 'northwest', 'FontSize', 12, 'FontName', 'Times New Roman');
 lgd.Box = 'off';
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
+tighten_lr(gcf);
 hold off;
 
 % Print totals for quick check
