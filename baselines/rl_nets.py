@@ -8,12 +8,12 @@ from torch.distributions import Categorical
 
 
 class JointQNet(nn.Module):
-    """Centralized Q(s, a_1..a_U) for DQN (same decision structure as CTO).
+    """Centralized Q(s, a_1..a_U) for DQN.
 
     Action encoding: flattened one-hot of all agents' local discrete actions.
-    Scores a scalar Q for each (state, joint-action) pair — same decision
-    structure as CTO's joint GP over (model, cell_rank)^U, with candidate
-    sub-sampling when the joint space is intractable.
+    Scores a scalar Q for each (state, joint-action) pair. The joint space
+    is intractable, so the learner scores a random candidate pool. CTO does
+    not use this pool; it scores each MD's arms directly.
     """
 
     def __init__(self, state_dim, n_agents, n_actions_local, hidden=64):

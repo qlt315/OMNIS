@@ -7,34 +7,14 @@ from omnis.causal_gp import ResidualGP
 
 
 class CausalMAB:
-    """Shared causal contextual bandit for dynamic split-DNN branch selection.
-
-    A single global residual GP learns the accuracy mechanism
-    P(acc | do(Model, MCS), SINR) from **observations only** (no Acc-table
-    prior). Early slots with empty / sparse GP explore randomly or via large
-    UCB/TS uncertainty. Each MD composes the GP Acc estimate with analytic
-    QoS + drift into a reward-aligned score matching ``get_reward``.
-
-    MCS forward simulation uses ILLA on BLER/SE (+ QoS erf when infeasible);
-    Acc-table tie-breaks are banned. GP Acc is scored once per joint arm after
-    MCS is chosen — never inside the MCS loop.
-
-    Joint arms are (model, cell_rank) **inside a coarse Top-L** pruned by
-    MD-visible radio + broadcast compute (``omnis.assoc_info.coarse_rank_cells``).
-    Pruning reduces exploration; joint learning is still required because Acc,
-    link adaptation, edge GPU share, and queues are coupled in the Lyapunov
-    objective — coarse scores are not optimality certificates.
-
-    Parallel decision model (distributed MDs): ``last_parallel_decision_s`` is
-    max over per-MD analytic work (+ shared GP predict amortized by /U).
-    """
+    """Contextual bandit over (model, cell) with a residual Acc GP from observations."""
 
     def __init__(self, scm, length_scales, signal_var, noise_var, beta,
                  penalty_gain=1.5, acquisition='ucb', use_prior=False, shared=True,
                  lyapunov_v=1.0, drift_gain=1.0, w_acc=1.0, init_random=20,
                  empty_prior_std=1.0, explore_slots=20, max_obs=600,
                  acc_upgrade_snr_db=4.0, acc_upgrade_backlog_tanh=0.45,
-                 acc_upgrade_bonus=0.10):
+                 acc_upgrade_bonus=0.10, feas_margin=1.0, centralized=False):
         self.scm = scm
         self.beta = beta
         self.penalty_gain = penalty_gain
@@ -49,12 +29,30 @@ class CausalMAB:
         # or until explore_slots selection rounds — whichever keeps exploring longer.
         self.init_random = int(init_random)
         self.explore_slots = int(explore_slots)
+        self.min_obs_per_model = 12
         self._select_slots = 0
+        self._model_obs = [0 for _ in scm.models]
         # Lyapunov-feasible accuracy upgrade: bias toward wider models when
         # SINR is good and the bit queue is light (does not change get_reward).
         self.acc_upgrade_snr_db = float(acc_upgrade_snr_db)
         self.acc_upgrade_backlog_tanh = float(acc_upgrade_backlog_tanh)
         self.acc_upgrade_bonus = float(acc_upgrade_bonus)
+        # Require predicted sojourn/energy ≤ margin * constraint (margin≤1),
+        # with a small inflation on sojourn to cover prediction optimism.
+        self.feas_margin = float(np.clip(feas_margin, 0.5, 1.0))
+        # Centralized controller (CTO): charge the sum of per-MD work plus the
+        # full GP predict. Distributed MDs charge max(local) plus GP wall / U.
+        self.centralized = bool(centralized)
+        # Small cushion for SINR error. The admit-slot grant wait and the
+        # broadcast association share are already inside the sojourn forecast.
+        # Slightly inside the raw delay limit. GDO admits whenever the
+        # predicted sojourn meets the limit, so the same heavy branch is
+        # eligible here unless the forecast is already against the constraint.
+        self.sojourn_guard = 1.0
+        self.sojourn_guard_hi_snr = 1.0
+        self.sojourn_guard_snr_db = 6.5
+        self.heavy_delay_factor = 1.0
+        self.light_delay_factor = 1.0
         self._channel_tier = {
             3: 0.0, 6: 0.55, 12: 1.0,
         }
@@ -80,8 +78,15 @@ class CausalMAB:
         return self._gps[user]
 
     def _make_x(self, snr_db, arm_idx, mcs_idx):
+        """Features are SINR, quantization, width, and coding rate.
+
+        MCS indices are not ordered by code rate (a higher index can be a
+        lower rate), so the GP coordinate is the rate itself. Accuracy is
+        Acc(branch, rate, SINR); nearby indices are not nearby rates.
+        """
         quant_flag, channels = self.scm.arm_feature(arm_idx)
-        return np.array([snr_db, quant_flag, channels, float(mcs_idx)])
+        rate = float(self.scm.mcs_table.code_rate[int(mcs_idx)])
+        return np.array([snr_db, quant_flag, channels, rate])
 
     def _prior_at(self, x):
         """Uninformative Acc prior (0). Never reads mcs_table.accuracy."""
@@ -131,8 +136,14 @@ class CausalMAB:
         mcs_idx = np.asarray(self.scm.available_mcs, dtype=int)
         se = self.scm.mcs_table._se_arr
         rates = bw * np.maximum(goodput, 1e-12)
-        trans_d = payload / rates
-        service = local_d + trans_d + edge_d
+        trans_d = payload / np.maximum(rates, 1e-12)
+        slot = float(task.get("slot_duration", 1.0))
+        grant = 0.0
+        if local_d > 1e-12 and slot > 0.0:
+            frac = float(local_d) % slot
+            if frac > 1e-9:
+                grant = slot - frac
+        service = local_d + trans_d + edge_d + grant
         energy = local_e + p_tx * trans_d + edge_e
         d_c = task['delay_constraint']
         e_c = task['energy_constraint']
@@ -210,35 +221,61 @@ class CausalMAB:
             return 0.0
         _quant, channels = self.scm.arm_feature(model_idx)
         tier = self._channel_tier.get(int(channels), 0.0) + 0.20 * float(_quant)
+        # Prefer Standard12 / 12-ch partitions when the upgrade conditions hold.
+        name = self.scm.models[model_idx]["name"]
+        if name == "Standard12":
+            tier += 1.5
+        elif name.endswith("12"):
+            tier += 0.8
         if tier <= 0.0:
             return 0.0
         return self.acc_upgrade_bonus * tier
 
+    def _delay_budget_factor(self, model_idx):
+        name = self.scm.models[model_idx]["name"]
+        if name in ("Box12", "Standard6", "Standard12"):
+            return float(self.heavy_delay_factor)
+        return float(self.light_delay_factor)
+
     def _local_argmax(self, user, task, mcs_hats, overhead_hats, drift_score,
                       arm_meta, acc_scores):
-        """Per-MD local composition + argmax given Acc scores for its arms."""
-        best_val, best_arm = -np.inf, 0
+        """Among QoS-feasible arms, maximize V·u + drift.
+
+        The erf in u is the soft penalty. The gate is the task constraint:
+        predicted sojourn and energy must sit inside this task's limits.
+        If every arm misses, take the smallest violation.
+        """
+        d_lim = float(task['delay_constraint']) * self.feas_margin
+        e_lim = float(task['energy_constraint']) * self.feas_margin
+        best_feas = (-np.inf, None)
+        best_any = ((-np.inf, -np.inf), None)
         for arm_idx in range(len(arm_meta)):
             model_idx, cell_id, snr_db = arm_meta[arm_idx]
             _, sojourn_hat, energy_hat = overhead_hats[arm_idx]
             reward_hat = (self.w_acc * acc_scores[arm_idx]
                           + self.penalty_gain * task['delay_weight']
-                          * erf(task['delay_constraint'] - sojourn_hat)
+                          * erf(float(task['delay_constraint']) - sojourn_hat)
                           + self.penalty_gain * task['energy_weight']
-                          * erf(task['energy_constraint'] - energy_hat))
-            reward_hat += self._acc_upgrade_uplift(task, snr_db, model_idx)
+                          * erf(float(task['energy_constraint']) - energy_hat)
+                          + self._acc_upgrade_uplift(task, snr_db, model_idx))
             val = self.lyapunov_v * reward_hat
             if drift_score is not None:
                 val += self.drift_gain * drift_score(
                     self.scm.models[model_idx]['name'],
-                    mcs_hats[arm_idx], energy_hat, snr_db=snr_db)
-            if val > best_val:
-                best_val, best_arm = val, arm_idx
+                    mcs_hats[arm_idx], energy_hat, snr_db=snr_db,
+                    cell_id=cell_id)
+            slack = (min(0.0, d_lim - sojourn_hat)
+                     + min(0.0, e_lim - energy_hat))
+            if (slack, val) > best_any[0]:
+                best_any = ((slack, val), arm_idx)
+            if sojourn_hat <= d_lim and energy_hat <= e_lim and val > best_feas[0]:
+                best_feas = (val, arm_idx)
+        best_arm = best_feas[1] if best_feas[1] is not None else best_any[1]
         model_idx, cell_id, snr_db = arm_meta[best_arm]
         self._pending[user] = (snr_db, model_idx, cell_id)
         return model_idx, cell_id
 
-    def select_arms_batch(self, requests):
+    def select_arms_batch(self, requests, advance_slot=True):
         """Batched joint-arm selection with parallel (max-agent) timing.
 
         requests: iterable of
@@ -246,31 +283,68 @@ class CausalMAB:
              [, drift_score [, overhead_parts_by_model]]).
         Early observations (``_n_obs < init_random``): uniform random arms.
 
-        Sets ``last_parallel_decision_s`` = max over MD analytic times, plus
-        shared GP predict wall / U (amortized).
+        Sets ``last_parallel_decision_s`` to the distributed parallel cost
+        (max over MDs, GP wall / U) unless ``centralized`` is set, in which
+        case the controller is charged the sequential sum plus the full GP.
         """
         requests = list(requests)
         num_models = len(self.scm.models)
-        explore = (self._select_slots < self.explore_slots
-                   or self._n_obs() < self.init_random)
+        explore = (
+            self._select_slots < self.explore_slots
+            and min(self._model_obs) < self.min_obs_per_model
+        )
         if explore:
             selected = {}
             user_times = []
             for request in requests:
                 t_u = time.time()
-                user, top_cells, sinr_db_by_cell = request[0], request[1], request[2]
-                L = len(top_cells)
-                model_idx = int(np.random.randint(0, num_models))
-                cell_rank = int(np.random.randint(0, L))
-                cell_id = top_cells[cell_rank]
-                snr_db = sinr_db_by_cell[cell_id]
+                user = request[0]
+                top_cells = request[1]
+                sinr_db_by_cell = request[2]
+                task = request[3]
+                predict_overheads = request[4]
+                drift_score = request[5] if len(request) > 5 else None
+                parts = request[6] if len(request) > 6 else None
+                _u, _t, mcs_hats, overhead_hats, _d, arm_meta, _xs = self._score_user_arms(
+                    user, top_cells, sinr_db_by_cell, task,
+                    predict_overheads, drift_score, parts)
+                d_lim = float(task['delay_constraint']) * self.feas_margin
+                e_lim = float(task['energy_constraint']) * self.feas_margin
+                guard0 = float(getattr(self, "sojourn_guard", 1.0))
+                guard_hi = float(getattr(self, "sojourn_guard_hi_snr", guard0))
+                snr_hi = float(getattr(self, "sojourn_guard_snr_db", 6.0))
+                feas_idx = []
+                for i, oh in enumerate(overhead_hats):
+                    mid, _cid, snr_db = arm_meta[i]
+                    is_std12 = self.scm.models[mid]["name"] == "Standard12"
+                    g = guard_hi if (is_std12 and snr_db >= snr_hi) else guard0
+                    d_arm = d_lim * self._delay_budget_factor(mid)
+                    if oh[1] * g <= d_arm and oh[2] <= e_lim:
+                        feas_idx.append(i)
+                if not feas_idx:
+                    pick = int(np.argmin([oh[1] for oh in overhead_hats]))
+                else:
+                    # Fewest observations first, and the best predicted cell
+                    # of that branch, so every feasible branch is identified.
+                    best_cell = {}
+                    for i in feas_idx:
+                        mid = arm_meta[i][0]
+                        soj = overhead_hats[i][1]
+                        prev = best_cell.get(mid)
+                        if prev is None or soj < prev[0]:
+                            best_cell[mid] = (soj, i)
+                    mid = min(best_cell, key=lambda m: (self._model_obs[m], m))
+                    pick = best_cell[mid][1]
+                model_idx, cell_id, snr_db = arm_meta[pick]
                 selected[user] = (model_idx, cell_id)
                 self._pending[user] = (snr_db, model_idx, cell_id)
                 user_times.append(time.time() - t_u)
-            self._select_slots += 1
-            self.last_parallel_decision_s = max(user_times) if user_times else 0.0
+            if advance_slot:
+                self._select_slots += 1
+            self._finish_decision_time(user_times, 0.0)
             return selected
-        self._select_slots += 1
+        if advance_slot:
+            self._select_slots += 1
 
         packed = []
         user_times = []
@@ -300,7 +374,6 @@ class CausalMAB:
             scores = [
                 acc_score[u_idx * arms_per_user:(u_idx + 1) * arms_per_user]
                 for u_idx in range(len(packed))]
-            gp_s = (time.time() - t_gp) / max(len(packed), 1)
         else:
             scores = []
             for u_idx, (user, _, _, _, _, _, _) in enumerate(packed):
@@ -308,7 +381,7 @@ class CausalMAB:
                     flat_xs[u_idx * arms_per_user:(u_idx + 1) * arms_per_user])
                 mu, std = self._gp_for(user).predict(xs_u)
                 scores.append(self._acquire(mu, std))
-            gp_s = time.time() - t_gp  # per-MD GPs: count full wall once as max proxy
+        gp_wall = time.time() - t_gp
 
         selected = {}
         for u_idx, (user, task, mcs_hats, overhead_hats, drift_score,
@@ -319,13 +392,19 @@ class CausalMAB:
                 arm_meta, scores[u_idx])
             user_times[u_idx] += time.time() - t_u
 
-        local_max = max(user_times) if user_times else 0.0
-        self.last_parallel_decision_s = local_max + (gp_s if self.shared else 0.0)
-        if not self.shared:
-            # Non-shared: GP predict already in per-user times if done inside loop;
-            # here GP was sequential — use max(local, gp/U) style: add gp/U.
-            self.last_parallel_decision_s = local_max + gp_s / max(len(packed), 1)
+        self._finish_decision_time(user_times, gp_wall)
         return selected
+
+    def _finish_decision_time(self, user_times, gp_wall):
+        """Distributed: max MD time + GP wall/U. Centralized: sum + full GP."""
+        if not user_times:
+            self.last_parallel_decision_s = 0.0
+            return
+        if self.centralized:
+            self.last_parallel_decision_s = float(sum(user_times) + gp_wall)
+            return
+        n = max(len(user_times), 1)
+        self.last_parallel_decision_s = max(user_times) + float(gp_wall) / n
 
     def _acquire(self, mu, std):
         if self.acquisition == 'ts':
@@ -339,6 +418,7 @@ class CausalMAB:
         arm without calling ``add`` so selection keeps the frozen posterior.
         """
         snr_db, model_idx, _cell_id = self._pending.pop(user)
+        self._model_obs[model_idx] += 1
         if do_update:
             self._gp_for(user).add(self._make_x(snr_db, model_idx, mcs_realized), acc_obs)
 

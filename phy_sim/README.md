@@ -17,7 +17,7 @@ payloads.py ──┐
 link.py ──────┼──► run_bler.py ──► bler_table.csv
               ├──► run_acc.py  ──► acc_table.csv, acc_clean.csv
               └──► run_cb_scan.py ──► cb_scan.csv ──► synth_acc.py
-run_traces.py ────────────────────► sinr_trace_*.csv, link_info_*.csv
+run_traces.py ────────────────────► channel_*.npz
 ```
 
 Typical workflow: build MCS definitions, sweep BLER and accuracy over
@@ -160,9 +160,8 @@ python run_acc.py --provider npz --num-samples 1000 \
     --batch-samples 32 --device cuda --out output/acc_table.csv
 ```
 
-OMNIS currently forms operating accuracy as
-\((1-\mathrm{BLER})\cdot\mathrm{acc\_clean} + \mathrm{BLER}\cdot\mathrm{floor}\)
-in `omnis/mcs_table.py`, using `bler_table.csv` and `acc_clean.csv`.
+OMNIS reads accuracy from the fitted Acc(model, coding rate, SINR) curves.
+BLER from `bler_table.csv` is used for goodput and delay, not mixed into accuracy.
 
 ## Code-block scan (`run_cb_scan.py`)
 
@@ -201,68 +200,30 @@ python synth_acc.py                # full tables
 
 ---
 
-## SINR traces (`run_traces.py`)
+## Channel gains (`run_traces.py`)
 
-Generates multi-cell **uplink SU-MIMO** effective-SINR under 3GPP TR 38.901
-using Sionna’s hexagonal topology with wraparound.
+Generates uplink MIMO channel gains under 3GPP TR 38.901 UMi. The system
+simulator turns those gains into SINR after it knows who is transmitting.
 
-**Channel.** Default UMi at 3.5 GHz, path loss and shadow fading on.
-BS panel: `--bs-rows` × `--bs-cols` (default 2×4 = 8 Rx, single-pol V,
-38.901 pattern). UE: `--ue-ants` (default **2** Tx, omni) — true SU-MIMO.
-Direction: uplink. Transmit power 0.1 W, bandwidth \(10^5\) Hz, noise from
-−174 dBm/Hz. Slot duration 1 ms; one sample per slot.
+**Channel.** 7 omnidirectional cells at the hex-site centers, inter-site
+distance 200 m. BS: 2×4 antennas, omnidirectional elements. MD: 2 antennas.
+One sample per system slot (1 s). Default speed 0.8 m/s. A chunk of slots
+shares one cluster draw and a continuous Doppler clock; the next chunk moves
+the MDs and redraws shadowing. MDs bounce inside the deployment.
 
-**SU-MIMO effective SNR.** For each (sector, UE, slot) the multipath channel
-is summed to \(H\in\mathbb{C}^{N_r\times N_t}\). The strongest
-`--n-layers` (default 2) eigenmodes get equal power; interference is
-modeled as spatially white \(N_0+I\). Per-layer SINRs are compressed with
-**EESM** (\(\beta=1\)) into a single-stream equivalent SNR for MCS/Acc:
-
-\[
-\mathrm{SINR}_{\mathrm{eff}}=-\beta\ln\Big(\tfrac{1}{L}\sum_{\ell}
-e^{-\mathrm{SINR}_\ell/\beta}\Big).
-\]
-
-CSV `sinr_db` stores \(10\log_{10}(\mathrm{SINR}_{\mathrm{eff}})\).
-Optional `se_bps_hz` is the Shannon sum-rate (diagnostics only).
-
-SIMO fallback: `--ue-ants 1 --n-layers 1`.
-
-**Topology.** `gen_hexgrid_topology` with `--num-rings` (default 1 →
-7 sites × 3 sectors = 21 sector BSs). Each sector has
-`--ues-per-cell` UEs. Inter-site distance `--isd` (default 200 m).
-UE speed `--speed` (m/s); 0 for static.
-
-**Interference.** Frequency reuse `--reuse` (default 3). Only
-co-channel sectors interfere. Intra-sector UEs are treated as orthogonal
-under bandwidth slicing. Interference is instantaneous per slot.
-
-**Site aggregation.** Site-level traces take the **max effective SINR**
-over the three co-sited sectors so that `num_sites` logical cells match
-the system model.
-
-**Outputs** (tag = `--tag`, default `smoke7`):
-
-| File | Columns |
-|------|---------|
-| `sinr_trace_<tag>.csv` | sector-level `slot,cell_id,ue_id,sinr_db[,se_bps_hz,n_layers]` |
-| `link_info_<tag>.csv` | sector distances |
-| `sinr_trace_<tag>_sites.csv` | site-level effective SINR for the system simulator |
-| `link_info_<tag>_sites.csv` | site-level distances |
-| `sinr_trace_<tag>_meta.json` | SU-MIMO metadata |
+**What is stored.** `channel_<tag>.npz` holds
+`H[slot, cell, ue, n_rx, n_tx]`, the path-summed channel. SINR is not in
+the file. At runtime, same-cell MDs are orthogonal, other-cell transmitters
+enter an interference-rejection combiner, and the two layer SINRs are
+combined with EESM (\(\beta=1\)). The transport-block spectral efficiency
+is the sum of the two layers. Transmit power is fractional control with
+\(P_{\max}=0.1\) W, \(P_0=-85\) dBm, \(\alpha=0.8\), and an 8 dB noise figure.
 
 ```bash
-# smoke (SU-MIMO 8×2, 2 layers)
-python run_traces.py --ues-per-cell 2 --slots 20 --tag smoke_mimo \
-    --ue-ants 2 --n-layers 2
-
-# campaign used by Config (overwrite smoke7; U=42 = 21×2)
-python run_traces.py --scenario umi --num-rings 1 --ues-per-cell 2 \
-    --slots 1000 --reuse 3 --tag smoke7 --ue-ants 2 --n-layers 2
+python run_traces.py --slots 1000 --tag smoke7
 ```
 
-Point `config.sinr_trace_dir` / `sinr_trace_tag` at the site-level files.
-`SinrTrace` still exposes `sinr_db` as the MCS-table effective SNR.
+`SinrTrace.from_config_dir` loads `channel_<tag>.npz` when it exists.
 
 ---
 
@@ -273,6 +234,5 @@ Point `config.sinr_trace_dir` / `sinr_trace_tag` at the site-level files.
 | `output/mcs_def.csv` | `McsTable` |
 | `output/bler_table.csv` | BLER / goodput |
 | `output/acc_clean.csv` | Clean accuracy anchors |
-| `output/sinr_trace_*_sites.csv` | `SinrTrace` (effective SNR / Top-L) |
-| `output/sinr_trace_*_meta.json` | SU-MIMO antenna / layer metadata |
-| `output/link_info_*_sites.csv` | Trace metadata |
+| `output/channel_*.npz` | `ChannelTrace` (live IRC SINR) |
+| `output/channel_*_meta.json` | antenna, layer, and power-control metadata |

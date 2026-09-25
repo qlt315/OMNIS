@@ -1,10 +1,4 @@
-"""MAPPO baseline: multi-agent PPO with CTDE.
-
-  - Actor (decentralized execution): π(a_i | o_i), parameter-shared across MDs
-  - Critic (centralized training): V(s_global)
-  - Team reward R = mean_u (V·r_u + drift_u) — same objective as bandits / DQN / PPO
-  - On-policy rollouts with GAE + clipped PPO; compact net for wall-time
-"""
+"""MAPPO: decentralized actors, centralized critic, team Lyapunov reward."""
 
 from __future__ import annotations
 

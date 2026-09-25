@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""Overnight orchestrator for OMNIS parameter sweeps.
-
-Re-runs online simulation for every setting (no fake checkpoints).
-
-PyCharm: open this file → Run (no parameters needed). Edit the
-``PYCHARM_*`` block below to choose algorithms / which sweeps to run.
-
-CLI examples:
-  PYTHONPATH=. python3 experiments/run_sweeps.py
-  PYTHONPATH=. python3 experiments/run_sweeps.py --algos causal ucb gdo
-  PYTHONPATH=. python3 experiments/run_sweeps.py --algos all --only snr users
-  PYTHONPATH=. python3 experiments/run_sweeps.py --smoke
-"""
+"""Run parameter sweeps (online re-sim). Edit PYCHARM_* for IDE defaults."""
 from __future__ import annotations
 
 import argparse
@@ -59,7 +47,7 @@ PYCHARM_SEEDS = [0, 1, 2]
 PYCHARM_SLOTS = DEFAULT_SLOTS
 PYCHARM_USERS = DEFAULT_USERS  # MD count for SNR / arrival axes
 PYCHARM_SMOKE = False          # True → tiny grid for a dry run
-PYCHARM_OUT_ROOT = "figures/sweeps"
+PYCHARM_OUT_ROOT = "figures/python figures/sweeps"
 PYCHARM_RESUME = False         # skip sweeps that already have .mat outputs
 # =============================================================================
 
@@ -76,40 +64,27 @@ def log(msg, fp=None):
 
 def write_readme(out_root):
     path = os.path.join(out_root, "README.md")
-    text = f"""# OMNIS parameter sweeps
+    text = f"""# Parameter sweeps
 
-Honest **online re-simulation** for every (algo, seed, setting). Checkpoints from
-`convergence_all` are **not** reused.
+Online re-simulation for each (algo, seed, setting). No reuse of convergence checkpoints.
 
-## Paper alignment (Sec. VI)
-
-| Sweep | Script | Paper figure | Axis |
-|-------|--------|--------------|------|
-| SNR | `sweep_snr.py` | Fig. 6 | target mean **best-cell** SINR 0–10 dB via `sinr_offset_db` |
-| Users | `sweep_users.py` | Fig. 7 | #MDs {list(DEFAULT_USER_LIST)}; nested prefixes of {SWEEP_UE_POOL_SIZE}-UE pool |
-| Action pick | `sweep_action_pick.py` | Fig. 8 | pick hist @ SNR∈{{2,4,6}}, MDs∈{{10,15,20}} + β sweep |
-| Arrival | `sweep_arrival.py` | (journal) | Poisson λ tasks/slot |
-
-## Run (PyCharm or CLI)
+| Sweep | Script | Axis |
+|-------|--------|------|
+| SNR | `sweep_snr.py` | best-cell SINR via `sinr_offset_db` |
+| Users | `sweep_users.py` | #MDs {list(DEFAULT_USER_LIST)} |
+| Arrival | `sweep_arrival.py` | Poisson λ |
+| Action pick | `sweep_action_pick.py` | model pick vs SNR / #MDs |
+| Acc–vio | `sweep_acc_vio.py` | per-algo QoS knob (Pareto) |
 
 ```bash
-# Full suite, all algorithms (default)
 PYTHONPATH=. python3 experiments/run_sweeps.py
-
-# Subset of algorithms
-PYTHONPATH=. python3 experiments/run_sweeps.py --algos causal ucb gdo dts
-
-# Only some sweeps
-PYTHONPATH=. python3 experiments/run_sweeps.py --only snr users
+PYTHONPATH=. python3 experiments/run_sweeps.py --algos causal gdo --only snr users
+PYTHONPATH=. python3 experiments/sweep_acc_vio.py
+PYTHONPATH=. python3 experiments/plot_sweeps.py
 ```
 
-In PyCharm: edit ``PYCHARM_ALGOS`` / ``PYCHARM_ONLY`` at the top of
-``experiments/run_sweeps.py``, then Run with empty parameters.
-
-Defaults: slots={DEFAULT_SLOTS}, users={DEFAULT_USERS} for SNR/arrival, seeds 0–2,
-algos=all ({', '.join(ALGO_NAMES)}), users axis {list(DEFAULT_USER_LIST)}.
-
-Log: `figures/sweeps/overnight.log`. Status: `figures/sweeps/STATUS.md`.
+Defaults: slots={DEFAULT_SLOTS}, users={DEFAULT_USERS} (SNR/arrival), seeds 0–2,
+algos=all ({', '.join(ALGO_NAMES)}). Edit `PYCHARM_*` in `run_sweeps.py` for PyCharm.
 """
     with open(path, "w") as f:
         f.write(text)
@@ -227,29 +202,18 @@ def main(argv=None):
         rates = [0.08, 0.16, 0.24]
         pick_snr = [2, 6]
         pick_users = [10, 20]
-        betas = [0.55, 1.0]
     else:
         snr_targets = [0, 2, 4, 6, 8, 10]
         user_list = list(DEFAULT_USER_LIST)
         rates = list(DEFAULT_ARRIVAL_RATES)
         pick_snr = [2, 4, 6]
         pick_users = [10, 15, 20]
-        betas = [0.55, 1.0, 2.0]
 
     finished, failed, notes = [], [], []
     notes.append(f"algos={algos} seeds={seeds} slots={slots} users={users}")
     notes.append(
-        f"users axis={user_list}; UE pool={SWEEP_UE_POOL_SIZE} (stable prefix); "
-        f"TRACE_MEAN_BEST_CELL_SINR_DB≈{TRACE_MEAN_BEST_CELL_SINR_DB:.2f} "
-        f"(calibrated on {SWEEP_UE_POOL_SIZE}-UE pool)"
-    )
-    notes.append(
-        "sinr_offset_db = snr_target_db - TRACE_MEAN_BEST_CELL_SINR_DB; "
-        "axis = mean best-cell / serving SINR (not all-cell mean)"
-    )
-    notes.append(
-        "plots: mean lines only (no error bars); log-y for delay/backlog; "
-        "causal_drift_gain=1.0; GDO=online emp Acc-floor; Acc table env-only"
+        f"users axis={user_list}; UE pool={SWEEP_UE_POOL_SIZE}; "
+        f"TRACE_MEAN_BEST_CELL_SINR_DB≈{TRACE_MEAN_BEST_CELL_SINR_DB:.2f}"
     )
 
     if resume:
@@ -279,7 +243,7 @@ def main(argv=None):
         jobs.append(("action_pick", lambda: sweep_action_pick(
             algos=algos, seeds=seeds, slots=slots,
             snr_targets=pick_snr, user_list=pick_users,
-            beta_values=betas, out_root=out_root)))
+            out_root=out_root)))
 
     if not jobs:
         log("Nothing to run (all sweeps skipped).")

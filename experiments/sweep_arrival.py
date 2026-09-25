@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Sweep metrics vs Poisson task arrival rate (journal queueing extension).
-
-PyCharm: Run with empty parameters (all algos by default).
-Select schemes: ``--algos causal ucb gdo`` or ``--algos all``.
-"""
+"""Sweep metrics vs Poisson arrival rate (online re-sim)."""
 import os
 import sys
 

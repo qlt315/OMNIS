@@ -14,25 +14,23 @@ from omnis.assoc_info import (
     expected_gpu_if_join,
     coarse_rank_cells,
 )
-from omnis.radio_obs import observe_cell_sinr_db, payload_bits
+from omnis.radio_obs import observe_cell_sinr_db, payload_bits, radio_grant_wait
+from omnis.task_pipeline import TaskPipeline, task_arrivals
+from omnis.sim_loop import run_discrete_simulation, apply_learn_payload, flush_pending_learn
 import time
 
 class OMNIS:
     def __init__(self, config):
-        """Initialize system parameters including models, devices, and users."""
-        # Basic information
         self.name = "omnis"
         self.seed = config.seed
-        np.random.seed(self.seed)  # Ensure reproducibility
-        random.seed(self.seed)  # Seed the Python RNG as well (init coding rates, exploration)
+        np.random.seed(self.seed)
+        random.seed(self.seed)
 
-        # Computation-related parameters
         self.models = config.models
         self.data_size = config.data_size
         self.head_flops = config.head_flops
         self.tail_flops = config.tail_flops
 
-        # User and environment-related parameters
         self.users = config.users
         self.user_num = config.user_num
         self.md_params = config.md_params
@@ -52,6 +50,9 @@ class OMNIS:
         self.fixed_delay = config.fixed_delay
         self.fixed_energy = config.fixed_energy
         self.fixed_energy_weight = config.fixed_energy_weight
+        self.delay_constraint_range = config.delay_constraint_range
+        self.energy_constraint_range = config.energy_constraint_range
+        self.energy_weight_range = config.energy_weight_range
 
         # Performance metrics
         self.instant_metrics = config.instant_metrics
@@ -99,13 +100,15 @@ class OMNIS:
         self.reward_w_acc = getattr(config, 'reward_w_acc', 1.0)
         self.reward_qos_coef = getattr(config, 'reward_qos_coef', 1.5)
         self.dpp_bit_scale = getattr(config, 'dpp_bit_scale', 2.2e4)
+        self.dpp_task_scale = float(getattr(config, 'dpp_task_scale', 3.0))
         self.dpp_energy_scale = getattr(config, 'dpp_energy_scale', 0.45)
         # Acc/reward learning piggybacks on next-slot uplink (0 = same-slot).
         self.learn_delay_slots = int(getattr(config, 'learn_delay_slots', 1) or 0)
         self._pending_learn = None
-        # Per-user uplink bit queue Q_m and virtual energy queue Z_m
-        self.backlog = {user: 0.0 for user in self.users}
-        self.energy_queue = {user: 0.0 for user in self.users}
+        # Discrete task pipeline: Q^a_m, Q^e_c, sticky BS until task done, Z_m
+        self.pipeline = TaskPipeline(self.users, self.num_cells)
+        self.backlog = {user: 0.0 for user in self.users}  # alias: task-queue length
+        self.energy_queue = self.pipeline.energy_queue
 
         # Causal MAB (journal extension)
         self.algo = getattr(config, 'algo', 'ucb')
@@ -115,7 +118,7 @@ class OMNIS:
                 models=self.models,
                 data_size=self.data_size,
                 mcs_table=self.mcs_table,
-                prior_snr_step=config.causal_prior_snr_step,
+                prior_snr_step=getattr(config, 'causal_prior_snr_step', 5),
                 build_prior=False,
             )
             noise_var = max(self.acc_noise_std ** 2, 1e-6)
@@ -140,6 +143,7 @@ class OMNIS:
                 acc_upgrade_backlog_tanh=getattr(
                     config, 'causal_acc_upgrade_backlog_tanh', 0.45),
                 acc_upgrade_bonus=getattr(config, 'causal_acc_upgrade_bonus', 0.0),
+                feas_margin=getattr(config, 'causal_feas_margin', 1.0),
             )
         # MAB ablations + prediction-error logging (Causal residual GP / UCB reward GP)
         self.mab_no_update = bool(getattr(config, 'mab_no_update', False))
@@ -176,7 +180,7 @@ class OMNIS:
         for user in self.users:
             md = self.md_params[user]
             bw = self._last_bandwidth.get(user, default_bw)
-            backlog = float(self.backlog[user])
+            backlog = float(self.pipeline.tx_queue_len(user))
             p_tx = float(md['trans_power'])
             base = {}
             for model in self.models:
@@ -202,23 +206,10 @@ class OMNIS:
         self._oh_user_base = None
 
     def generate_tasks(self, time_slot):
-            """Dynamically adjust delay and energy constraints while keeping the base values fixed.
-            Also draws the Poisson task arrivals for this slot (queueing model)."""
-
-            task_dic = {
-                user: {
-                    "delay_constraint": self.fixed_delay[user] + np.random.uniform(-0.001, 0.001),
-                    "energy_constraint": self.fixed_energy[user] + np.random.uniform(-0.001, 0.001),
-                    "energy_weight": self.fixed_energy_weight[user] + np.random.uniform(-0.001, 0.001),
-                    "n_arrivals": np.random.poisson(self.arrival_rate[user]),
-                }
-                for user in self.users
-            }
-
-            for user in self.users:
-                task_dic[user]["delay_weight"] = 1 - task_dic[user]["energy_weight"]
-
-            return task_dic
+            """Poisson arrivals. Each task draws its own delay, energy, and weights."""
+            from omnis.exog import poisson_arrivals
+            return task_arrivals(self, poisson_arrivals(self, time_slot),
+                                 time_slot=time_slot)
 
     def observe_context(self, task_dic, trans_rate_dic):
         """Observe the current context as continuous variables."""
@@ -244,8 +235,7 @@ class OMNIS:
     def _apply_cell_association(self, cell_dic, sinr_db_all_dic):
         """Build linear SNR dict for each user's chosen cell."""
         snr_dic = {}
-        for user in self.users:
-            cell_idx = cell_dic[user]
+        for user, cell_idx in cell_dic.items():
             snr_db = sinr_db_all_dic[user][cell_idx]
             snr_dic[user] = 10 ** (snr_db / 10)
         return snr_dic
@@ -259,10 +249,7 @@ class OMNIS:
         if pend is None:
             self._last_parallel_update_s = 0.0
             return
-        if pend.get("algo") == "causal":
-            self.update_causal(pend["snr"], pend["mcs"], pend["acc"])
-        else:
-            self.update_gp(pend["context"], pend["model_selection"], pend["reward"])
+        self._apply_learn_payload(pend)
         self._pending_learn = None
 
     def model_selection(self, context_dic, task_dic, cand_cells_dic, sinr_db_all_dic):
@@ -281,9 +268,27 @@ class OMNIS:
 
         for user_idx, user in enumerate(self.users):
             t_u = time.time()
+            top_cells = cand_cells_dic[user]
+            locked_cell = self.pipeline.locked_cell(user)
+            locked_model = self.pipeline.locked_model(user)
+            if locked_cell is not None and locked_model is not None:
+                # Sticky: unfinished task keeps (model, cell) until completion.
+                model_idx = next(
+                    (i for i, m in enumerate(self.models) if m['name'] == locked_model), 0)
+                if locked_cell in top_cells:
+                    cell_rank = int(top_cells.index(locked_cell))
+                else:
+                    cell_rank = 0
+                self.action_freq[user_idx, model_idx, min(cell_rank, self.top_l_cells - 1)] += 1
+                model_selection_dic[user] = {
+                    "model": locked_model,
+                    "cell_rank": cell_rank,
+                }
+                cell_dic[user] = locked_cell
+                user_times.append(time.time() - t_u)
+                continue
             context_m = context_dic[user]
             optimizer_m = self.optimizers[user]
-            top_cells = cand_cells_dic[user]
             sinr_db_all = sinr_db_all_dic[user]
             num_joint = len(self.models) * self.top_l_cells
             drift_offsets = np.zeros(num_joint)
@@ -299,7 +304,8 @@ class OMNIS:
                         user, None, model['name'], mcs_hat, snr_db=snr_db,
                         cell_id=cell_idx)
                     drift_offsets[flat] = self.dpp_drift(
-                        user, model['name'], mcs_hat, energy_hat, snr_db=snr_db)
+                        user, model['name'], mcs_hat, energy_hat, snr_db=snr_db,
+                        cell_id=cell_idx)
             action_m = optimizer_m.suggest(context_m, self.utility,
                                            score_scale=self.lyapunov_v,
                                            score_offset=drift_offsets)
@@ -367,7 +373,20 @@ class OMNIS:
         self._begin_slot_decision_cache()
         requests = []
         es = self.es_params
+        model_selection_dic = {}
+        cell_dic = {}
+        sticky_users = set()
         for user in self.users:
+            locked_cell = self.pipeline.locked_cell(user)
+            locked_model = self.pipeline.locked_model(user)
+            if locked_cell is not None and locked_model is not None:
+                sticky_users.add(user)
+                model_selection_dic[user] = {
+                    "model": locked_model,
+                    "cell_rank": 0,
+                }
+                cell_dic[user] = locked_cell
+                continue
 
             def predict_overheads(model_name, mcs_idx, snr_db=0.0, user=user,
                                   cell_id=None):
@@ -375,13 +394,15 @@ class OMNIS:
                     user, None, model_name, mcs_idx, snr_db=snr_db,
                     cell_id=cell_id)
 
-            def drift_score(model_name, mcs_idx, energy_hat, snr_db=0.0, user=user):
-                return self.dpp_drift(user, model_name, mcs_idx, energy_hat, snr_db=snr_db)
+            def drift_score(model_name, mcs_idx, energy_hat, snr_db=0.0, user=user, cell_id=None):
+                return self.dpp_drift(user, model_name, mcs_idx, energy_hat,
+                                      snr_db=snr_db, cell_id=cell_id)
 
             def parts_for_cell(model_name, cell_id, user=user):
                 """Cell-specific edge GPU + user TX base → vectorized ILLA parts."""
                 local_d, local_e, payload, bw, backlog, p_tx = (
                     self._oh_user_base[user][model_name])
+                bw = self._forecast_uplink_bw(user, cell_id, bw)
                 gpu_hat = self._gpu_hat_for_association(user, cell_id=cell_id)
                 edge_d = (self.tail_flops[model_name] * 1e-9
                           / (gpu_hat * es['cores'] * es['flops_per_cycle']))
@@ -389,26 +410,66 @@ class OMNIS:
                 return (local_d, local_e, edge_d, edge_e, payload, bw, backlog, p_tx)
 
             task_u = dict(task_dic[user])
-            task_u['backlog_bits'] = float(self.backlog[user])
-            task_u['dpp_bit_scale'] = float(self.dpp_bit_scale)
+            task_u['backlog_bits'] = float(self.pipeline.composite_backlog(user))
+            task_u['dpp_bit_scale'] = float(self.dpp_task_scale)
+            task_u['backlog_tasks'] = task_u['backlog_bits']
+            task_u['dpp_task_scale'] = float(self.dpp_task_scale)
+            task_u['slot_duration'] = float(self.slot_duration)
             requests.append((
                 user, cand_cells_dic[user], sinr_db_all_dic[user],
                 task_u, predict_overheads, drift_score,
                 parts_for_cell))
 
-        selected_dic = self.causal_mab.select_arms_batch(requests)
+        if requests:
+            selected_dic = self.causal_mab.select_arms_batch(requests)
+        else:
+            selected_dic = {}
+            self.causal_mab.last_parallel_decision_s = 0.0
         self._last_parallel_decision_s = float(
             self.causal_mab.last_parallel_decision_s)
         self._end_slot_decision_cache()
-        model_selection_dic = {}
-        cell_dic = {}
         for user_idx, user in enumerate(self.users):
+            if user in sticky_users:
+                model_name = model_selection_dic[user]["model"]
+                model_idx = next(
+                    (i for i, m in enumerate(self.models) if m["name"] == model_name), 0)
+                self.action_freq[user_idx, model_idx, 0] += 1
+                continue
             selected_model_m, cell_id = selected_dic[user]
             cell_rank = cand_cells_dic[user].index(cell_id)
             self.action_freq[user_idx, selected_model_m, cell_rank] += 1
-            model_selection_dic[user] = {"model": self.models[selected_model_m]["name"]}
+            model_selection_dic[user] = {
+                "model": self.models[selected_model_m]["name"],
+                "cell_rank": cell_rank,
+            }
             cell_dic[user] = cell_id
         return model_selection_dic, cell_dic
+
+    def _forecast_uplink_bw(self, user, cell_id, last_bw):
+        """Bandwidth a new admit can count on.
+
+        Last-slot bandwidth is often the whole cell pool. The broadcast
+        association count is how many users were already on that cell, and
+        this admit takes one more share of the pool.
+        """
+        del last_bw
+        if cell_id is None:
+            granted = self._last_bandwidth.get(user)
+            if granted is None:
+                return float(self.total_bandwidth) / max(self.user_num, 1)
+            return float(granted)
+        state = getattr(self, "_cell_compute_state", None) or {}
+        n_assoc = int(state.get(int(cell_id), {}).get("n_assoc", 0))
+        share = float(self.total_bandwidth) / max(n_assoc + 1, 1)
+        # pool/n_users is the cold-start placeholder, not an observed grant.
+        granted = self._last_bandwidth.get(user)
+        if granted is None or float(granted) <= 1.0:
+            return share
+        return min(float(granted), share)
+
+    def _radio_grant_wait(self, local_d):
+        """Time from the end of local compute until the next radio grant."""
+        return radio_grant_wait(local_d, self.slot_duration)
 
     def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0,
                              cell_id=None):
@@ -427,25 +488,37 @@ class OMNIS:
         gpu_hat = self._gpu_hat_for_association(user, cell_id=cell_id)
         cache = self._oh_cache
         if cache is not None and self._oh_user_base is not None:
+            bw_fn = getattr(self, "_bw_override", None)
+            bw_tag = None
+            if bw_fn is not None and cell_id is not None:
+                bw_tag = round(float(bw_fn(user, cell_id)), 3)
             key = (user, model_name, int(mcs_idx), float(snr_db),
-                   -1 if cell_id is None else int(cell_id))
+                   -1 if cell_id is None else int(cell_id), bw_tag)
             hit = cache.get(key)
             if hit is not None:
                 return hit
             local_d, local_e, payload, bw, backlog, p_tx = (
                 self._oh_user_base[user][model_name])
+            if bw_tag is not None:
+                bw = float(bw_tag)
+            else:
+                bw = self._forecast_uplink_bw(user, cell_id, bw)
             edge_d = (self.tail_flops[model_name] * 1e-9
                       / (gpu_hat * es['cores'] * es['flops_per_cycle']))
             edge_e = es['power_coeff'] * gpu_hat ** 3 * edge_d
             # Delay/energy: clamped delivery SE (avoid 1/1e-12 blow-ups).
             # Queue drain elsewhere still uses uncapped goodput_se.
             se_eff = self.mcs_table.delay_se(model_name, mcs_idx, snr_db)
-            rate_hat = bw * se_eff
+            rate_hat = max(bw * se_eff, 1e-12)
             trans_delay = payload / rate_hat
-            queue_delay = backlog / rate_hat
-            trans_energy = p_tx * trans_delay
             service_delay = local_d + trans_delay + edge_d
-            sojourn_delay = service_delay + queue_delay
+            # Paper proxy: τ̂^r = τ̂^s + Q^j τ̂^e (jobs ahead in edge FIFO).
+            # Grant wait is the rest of the admit slot before the first uplink.
+            q_j = float(self.pipeline.jobs_ahead(user, cell_id=cell_id))
+            grant = self._radio_grant_wait(local_d)
+            sojourn_delay = service_delay + q_j * edge_d + grant
+            # The simulator counts the grant wait as airtime, so tx energy does too.
+            trans_energy = p_tx * (trans_delay + grant)
             total_energy = local_e + trans_energy + edge_e
             out = (service_delay, sojourn_delay, total_energy)
             cache[key] = out
@@ -457,38 +530,32 @@ class OMNIS:
         local_delay = head_flops * 1e-9 / (md['freq'] * md['cores'] * md['flops_per_cycle'])
         local_energy = md['power_coeff'] * md['freq'] ** 3 * local_delay
 
-        bandwidth_hat = self._last_bandwidth.get(user, self.total_bandwidth / self.user_num)
+        bandwidth_hat = self._forecast_uplink_bw(
+            user, cell_id,
+            self._last_bandwidth.get(user, self.total_bandwidth / self.user_num))
         se_eff = self.mcs_table.delay_se(model_name, mcs_idx, snr_db)
-        rate_hat = bandwidth_hat * se_eff  # [bit/s]
+        rate_hat = max(bandwidth_hat * se_eff, 1e-12)  # [bit/s]
         bits = self._payload_bits(model_name)
         trans_delay = bits / rate_hat
-        queue_delay = self.backlog[user] / rate_hat
-        trans_energy = md['trans_power'] * trans_delay
 
         tail_flops = self.tail_flops[model_name]
         edge_delay = tail_flops * 1e-9 / (
-            gpu_hat * es['cores'] * es['flops_per_cycle'])
+            max(gpu_hat, 1e-12) * es['cores'] * es['flops_per_cycle'])
         edge_energy = es['power_coeff'] * gpu_hat ** 3 * edge_delay
 
         service_delay = local_delay + trans_delay + edge_delay
-        sojourn_delay = service_delay + queue_delay
+        q_j = float(self.pipeline.jobs_ahead(user, cell_id=cell_id))
+        grant = self._radio_grant_wait(local_delay)
+        sojourn_delay = service_delay + q_j * edge_delay + grant
+        trans_energy = md['trans_power'] * (trans_delay + grant)
         total_energy = local_energy + trans_energy + edge_energy
         return service_delay, sojourn_delay, total_energy
 
-    def dpp_drift(self, user, model_name, mcs_idx, energy_hat, snr_db=0.0):
-        """Analytic Lyapunov drift term for an arm candidate (normalized to O(1)).
-
-        Service uses goodput SE so queue draining reflects TB erasures."""
-        bandwidth_hat = self._last_bandwidth.get(user, self.total_bandwidth / self.user_num)
-        se_eff = self.mcs_table.goodput_se(model_name, mcs_idx, snr_db)
-        service_n = bandwidth_hat * se_eff * self.slot_duration / self.dpp_bit_scale
-        arrivals_n = (self.arrival_rate[user] * self._payload_bits(model_name)
-                      / self.dpp_bit_scale)
-        q_n = float(np.tanh(self.backlog[user] / self.dpp_bit_scale))
-        z_n = float(np.tanh(self.energy_queue[user] / self.dpp_energy_scale))
-        budget_n = self.energy_budget[user] / self.dpp_energy_scale
-        energy_n = energy_hat / self.dpp_energy_scale
-        return q_n * (service_n - arrivals_n) + z_n * (budget_n - energy_n)
+    def dpp_drift(self, user, model_name, mcs_idx, energy_hat, snr_db=0.0, cell_id=None):
+        """Lyapunov drift on composite backlog Q^{tx}+Q^{e} and energy queue."""
+        from omnis.queue_agent_mixin import task_dpp_drift
+        return task_dpp_drift(
+            self, user, model_name, mcs_idx, energy_hat, snr_db=snr_db, cell_id=cell_id)
 
     def forward_sim_mcs(self, user, snr_db, model_name, task_u, cell_id=None):
         """ILLA MCS forward sim: BLER/SE + QoS only (no Acc-table scoring).
@@ -598,7 +665,7 @@ class OMNIS:
         w_acc = getattr(self, "reward_w_acc", 1.0)
         qos = getattr(self, "reward_qos_coef", 1.5)
         reward_dic = {}
-        for user in self.users:
+        for user in acc_dic.keys():
             reward_dic[user] = (
                 w_acc * acc_dic[user]
                 + qos * task_dic[user]["delay_weight"] * erf(
@@ -623,7 +690,8 @@ class OMNIS:
             true_db, est_db = observe_cell_sinr_db(
                 self.sinr_trace, time_slot, user_idx,
                 sinr_offset_db=self.sinr_offset_db,
-                est_err_db=self.est_err_db)
+                est_err_db=self.est_err_db,
+                seed=self.seed)
             top_cells = coarse_rank_cells(
                 est_db,
                 getattr(self, "_cell_compute_state", None),
@@ -658,7 +726,8 @@ class OMNIS:
                            users=None, snr_dic=None):
         """Allocate bandwidth within one cell's pool (default: all users).
 
-        Weights use goodput SE so erasures inflate the effective load."""
+        Weights use residual uplink bits d^r (or full payload at admit) and
+        clamped delivery SE so erasures inflate the effective load."""
         users = self.users if users is None else users
         d_prime_dic = {}
         for user in users:
@@ -666,13 +735,19 @@ class OMNIS:
             p_m = self.md_params[user]['trans_power']
             omega_m_t = task_dic[user]['delay_weight']
             omega_m_e = task_dic[user]['energy_weight']
-            q_n = self.backlog[user] / self.dpp_bit_scale
+            q_n = self.pipeline.composite_backlog(user) / self.dpp_task_scale
             se_eff = (self._delay_se(user, chosen_model_m, phy_choice_dic[user], snr_dic)
                       if snr_dic is not None else max(self.mcs_table.se[phy_choice_dic[user]], 1e-12))
-            d_prime_dic[user] = ((1 + q_n) * self._payload_bits(chosen_model_m)
+            bits = self.pipeline.uplink_residual_bits(user)
+            if bits <= 1e-9:
+                bits = self._payload_bits(chosen_model_m)
+            d_prime_dic[user] = ((1 + q_n) * bits
                                  * (omega_m_t + p_m * omega_m_e) / se_eff)
 
         total_sqrt_d_prime = sum(np.sqrt(d) for d in d_prime_dic.values())
+        if total_sqrt_d_prime <= 1e-18:
+            n = max(len(users), 1)
+            return {user: self.total_bandwidth / n for user in users}
         return {
             user: self.total_bandwidth * np.sqrt(d_prime_dic[user]) / total_sqrt_d_prime
             for user in users
@@ -686,39 +761,28 @@ class OMNIS:
             cell_dic, snr_dic=snr_dic)
 
     def gpu_resource_allocation(self, task_dic, model_selection_dic, users=None):
-        """GPU frequency split among users associated to one cell."""
+        """FIFO edge service: only the computing-queue head gets the full GPU pool.
+
+        Tasks must finish uplink delivery before they enter the ES queue; waiting
+        tasks receive zero frequency until they become head-of-line.
+        """
         users = self.users if users is None else users
-        n = len(users)
-        gpu_allocation_dict = {}
-
-        f_m = cp.Variable(n)
-        constraints = [0 <= f_m, f_m <= self.es_params['freq'], cp.sum(f_m) <= self.es_params['freq']]
-
-        omega_m_t_vector = np.array([task_dic[user]['delay_weight'] for user in users])
-        omega_m_e_vector = np.array([task_dic[user]['energy_weight'] for user in users])
-        cores = self.es_params['cores']
-        tail_flops_vector = np.array([self.tail_flops[model_selection_dic[user]["model"]] for user in users])
-        flops_per_cycle = self.es_params['flops_per_cycle']
-        power_coeff = self.es_params['power_coeff']
-
-        first_term = omega_m_t_vector * tail_flops_vector @ cp.inv_pos(f_m) / (cores * flops_per_cycle)
-        second_term = omega_m_e_vector * power_coeff @ (f_m ** 2) / (cores * flops_per_cycle)
-        total_sum = cp.sum(first_term * 1e-9 + second_term)
-
-        objective = cp.Minimize(total_sum)
-        problem = cp.Problem(objective, constraints)
-        try:
-            problem.solve(solver=cp.SCS)
-            if f_m.value is None:
-                raise ValueError("SCS returned no solution")
-        except Exception:
-            problem.solve(solver=cp.ECOS)
-        if f_m.value is None:
-            for user in users:
-                gpu_allocation_dict[user] = self.es_params['freq'] / n
-        else:
-            for idx, user in enumerate(users):
-                gpu_allocation_dict[user] = f_m.value[idx]
+        gpu_allocation_dict = {user: 0.0 for user in users}
+        # Map cell -> HOL user among ``users`` (if that user is the queue head)
+        pipe = getattr(self, "pipeline", None)
+        if pipe is None:
+            n = max(len(users), 1)
+            return {u: self.es_params["freq"] / n for u in users}
+        f_tot = float(self.es_params["freq"])
+        claimed = set()
+        for cell in range(self.num_cells):
+            q = pipe.edge_q[cell]
+            if not q:
+                continue
+            head = q[0]
+            if head.user in users and head.user not in claimed:
+                gpu_allocation_dict[head.user] = f_tot
+                claimed.add(head.user)
         return gpu_allocation_dict
 
     def gpu_resource_allocation_all_cells(self, task_dic, model_selection_dic, cell_dic):
@@ -797,49 +861,48 @@ class OMNIS:
         return acc_dic
 
     def get_local_overhead(self, model_selection_dic):
-        """Calculate local processing overhead, including delay and energy consumption, for selected models."""
+        """Local residual delay/energy (0 once the active task has left local)."""
+        from omnis.task_pipeline import STAGE_LOCAL
 
-        local_overhead_dic = {}  # Dictionary to store delay and energy consumption for each user
-
-        for user in self.users:
-            chosen_model_m = model_selection_dic[user]["model"]  # Get the selected model for this user
-
-            # Extract relevant parameters
-            head_flops = self.head_flops[chosen_model_m]  # FLOPs of the head model
-            flops_per_cycle = self.md_params[user]['flops_per_cycle']  # FLOPs per cycle for this user
-            num_cores = self.md_params[user]['cores']  # Number of cores for this user
-            gpu_freq = self.md_params[user]['freq']  # GPU frequency for this user
-
-            # Compute local processing delay
-            local_delay = head_flops * 1e-9 / (gpu_freq * num_cores * flops_per_cycle)
-
-            # Compute local energy consumption
+        local_overhead_dic = {}
+        for user in model_selection_dic.keys():
+            chosen_model_m = model_selection_dic[user]["model"]
+            head_flops = self.head_flops[chosen_model_m]
+            flops_per_cycle = self.md_params[user]['flops_per_cycle']
+            num_cores = self.md_params[user]['cores']
+            gpu_freq = self.md_params[user]['freq']
+            full_delay = head_flops * 1e-9 / (gpu_freq * num_cores * flops_per_cycle)
+            at = self.pipeline.active.get(user)
+            if at is None:
+                local_delay = full_delay
+            elif at.stage == STAGE_LOCAL:
+                local_delay = float(at.residual)
+            else:
+                local_delay = 0.0
             local_energy = self.md_params[user]['power_coeff'] * gpu_freq ** 3 * local_delay
-
-            # Store delay and energy in the result dictionary for the user
             local_overhead_dic[user] = {
                 "delay": local_delay,
                 "energy": local_energy
             }
-
-        return local_overhead_dic  # Return dictionary with local overhead for all users
+        return local_overhead_dic
 
     def get_trans_overhead(self, trans_rate_dic, model_selection_dic, bandwidth_allocation_dic,
                            phy_choice_dic, snr_dic=None):
-        """Transmission delay/energy via clamped delivery SE (stable QoS)."""
+        """TX delay/energy from residual bits d^r via clamped delivery SE."""
         trans_overhead_dic = {}
 
-        for user in trans_rate_dic.keys():
+        for user in model_selection_dic.keys():
             chosen_model_m = model_selection_dic[user]["model"]
-            bandwidth_m = bandwidth_allocation_dic[user]
-            data_size_m = self._payload_bits(chosen_model_m)
+            bandwidth_m = max(float(bandwidth_allocation_dic[user]), 1e-12)
+            data_size_m = self.pipeline.uplink_residual_bits(user)
+            if data_size_m <= 1e-9:
+                data_size_m = self._payload_bits(chosen_model_m)
             if snr_dic is not None:
                 snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
                 se_eff = self.mcs_table.delay_se(
                     chosen_model_m, phy_choice_dic[user], snr_db)
             else:
                 se_eff = max(self.mcs_table.se[phy_choice_dic[user]], 1e-12)
-            # One-shot airtime / ARQ with BLER capped — queue service uses goodput.
             trans_delay = data_size_m / (bandwidth_m * se_eff)
             trans_energy = self.md_params[user]['trans_power'] * trans_delay
 
@@ -855,13 +918,16 @@ class OMNIS:
 
         edge_overhead_dic = {}  # Dictionary to store delay and energy consumption for each user
 
-        for user in self.users:
+        for user in model_selection_dic.keys():
             chosen_model_m = model_selection_dic[user]["model"]  # Get the selected model for this user
             # Extract relevant parameters
             tail_flops_m = self.tail_flops[chosen_model_m]  # FLOPs of the tail model
             flops_per_cycle_m = self.es_params['flops_per_cycle']  # FLOPs per cycle for this user
             num_cores_m = self.es_params['cores']  # Number of cores for this user
-            gpu_freq_m = gpu_allocation_dic[user]  # GPU frequency for this user
+            gpu_freq_m = max(float(gpu_allocation_dic.get(user, 0.0)), 1e-12)
+            # If not yet the edge HOL, use full pool as the FIFO service forecast.
+            if gpu_freq_m <= 1e-12:
+                gpu_freq_m = float(self.es_params['freq'])
 
             # Compute edge processing delay
             edge_delay = tail_flops_m * 1e-9 / (gpu_freq_m * num_cores_m * flops_per_cycle_m)
@@ -962,55 +1028,11 @@ class OMNIS:
         plt.show()
 
     def get_average_and_std_metrics(self):
-        """Calculate the average and standard deviation of latency, energy consumption, accuracy, reward,
-        the probability of violating delay and energy consumption constraints, and
-        the number of violations across all time slots and users."""
+        """Task QoS over completions; queues over all slots."""
+        from omnis.queue_agent_mixin import get_average_and_std_metrics as _avg
+        _avg(self)
 
-        metrics = ["delay", "energy", "accuracy", "reward", "is_vio", "vio_degree",
-                   "backlog", "energy_queue", "arrivals", "served"]
-        metric_sums = {m: 0 for m in metrics}
-        metric_values = {m: [] for m in metrics}  # Store values for std calculation
 
-        # Iterate over all users and time slots
-        for user in self.users:
-            for t in range(self.time_slot_num):
-                for m in metrics:
-                    value = self.instant_metrics[user][m][t]
-                    metric_sums[m] += value
-                    metric_values[m].append(value)
-
-        total_samples = self.time_slot_num * len(self.users)
-
-        # Compute averages
-        self.average_metrics = {
-            "latency": float(metric_sums["delay"] / total_samples),
-            "energy": float(metric_sums["energy"] / total_samples),
-            "accuracy": float(metric_sums["accuracy"] / total_samples),
-            "reward": float(metric_sums["reward"] / total_samples),
-            "vio_prob": float(metric_sums["is_vio"] / total_samples),
-            "vio_sum": float(metric_sums["vio_degree"] / total_samples),
-            "backlog_bits": float(metric_sums["backlog"] / total_samples),
-            "energy_queue": float(metric_sums["energy_queue"] / total_samples),
-            "arrival_bits": float(metric_sums["arrivals"] / total_samples),
-            "served_bits": float(metric_sums["served"] / total_samples),
-        }
-
-        # Compute standard deviations
-        self.std_metrics = {
-            "latency": float(np.std(metric_values["delay"], ddof=1)),
-            "energy": float(np.std(metric_values["energy"], ddof=1)),
-            "accuracy": float(np.std(metric_values["accuracy"], ddof=1)),
-            "reward": float(np.std(metric_values["reward"], ddof=1)),
-            "vio_prob": float(np.std(metric_values["is_vio"], ddof=1)),
-            "vio_sum": float(np.std(metric_values["vio_degree"], ddof=1)),
-            "backlog_bits": float(np.std(metric_values["backlog"], ddof=1)),
-            "energy_queue": float(np.std(metric_values["energy_queue"], ddof=1)),
-        }
-
-        # Normalize action frequency
-        self.action_freq = self.action_freq / self.time_slot_num
-
-    
     def get_instant_metrics(self,task_dic, total_overhead_dic, reward_dic, acc_dic, queue_info_dic=None):
         for user in self.users:
             self.instant_metrics[user]["delay"].append(total_overhead_dic[user]['delay'])
@@ -1052,127 +1074,16 @@ class OMNIS:
         return self.instant_metrics
 
 
+    def _apply_learn_payload(self, pend):
+        apply_learn_payload(self, pend)
 
+    def _flush_pending_learn(self):
+        flush_pending_learn(self)
 
     def simulation(self):
-        """main loop for simulation"""
-        self._pending_learn = None
-        for t in range(self.time_slot_num):
-            (snr_best_est, trans_rate_dic, cand_cells_dic,
-             sinr_est_db_all_dic, sinr_true_db_all_dic) = self.get_trans_rate(t)
+        """Main loop: Poisson task arrivals, sticky association, compute queue."""
+        run_discrete_simulation(self)
 
-            task_dic = self.generate_tasks(t)
-
-            # Learning labels from slot t-1 arrive with this slot's uplink.
-            if self.learn_delay_slots > 0:
-                self._flush_pending_learn()
-                self.update_time += float(getattr(self, "_last_parallel_update_s", 0.0))
-
-            context_dic = self.observe_context(task_dic, trans_rate_dic)
-            # distributed decision_ms = parallel (max-agent), not sequential sum.
-            # Association / arm scoring use estimated CSI.
-            if self.algo == 'causal':
-                model_selection_dic, cell_dic = self.model_selection_causal(
-                    task_dic, cand_cells_dic, sinr_est_db_all_dic, trans_rate_dic)
-            else:
-                model_selection_dic, cell_dic = self.model_selection(
-                    context_dic, task_dic, cand_cells_dic, sinr_est_db_all_dic)
-            self.decision_time += float(self._last_parallel_decision_s)
-
-            snr_est_dic = self._apply_cell_association(cell_dic, sinr_est_db_all_dic)
-            snr_true_dic = self._apply_cell_association(cell_dic, sinr_true_db_all_dic)
-
-            arrival_bits_dic = {user: task_dic[user]["n_arrivals"]
-                                * self._payload_bits(model_selection_dic[user]["model"])
-                                for user in self.users}
-
-            local_overhead_dic = self.get_local_overhead(model_selection_dic)
-
-            # BCD MCS policy uses estimated CSI; realized Acc/goodput use true.
-            bcd_out = run_bcd_slot(
-                self, task_dic, model_selection_dic, trans_rate_dic,
-                local_overhead_dic, snr_est_dic, cell_dic)
-            bandwidth_allocation_dic = bcd_out["bandwidth"]
-            gpu_allocation_dic = bcd_out["gpu"]
-            phy_choice_dic = bcd_out["phy_choice"]
-            # Recompute transmission overhead under true CSI (env realization).
-            trans_oh = self.get_trans_overhead(
-                trans_rate_dic, model_selection_dic, bandwidth_allocation_dic,
-                phy_choice_dic, snr_dic=snr_true_dic)
-            edge_oh = self.get_edge_overhead(model_selection_dic, gpu_allocation_dic)
-            total_overhead_dic = {}
-            for user in self.users:
-                total_overhead_dic[user] = {
-                    "delay": (local_overhead_dic[user]["delay"]
-                              + trans_oh[user]["delay"]
-                              + edge_oh[user]["delay"]),
-                    "energy": (local_overhead_dic[user]["energy"]
-                               + trans_oh[user]["energy"]
-                               + edge_oh[user]["energy"]),
-                }
-
-            for user in self.users:
-                self.instant_metrics[user]["mcs"].append(phy_choice_dic[user])
-                self.instant_metrics[user]["cell"].append(cell_dic[user])
-                snr_db_u = 10 * np.log10(max(snr_true_dic[user], 1e-12))
-                self.instant_metrics[user]["bler"].append(self.mcs_table.bler(
-                    model_selection_dic[user]["model"], phy_choice_dic[user], snr_db_u))
-
-            # Env-only Acc realization (rewards / GP registration observe this)
-            acc_dic = self.get_accuracy(snr_true_dic, phy_choice_dic, model_selection_dic)
-            acc_realized_dic = self.realize_accuracy(acc_dic)
-
-            # Calculate the performance for MDs
-            reward_dic = self.get_reward(task_dic, acc_realized_dic, total_overhead_dic)
-
-            # Queue dynamics under true-channel goodput [bits]
-            service_bits_dic = {user: bandwidth_allocation_dic[user]
-                                * self._goodput_se(user, model_selection_dic[user]["model"],
-                                                   phy_choice_dic[user], snr_true_dic)
-                                * self.slot_duration
-                                for user in self.users}
-            queue_info_dic = {}
-            for user in self.users:
-                self.backlog[user] = max(self.backlog[user] - service_bits_dic[user], 0.0) \
-                    + arrival_bits_dic[user]
-                self.energy_queue[user] = max(
-                    self.energy_queue[user] + total_overhead_dic[user]['energy']
-                    - self.energy_budget[user], 0.0)
-                queue_info_dic[user] = {
-                    "backlog": self.backlog[user], "energy_queue": self.energy_queue[user],
-                    "arrivals": arrival_bits_dic[user], "served": service_bits_dic[user]}
-            self.get_instant_metrics(task_dic, total_overhead_dic, reward_dic, acc_realized_dic,
-                                     queue_info_dic)
-
-            self._last_bandwidth = bandwidth_allocation_dic
-            self._last_gpu = gpu_allocation_dic
-            self._cell_compute_state = update_cell_compute_state(
-                cell_dic, gpu_allocation_dic, self.num_cells,
-                self.es_params['freq'])
-
-            learn_payload = {
-                "algo": self.algo,
-                "snr": snr_true_dic,
-                "mcs": phy_choice_dic,
-                "acc": acc_realized_dic,
-                "context": context_dic,
-                "model_selection": model_selection_dic,
-                "reward": reward_dic,
-            }
-            if self.learn_delay_slots > 0:
-                self._pending_learn = learn_payload
-            else:
-                if self.algo == 'causal':
-                    self.update_causal(snr_true_dic, phy_choice_dic, acc_realized_dic)
-                else:
-                    self.update_gp(context_dic, model_selection_dic, reward_dic)
-                self.update_time += float(self._last_parallel_update_s)
-
-        # Final piggyback: last slot's labels after the horizon ends.
-        if self.learn_delay_slots > 0 and self._pending_learn is not None:
-            self._flush_pending_learn()
-            self.update_time += float(getattr(self, "_last_parallel_update_s", 0.0))
-        self.get_average_and_std_metrics()
 
 
 if __name__ == "__main__":

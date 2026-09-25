@@ -12,16 +12,21 @@ class McsTable:
         bler_table.csv : (model, mcs_index, snr_db) -> transport-block error rate
         acc_clean.csv  : model -> error-free accuracy ceiling (COCO mAP)
 
-    Accuracy semantics (BLER-gated, matching the single-cell Sionna design):
-        E[acc] = (1 - BLER) * clean_mAP + BLER * floor_mAP
-    A failed TB is an erasure (floor, default 0), not a residual-BER corruption.
-    Latency / queue service use goodput SE = (1 - BLER) * spectral_efficiency.
+    Accuracy semantics (environment reward / metrics only):
+        Acc(model, coding_rate, SINR) from the fitted DNN Acc curves
+        (``sys_data/acc_data/fitted_acc_data.csv``). The MCS code rate is
+        mapped to the nearest fitted rate. BLER is **not** mixed into Acc —
+        it only affects goodput / delay / energy.
     """
 
-    def __init__(self, table_dir, acc_floor=0.0, bler_target=0.1):
+    def __init__(self, table_dir, acc_floor=0.0, bler_target=0.1,
+                 fitted_acc_csv=None):
         self.table_dir = table_dir
         self.acc_floor = float(acc_floor)
         self.bler_target = float(bler_target)
+        # Spatial layers that carry one transport block. 1 for a pre-mixed
+        # single-stream SINR trace; the channel-gain trace sets this to 2.
+        self.n_streams = 1
         self.se = {}            # mcs_index -> spectral efficiency [bit/s/Hz]
         self.qm = {}
         self.code_rate = {}
@@ -43,6 +48,13 @@ class McsTable:
             for r in csv.DictReader(f):
                 self.acc_clean[r["model"]] = float(r["accuracy"])
 
+        if fitted_acc_csv is None:
+            fitted_acc_csv = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "sys_data", "acc_data", "fitted_acc_data.csv")
+        self._fitted_acc = self._load_fitted_acc(fitted_acc_csv)
+        self._acc_cache = {}
+
         self._bler = self._load_curves("bler_table.csv", "bler")
         # Decision-time caches: identical (model, mcs, snr) lookups dominate
         # U×M×L×|MCS| arm scoring; table is immutable so cache is always valid.
@@ -50,6 +62,27 @@ class McsTable:
         self._goodput_cache = {}
         self._all_mcs_cache = {}  # (model, snr_q) -> (bler[M], goodput[M])
         self._build_dense_grids()
+
+    @staticmethod
+    def _load_fitted_acc(path):
+        """Load Acc(Model, Coding Rate, SNR) curves; keys (model, rate)."""
+        curves = {}
+        if not path or not os.path.isfile(path):
+            return curves
+        with open(path) as f:
+            for r in csv.DictReader(f):
+                model = r["Model"]
+                rate = float(r["Coding Rate"])
+                curves.setdefault((model, rate), []).append(
+                    (float(r["SNR"]), float(r["Accuracy"])))
+        out = {}
+        for key, pts in curves.items():
+            pts = sorted(pts)
+            out[key] = (
+                np.array([p[0] for p in pts], dtype=float),
+                np.array([p[1] for p in pts], dtype=float),
+            )
+        return out
 
     def _load_curves(self, filename, value_col):
         curves = {}
@@ -151,15 +184,35 @@ class McsTable:
         self._all_mcs_cache[key] = (bler, goodput)
         return bler, goodput
 
-    def accuracy(self, model, mcs_idx, snr_db):
-        """BLER-gated expected task accuracy (COCO mAP).
+    def _nearest_fitted_rate(self, model, mcs_idx):
+        """Map an MCS code rate onto the nearest fitted Acc curve."""
+        rates = [r for (m, r) in self._fitted_acc if m == model]
+        if not rates:
+            return None
+        code_rate = float(self.code_rate.get(int(mcs_idx), rates[0]))
+        return min(rates, key=lambda r: abs(r - code_rate))
 
-        Failed TBs are treated as erasures at ``acc_floor`` (default 0); successful
-        TBs deliver the clean mAP. Matches the classmate Sionna B2 semantics.
+    def accuracy(self, model, mcs_idx, snr_db):
+        """Fitted Acc at the coding rate of ``mcs_idx`` (environment metrics).
+
+        The curve is Acc(model, rate, SINR). ``mcs_idx`` selects the rate.
+        It does not mix BLER into the accuracy label.
         """
-        clean = self.acc_clean[model]
-        p_fail = self.bler(model, mcs_idx, snr_db)
-        return (1.0 - p_fail) * clean + p_fail * self.acc_floor
+        snr_db = float(snr_db)
+        rate = self._nearest_fitted_rate(model, mcs_idx)
+        key = (model, None if rate is None else float(rate), round(snr_db, 3))
+        hit = self._acc_cache.get(key)
+        if hit is not None:
+            return hit
+
+        if rate is None:
+            val = float(self.acc_clean.get(model, self.acc_floor))
+        else:
+            snr, acc = self._fitted_acc[(model, rate)]
+            val = float(np.interp(snr_db, snr, acc))
+        val = float(np.clip(val, 0.0, 1.0))
+        self._acc_cache[key] = val
+        return val
 
     def goodput_se(self, model, mcs_idx, snr_db):
         """Effective spectral efficiency after TB erasures [bit/s/Hz]."""
@@ -173,6 +226,7 @@ class McsTable:
             val = self._grid_lookup(self._goodput_grid, model, mcs_i, snr_db)
         else:
             val = self.se[mcs_idx] * (1.0 - self.bler(model, mcs_idx, snr_db))
+        val = float(val) * float(self.n_streams)
         self._goodput_cache[key] = val
         return val
 
@@ -183,12 +237,12 @@ class McsTable:
         deep fade cannot produce delay/energy ~ 1/1e-12 and explode Lyapunov
         rewards. Queue *service* should still use uncapped ``goodput_se``.
         """
-        se = float(self.se[int(mcs_idx)])
+        se = float(self.se[int(mcs_idx)]) * float(self.n_streams)
         bler = min(float(self.bler(model, mcs_idx, snr_db)), float(bler_cap))
         return max(se * (1.0 - bler), 1e-12)
 
     def best_mcs_by_acc(self, model, snr_db):
-        """MCS with the highest BLER-gated accuracy (ties -> higher raw SE)."""
+        """MCS with the highest fitted Acc (ties -> higher raw SE)."""
         best, best_key = 0, (-np.inf, -np.inf)
         for mcs in self.mcs_indices:
             key = (self.accuracy(model, mcs, snr_db), self.se[mcs])

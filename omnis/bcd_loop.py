@@ -1,17 +1,4 @@
-"""Shared BCD slot loop and per-cell parallel helpers.
-
-After user–cell association, cells are independent: each cell has its own
-bandwidth and GPU pools, and MCS selection only depends on that cell's users.
-``allocate_bandwidth_all_cells``, ``gpu_resource_allocation_all_cells``, and
-``mcs_selection_all_cells`` therefore parallelize one task per cell via
-``ThreadPoolExecutor`` (workers capped sensibly).
-
-BCD optimizations (ε / max_iter unchanged; set on the agent / Config):
-  1. Warm-start MCS from ``agent._last_mcs`` (else random on the first slot).
-  2. GPU allocation once per slot (independent of MCS / BW); reused every iter.
-  3. Per-cell parallelism as above.
-"""
-
+"""Per-slot BCD resource allocation helpers."""
 from __future__ import annotations
 
 import os
@@ -155,18 +142,22 @@ def run_bcd_slot(agent, task_dic, model_selection_dic, trans_rate_dic,
             phy_choice_dic, snr_dic=snr_dic)
         edge_overhead_dic = agent.get_edge_overhead(
             model_selection_dic, gpu_allocation_dic)
-        queue_wait_dic = {
-            user: agent.backlog[user] / (
-                bandwidth_allocation_dic[user] * agent._goodput_se(
-                    user, model_selection_dic[user]["model"],
-                    phy_choice_dic[user], snr_dic))
-            for user in agent.users
-        }
+        # BCD proxy: τ̂^r = τ̂^s + Q^j τ̂^e (jobs ahead in FIFO).
+        pipe = getattr(agent, "pipeline", None)
+        queue_wait_dic = {}
+        for user in agent.users:
+            cell = cell_dic.get(user)
+            edge_d = float(edge_overhead_dic[user]["delay"])
+            if pipe is not None and hasattr(pipe, "jobs_ahead"):
+                ahead = float(pipe.jobs_ahead(user, cell_id=cell))
+            else:
+                ahead = 0.0
+            queue_wait_dic[user] = ahead * edge_d
         total_overhead_dic = agent.get_total_overhead(
             local_overhead_dic, trans_overhead_dic, edge_overhead_dic,
             queue_wait_dic)
 
-        # BCD objective: QoS penalties only (no Acc-table term; Acc is env-only)
+        # BCD objective: QoS penalties with the proxy delay (service + Q^e hat)
         bcd_delay_penalty = sum(
             erf(total_overhead_dic[user]["delay"] - task_dic[user]["delay_constraint"])
             for user in agent.users)

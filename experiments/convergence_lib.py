@@ -1,25 +1,7 @@
-"""Shared online convergence / evaluation runner for OMNIS schemes.
+"""Online convergence runner: slots × seeds → CSV / series / plot_data exports.
 
-Runs each scheme over slots and seeds to produce **convergence** curves
-(not offline DNN training). Writes (and merges) under ``--out``:
-
-  - ``perseed.csv`` / ``summary.csv`` — Python source tables
-  - ``series/*.npz`` — per-seed time series (Python source)
-  - ``plot_data.mat`` / ``.pkl`` / ``.npz`` — aggregated exports
-
-Plotting: ``experiments/plot_results.py`` (refreshes exports; never deletes CSV/series).
-
-PyCharm: Run any ``convergence_*.py`` / ``convergence_all.py`` with empty parameters.
-Edit ``PYCHARM_*`` in ``cli_main`` (or pass ``--algos`` in the Run config).
-
-Reported **reward** = mean Lyapunov objective V·utility + drift.
-Also logs accuracy, delay, energy, backlog, violation rate, and
-per-slot wall time = decision + BCD + update.
-
-**distributed decision_ms = parallel (max-agent)**: for factorized /
-multi-agent algos (causal, ucb, dts, mappo, …) selection (+ local update)
-is timed per MD and aggregated as max (or batched NN forward for MAPPO).
-Centralized joint methods (cto, dqn, ppo) keep true sequential/joint wall.
+Reward = mean V·u+drift over completed tasks. Distributed decision time uses
+per-MD max; centralized schemes use joint wall time.
 """
 
 from __future__ import annotations
@@ -41,7 +23,6 @@ ensure_repo_root()
 
 from sys_data.config import Config
 from omnis.omnis_main import OMNIS
-from baselines.rss_main import RSS
 from baselines.dts_main import DTS
 from baselines.gdo_main import GDO
 from baselines.dqn_main import DQN
@@ -59,7 +40,6 @@ ALGOS = [
     ("ucb", OMNIS),
     ("dts", DTS),
     ("gdo", GDO),
-    ("rss", RSS),
     ("dqn", DQN),
     ("ppo", PPO),
     ("mappo", MAPPO),
@@ -81,7 +61,7 @@ MAB_BASE_ALGOS = ("causal", "ucb", "dts", "cto")
 
 # Factorized / multi-agent: decision_ms uses parallel (max-agent) timing.
 DISTRIBUTED_DECISION_ALGOS = frozenset({
-    "causal", "ucb", "dts", "mappo", "rss", "gdo",
+    "causal", "ucb", "dts", "mappo", "gdo",
 })
 # Centralized joint controllers: true sequential/joint decision wall.
 CENTRALIZED_DECISION_ALGOS = frozenset({"cto", "dqn", "ppo"})
@@ -100,38 +80,98 @@ def mean_series(agent, key):
 
 
 def cumulative_mean(x):
+    """Running mean over slots; non-finite entries count as 0 (idle → 0)."""
     x = np.asarray(x, dtype=float)
-    return np.cumsum(x) / np.arange(1, len(x) + 1)
+    x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    if x.size == 0:
+        return x.copy()
+    return np.cumsum(x) / np.arange(1, len(x) + 1, dtype=float)
 
 
-def reward_series(agent):
-    """Per-slot mean Lyapunov objective (reported reward)."""
+def _lyapunov_completion_values(agent):
+    """Per-completion Lyapunov objectives V·u + drift (task index).
+
+    Only (user, slot) with a finished task (``served >= 0.5``). Matches the
+    task averaging used for accuracy / delay / energy / violation in
+    ``queue_agent_mixin.finalize_metrics``. Idle slots are omitted so low
+    arrival rates are not diluted by zeros.
+    """
     V = agent.lyapunov_v
     T = len(agent.instant_metrics[agent.users[0]]["reward"])
-    obj = np.zeros(T)
+    q_scale = float(getattr(agent, "dpp_task_scale", 3.0))
+    e_scale = float(getattr(agent, "dpp_energy_scale", 0.8))
+    vals = []
     for t in range(T):
-        slot = 0.0
         for u in agent.users:
+            served_t = agent.instant_metrics[u]["served"][t]
+            if served_t < 0.5:
+                continue
             r = agent.instant_metrics[u]["reward"][t]
             energy = agent.instant_metrics[u]["energy"][t]
             backlog_t = agent.instant_metrics[u]["backlog"][t]
             eq_t = agent.instant_metrics[u]["energy_queue"][t]
-            served_t = agent.instant_metrics[u]["served"][t]
             arrivals_t = agent.instant_metrics[u]["arrivals"][t]
-            q_n = float(np.tanh(backlog_t / agent.dpp_bit_scale))
-            z_n = float(np.tanh(eq_t / agent.dpp_energy_scale))
-            service_n = served_t / agent.dpp_bit_scale
-            arrivals_n = arrivals_t / agent.dpp_bit_scale
-            budget_n = agent.energy_budget[u] / agent.dpp_energy_scale
-            energy_n = energy / agent.dpp_energy_scale
-            drift = q_n * (service_n - arrivals_n) + z_n * (budget_n - energy_n)
+            q_n = float(np.tanh(backlog_t / max(q_scale, 1e-9)))
+            z_n = float(np.tanh(eq_t / max(e_scale, 1e-9)))
+            service_n = served_t / max(q_scale, 1e-9)
+            arrivals_n = arrivals_t / max(q_scale, 1e-9)
+            budget_n = agent.energy_budget[u] / max(e_scale, 1e-9)
+            energy_n = energy / max(e_scale, 1e-9)
+            energy_drift = z_n * (budget_n - energy_n)
+            drift = q_n * (service_n - arrivals_n) + energy_drift
+            vals.append(V * r + drift)
+    return vals
+
+
+def reward_series(agent):
+    """Per-slot mean Lyapunov objective for convergence curves.
+
+    Each user contributes ``V·u + drift`` on completion and **0** if idle, then
+    average over users. Empty early slots are therefore ~0, so running averages
+    start near the origin instead of jumping to the first completion's score.
+    Scalar CSV ``reward`` still uses ``mean_task_reward`` (task index only).
+    """
+    V = agent.lyapunov_v
+    T = len(agent.instant_metrics[agent.users[0]]["reward"])
+    q_scale = float(getattr(agent, "dpp_task_scale", 3.0))
+    e_scale = float(getattr(agent, "dpp_energy_scale", 0.8))
+    n_u = len(agent.users)
+    obj = np.zeros(T, dtype=float)
+    for t in range(T):
+        slot = 0.0
+        for u in agent.users:
+            served_t = agent.instant_metrics[u]["served"][t]
+            if served_t < 0.5:
+                continue
+            r = agent.instant_metrics[u]["reward"][t]
+            energy = agent.instant_metrics[u]["energy"][t]
+            backlog_t = agent.instant_metrics[u]["backlog"][t]
+            eq_t = agent.instant_metrics[u]["energy_queue"][t]
+            arrivals_t = agent.instant_metrics[u]["arrivals"][t]
+            q_n = float(np.tanh(backlog_t / max(q_scale, 1e-9)))
+            z_n = float(np.tanh(eq_t / max(e_scale, 1e-9)))
+            service_n = served_t / max(q_scale, 1e-9)
+            arrivals_n = arrivals_t / max(q_scale, 1e-9)
+            budget_n = agent.energy_budget[u] / max(e_scale, 1e-9)
+            energy_n = energy / max(e_scale, 1e-9)
+            energy_drift = z_n * (budget_n - energy_n)
+            drift = q_n * (service_n - arrivals_n) + energy_drift
             slot += V * r + drift
-        obj[t] = slot / len(agent.users)
+        obj[t] = slot / n_u
     return obj
 
 
+def mean_task_reward(agent):
+    """Scalar reported reward: equal weight per completed task."""
+    vals = _lyapunov_completion_values(agent)
+    return float(np.mean(vals)) if vals else float("nan")
+
+
 def algo_ms_per_slot(agent, slots, name=None):
-    """Per-slot times [ms]: decision (+update), BCD, and modeled communication.
+    """Per-slot times [ms]: decision (+update), resource alloc, modeled comm.
+
+    ``bcd_ms`` is the measured wall for per-slot resource allocation: BCD for
+    most schemes, or GDO's EG-slice enforcement (``allocate_slot_resources``).
 
     For ``DISTRIBUTED_DECISION_ALGOS``, ``agent.decision_time`` /
     ``update_time`` already store parallel (max-agent) seconds — not the
@@ -147,7 +187,7 @@ def algo_ms_per_slot(agent, slots, name=None):
     bcd_ms = 1000.0 * bcd / max(slots, 1)
     local_dim = int(getattr(agent, "local_obs_dim", 4 + agent.top_l_cells + 2))
     comm = comm_ms_per_slot(
-        name or getattr(agent, "name", "rss"),
+        name or getattr(agent, "name", "causal"),
         user_num=agent.user_num,
         local_obs_dim=local_dim,
         rtt_s=float(getattr(agent, "comm_rtt_s", 1e-3)),
@@ -172,8 +212,7 @@ def configure(name, seed, slots, users, *, no_update=False, freeze_after=0,
     c = Config(seed)
     c.time_slot_num = slots
     c.update_users(users)
-    # CTO knobs (cto_max_candidates, cto_gp_burn_in) come from Config — keep
-    # full joint GP cost; do not override to a light candidate pool here.
+    # CTO is centralized causal (same score as OMNIS+). Do not shrink its GP.
     if name in ("causal", "ucb"):
         c.algo = name
     if name == "dqn":
@@ -190,7 +229,7 @@ def configure(name, seed, slots, users, *, no_update=False, freeze_after=0,
         c.mappo_rollout_len = min(16, max(8, slots // 4))
     c.mab_no_update = bool(no_update)
     c.mab_freeze_after = int(freeze_after or 0)
-    # Default: log pred error for MAB family (Causal acc + UCB/DTS/CTO reward).
+    # Default: log pred error for MAB family (Causal/CTO acc + UCB/DTS reward).
     if log_pred_error is None:
         log_pred_error = name in MAB_BASE_ALGOS
     c.log_pred_error = bool(log_pred_error)
@@ -223,7 +262,7 @@ def run_one(name, cls, seed, slots, users, *, base_algo=None,
     timing = algo_ms_per_slot(agent, slots, name=algo)
     row = {
         "name": name, "seed": seed,
-        "reward": float(np.mean(obj)),
+        "reward": mean_task_reward(agent),
         "acc": float(avg["accuracy"]),
         "delay": float(avg["latency"]),
         "energy": float(avg["energy"]),
@@ -436,7 +475,7 @@ write_train_mat = write_convergence_exports
 
 
 def run_convergence(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4),
-                    out="figures/convergence", *, log_pred_error=None,
+                    out="figures/python figures/convergence", *, log_pred_error=None,
                     write_mat=True, do_plot=False, slide=5):
     """Run listed algos over seeds; merge CSVs + series (+ plot exports)."""
     names = resolve_algos(algos)
@@ -455,7 +494,7 @@ def run_convergence(algos, slots=300, users=10, seeds=(0, 1, 2, 3, 4),
                   f"backlog={r['backlog']:.0f} vio={r['vio']:.3f} "
                   f"ms/slot={r['ms_per_slot']:.2f} "
                   f"(dec={r['decision_ms']:.2f} comm={r['comm_ms']:.2f} "
-                  f"bcd={r['bcd_ms']:.2f}) wall={r['sec']:.0f}s",
+                  f"alloc={r['bcd_ms']:.2f}) wall={r['sec']:.0f}s",
                   flush=True)
             rows.append(r)
 
@@ -482,10 +521,10 @@ run_training = run_convergence
 
 # PyCharm / zero-arg defaults for convergence_all / convergence_*.py
 PYCHARM_CONV_ALGOS = None        # None → script default_algos; or ["causal","ucb"] / "all"
-PYCHARM_CONV_SLOTS = 500
-PYCHARM_CONV_USERS = 10
+PYCHARM_CONV_SLOTS = 1000
+PYCHARM_CONV_USERS = 25
 PYCHARM_CONV_SEEDS = [0, 1, 2, 3, 4]
-PYCHARM_CONV_OUT = "figures/convergence"
+PYCHARM_CONV_OUT = "figures/python figures/convergence"
 PYCHARM_CONV_PLOT = False        # True → also run plot_results after run
 PYCHARM_CONV_WRITE_MAT = True
 # Aliases

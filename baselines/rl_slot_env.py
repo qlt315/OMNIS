@@ -1,24 +1,19 @@
-"""Shared multi-cell slot loop for online RL baselines (DQN / PPO / MAPPO).
-
-Hooks:
-  select_actions(...)  -> model_selection_dic, cell_dic
-  learn_after_slot(...)  -> buffer / gradient updates (no-op in eval)
-"""
-
+"""Shared slot loop for DQN / PPO / MAPPO."""
 from __future__ import annotations
 
 import time
 
 import numpy as np
 
-from baselines.rss_main import RSS
+from baselines.slot_env import SlotEnv
 from baselines.rl_nets import RunningMeanStd
-from omnis.bcd_loop import run_bcd_slot
 from omnis.assoc_info import update_cell_compute_state
+from omnis.bcd_loop import run_bcd_slot
+from omnis.sim_loop import run_discrete_simulation
 
 
-class OnlineRLBaseline(RSS):
-    """RSS env loop with pluggable joint decision + online learning hooks."""
+class OnlineRLBaseline(SlotEnv):
+    """Slot loop with pluggable joint decision + online learning hooks."""
 
     def __init__(self, config):
         super().__init__(config)
@@ -37,16 +32,24 @@ class OnlineRLBaseline(RSS):
         self.bcd_time = 0.0
         self.bcd_iters = 0.0
         self.update_time = 0.0
-        self.static_model_dic = {}
-        self.static_cell_rank_dic = {}
-        # Acc/reward learning piggybacks on next-slot uplink (0 = same-slot).
+        self._last_parallel_decision_s = 0.0
+        self._last_parallel_update_s = 0.0
         self.learn_delay_slots = int(getattr(config, "learn_delay_slots", 1) or 0)
         self._pending_learn = None
+        self._rl_slot_cache = None
 
     def local_obs(self, user, task_u, cand_cells, sinr_db_all):
-        sinrs = [sinr_db_all[user][cand_cells[user][r]] / 20.0
-                 for r in range(self.top_l)]
-        q_n = self.backlog[user] / self.dpp_bit_scale
+        if user not in cand_cells or user not in sinr_db_all:
+            return np.zeros(self.local_obs_dim, dtype=np.float32)
+        cands = cand_cells[user]
+        sinrs = []
+        for r in range(self.top_l):
+            if r < len(cands):
+                sinrs.append(sinr_db_all[user][cands[r]] / 20.0)
+            else:
+                sinrs.append(0.0)
+        scale = float(getattr(self, "dpp_task_scale", 3.0))
+        q_n = self.pipeline.composite_backlog(user) / scale
         z_n = self.energy_queue[user] / self.dpp_energy_scale
         return np.array([
             task_u["delay_constraint"] / 3.0,
@@ -72,6 +75,18 @@ class OnlineRLBaseline(RSS):
         model_selection_dic = {}
         cell_dic = {}
         for user_idx, user in enumerate(self.users):
+            locked_cell = self.pipeline.locked_cell(user)
+            locked_model = self.pipeline.locked_model(user)
+            if locked_cell is not None and locked_model is not None:
+                model_idx = next(
+                    (i for i, m in enumerate(self.models) if m["name"] == locked_model), 0)
+                cell_rank = (cand_cells_dic[user].index(locked_cell)
+                             if locked_cell in cand_cells_dic[user] else 0)
+                self.action_freq[user_idx, model_idx, min(cell_rank, self.top_l - 1)] += 1
+                model_selection_dic[user] = {
+                    "model": locked_model, "cell_rank": cell_rank}
+                cell_dic[user] = locked_cell
+                continue
             a = int(actions_by_user[user])
             model_idx, cell_rank = self.decode_local_action(a)
             self.action_freq[user_idx, model_idx, cell_rank] += 1
@@ -95,152 +110,118 @@ class OnlineRLBaseline(RSS):
         raise NotImplementedError
 
     def _flush_pending_learn(self):
-        """Apply piggybacked RL labels from the previous slot."""
         pend = self._pending_learn
         if pend is None:
+            self._last_parallel_update_s = 0.0
             return
         t_update = time.time()
         self.learn_after_slot(pend)
-        self.update_time += time.time() - t_update
+        self._last_parallel_update_s = time.time() - t_update
         self._pending_learn = None
 
-    def simulation(self):
-        self._run_simulation()
-
-    def _run_simulation(self):
-        self._pending_learn = None
-        for t in range(self.time_slot_num):
-            (snr_best_est, trans_rate_dic, cand_cells_dic,
-             sinr_est_db_all_dic, sinr_true_db_all_dic) = self.get_trans_rate(t)
-            task_dic = self.generate_tasks(t)
-
-            if not self.eval_mode and self.learn_delay_slots > 0:
-                self._flush_pending_learn()
-
-            # MAPPO: batched actor forward ≈ parallel MD cost (not U× sequential).
-            # DQN/PPO: joint/centralized wall (cannot factor across users).
-            # Association / arm scoring use estimated CSI.
-            t_decision = time.time()
-            model_selection_dic, cell_dic = self.select_actions(
-                cand_cells_dic, task_dic, sinr_est_db_all_dic, t)
-            self.decision_time += time.time() - t_decision
-            snr_est_dic = self._apply_cell_association(cell_dic, sinr_est_db_all_dic)
-            snr_true_dic = self._apply_cell_association(cell_dic, sinr_true_db_all_dic)
-
-            arrival_bits_dic = {
-                user: task_dic[user]["n_arrivals"]
-                * self._payload_bits(model_selection_dic[user]["model"])
-                for user in self.users
-            }
-            local_overhead_dic = self.get_local_overhead(model_selection_dic)
-
-            # BCD MCS policy uses estimated CSI; realized Acc/goodput use true.
-            bcd_out = run_bcd_slot(
-                self, task_dic, model_selection_dic, trans_rate_dic,
-                local_overhead_dic, snr_est_dic, cell_dic)
-            bandwidth_allocation_dic = bcd_out["bandwidth"]
-            gpu_allocation_dic = bcd_out["gpu"]
-            phy_choice_dic = bcd_out["phy_choice"]
-            trans_oh = self.get_trans_overhead(
-                trans_rate_dic, model_selection_dic, bandwidth_allocation_dic,
-                phy_choice_dic, snr_dic=snr_true_dic)
-            edge_oh = self.get_edge_overhead(model_selection_dic, gpu_allocation_dic)
-            total_overhead_dic = {}
-            for user in self.users:
-                total_overhead_dic[user] = {
-                    "delay": (local_overhead_dic[user]["delay"]
-                              + trans_oh[user]["delay"]
-                              + edge_oh[user]["delay"]),
-                    "energy": (local_overhead_dic[user]["energy"]
-                               + trans_oh[user]["energy"]
-                               + edge_oh[user]["energy"]),
-                }
-
-            for user in self.users:
-                self.instant_metrics[user]["mcs"].append(phy_choice_dic[user])
-                self.instant_metrics[user]["cell"].append(cell_dic[user])
-                snr_db_u = 10 * np.log10(max(snr_true_dic[user], 1e-12))
-                self.instant_metrics[user]["bler"].append(self.mcs_table.bler(
-                    model_selection_dic[user]["model"], phy_choice_dic[user], snr_db_u))
-
-            acc_dic = self.get_accuracy(snr_true_dic, phy_choice_dic, model_selection_dic)
-            if self.acc_noise_std > 0:
-                acc_dic = {
-                    user: float(np.clip(acc + np.random.normal(0.0, self.acc_noise_std), 0.0, 1.0))
-                    for user, acc in acc_dic.items()
-                }
-            reward_dic = self.get_reward(task_dic, acc_dic, total_overhead_dic)
-
+    def get_instant_metrics(self, task_dic, total_overhead_dic, reward_dic, acc_dic,
+                            queue_info_dic=None):
+        out = super().get_instant_metrics(
+            task_dic, total_overhead_dic, reward_dic, acc_dic, queue_info_dic)
+        # RL learning uses mean reward; cache for post-slot hook.
+        slot_mean_reward = float(np.mean(list(reward_dic.values())))
+        self.train_rewards.append(slot_mean_reward)
+        cache = getattr(self, "_rl_slot_cache", None)
+        if cache is not None and not self.eval_mode:
             dpp_targets = {}
             for user in self.users:
-                snr_db_u = 10 * np.log10(max(snr_true_dic[user], 1e-12))
+                if total_overhead_dic[user]["delay"] <= 0 and acc_dic[user] <= 0:
+                    dpp_targets[user] = 0.0
+                    continue
+                model_name = cache["model_selection"].get(user, {}).get("model")
+                if model_name is None:
+                    dpp_targets[user] = float(reward_dic[user])
+                    continue
+                snr_db_u = 10 * np.log10(max(cache["snr_true"].get(user, 1e-12), 1e-12))
+                mcs = cache["phy"].get(user, self.available_mcs[0])
+                cell_id = cache["cell"].get(user)
                 _, _, energy_hat = self.predict_md_overheads(
-                    user, None, model_selection_dic[user]["model"],
-                    phy_choice_dic[user], snr_db=snr_db_u,
-                    cell_id=cell_dic[user])
+                    user, None, model_name, mcs, snr_db=snr_db_u, cell_id=cell_id)
                 drift = self.dpp_drift(
-                    user, model_selection_dic[user]["model"],
-                    phy_choice_dic[user], energy_hat, snr_db=snr_db_u)
+                    user, model_name, mcs, energy_hat, snr_db=snr_db_u)
                 dpp_targets[user] = self.lyapunov_v * float(reward_dic[user]) + drift
-
-            service_bits_dic = {
-                user: bandwidth_allocation_dic[user]
-                * self._goodput_se(
-                    user, model_selection_dic[user]["model"],
-                    phy_choice_dic[user], snr_true_dic)
-                * self.slot_duration
-                for user in self.users
-            }
-            queue_info_dic = {}
-            for user in self.users:
-                self.backlog[user] = max(self.backlog[user] - service_bits_dic[user], 0.0) \
-                    + arrival_bits_dic[user]
-                self.energy_queue[user] = max(
-                    self.energy_queue[user] + total_overhead_dic[user]["energy"]
-                    - self.energy_budget[user], 0.0)
-                queue_info_dic[user] = {
-                    "backlog": self.backlog[user], "energy_queue": self.energy_queue[user],
-                    "arrivals": arrival_bits_dic[user], "served": service_bits_dic[user],
-                }
-            self.get_instant_metrics(task_dic, total_overhead_dic, reward_dic, acc_dic,
-                                     queue_info_dic)
-            slot_mean_reward = float(np.mean(list(reward_dic.values())))
-            self.train_rewards.append(slot_mean_reward)
-            self._last_bandwidth = bandwidth_allocation_dic
-            self._last_gpu = gpu_allocation_dic
-            self._cell_compute_state = update_cell_compute_state(
-                cell_dic, gpu_allocation_dic, self.num_cells,
-                self.es_params["freq"])
-
-            if not self.eval_mode:
-                next_state = self.global_state(task_dic, cand_cells_dic, sinr_est_db_all_dic)
-                next_local = {
-                    u: self.local_obs(u, task_dic[u], cand_cells_dic, sinr_est_db_all_dic)
+            team_r_raw = float(np.mean(list(dpp_targets.values()))) if self.dpp_reward \
+                else slot_mean_reward
+            team_r = self.normalize_team_r(team_r_raw)
+            t = cache["t"]
+            slot_info = {
+                "t": t,
+                "done": 1.0 if t == self.time_slot_num - 1 else 0.0,
+                "dpp_targets": dpp_targets,
+                "reward_dic": reward_dic,
+                "team_r": team_r,
+                "team_r_raw": team_r_raw,
+                "next_global": self.global_state(
+                    task_dic, cache["cand"], cache["sinr_est"]),
+                "next_local": {
+                    u: self.local_obs(u, task_dic[u], cache["cand"], cache["sinr_est"])
                     for u in self.users
-                }
-                team_r_raw = float(np.mean(list(dpp_targets.values()))) if self.dpp_reward \
-                    else float(np.mean(list(reward_dic.values())))
-                team_r = self.normalize_team_r(team_r_raw)
-                slot_info = {
-                    "t": t,
-                    "done": 1.0 if t == self.time_slot_num - 1 else 0.0,
-                    "dpp_targets": dpp_targets,
-                    "reward_dic": reward_dic,
-                    "team_r": team_r,
-                    "team_r_raw": team_r_raw,
-                    "next_global": next_state,
-                    "next_local": next_local,
-                    "task_dic": task_dic,
-                    "cand_cells_dic": cand_cells_dic,
-                    "sinr_db_all_dic": sinr_est_db_all_dic,
-                }
-                if self.learn_delay_slots > 0:
-                    self._pending_learn = slot_info
-                else:
-                    t_update = time.time()
-                    self.learn_after_slot(slot_info)
-                    self.update_time += time.time() - t_update
+                },
+                "task_dic": task_dic,
+                "cand_cells_dic": cache["cand"],
+                "sinr_db_all_dic": cache["sinr_est"],
+            }
+            if self.learn_delay_slots > 0:
+                self._pending_learn = slot_info
+            else:
+                t0 = time.time()
+                self.learn_after_slot(slot_info)
+                self._last_parallel_update_s = time.time() - t0
+                self.update_time += self._last_parallel_update_s
+        return out
 
-        if not self.eval_mode and self.learn_delay_slots > 0 and self._pending_learn is not None:
+    def select_actions_wrapped(self, cand_cells_dic, task_dic, sinr_db_all_dic, t):
+        """select_actions + stash CSI for RL learning hook."""
+        # Learning flush is owned by sim_loop (avoid double update timing).
+        t_decision = time.time()
+        model_selection_dic, cell_dic = self._select_actions_impl(
+            cand_cells_dic, task_dic, sinr_db_all_dic, t)
+        # sim_loop folds _last_parallel_decision_s into decision_time.
+        self._last_parallel_decision_s = time.time() - t_decision
+        self._rl_slot_cache = {
+            "t": t,
+            "cand": cand_cells_dic,
+            "sinr_est": sinr_db_all_dic,
+            "model_selection": model_selection_dic,
+            "cell": cell_dic,
+            "snr_true": {},
+            "phy": {},
+        }
+        return model_selection_dic, cell_dic
+
+    def simulation(self):
+        """Reuse discrete task pipeline; route decisions through select_actions."""
+        self._select_actions_impl = type(self).select_actions.__get__(self, type(self))
+        self.select_actions = self.select_actions_wrapped  # type: ignore
+        orig_get_instant = type(self).get_instant_metrics.__get__(self, type(self))
+
+        def _get_instant(task_dic, total_overhead_dic, reward_dic, acc_dic,
+                         queue_info_dic=None):
+            if self._rl_slot_cache is not None:
+                self._rl_slot_cache["phy"] = dict(getattr(self, "_last_mcs", {}) or {})
+                snr_true = {}
+                for u in self.users:
+                    cell = self._rl_slot_cache["cell"].get(u)
+                    if cell is None:
+                        continue
+                    snr_true[u] = 10 ** (
+                        self._rl_slot_cache["sinr_est"][u][cell] / 10)
+                self._rl_slot_cache["snr_true"] = snr_true
+            return orig_get_instant(
+                task_dic, total_overhead_dic, reward_dic, acc_dic, queue_info_dic)
+
+        self.get_instant_metrics = _get_instant  # type: ignore
+        try:
+            run_discrete_simulation(self)
+        finally:
+            self.select_actions = self._select_actions_impl  # type: ignore
+            self.get_instant_metrics = orig_get_instant  # type: ignore
+
+        if (not self.eval_mode and self.learn_delay_slots > 0
+                and self._pending_learn is not None):
             self._flush_pending_learn()
-        self.get_average_and_std_metrics()

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Sweep metrics vs number of MDs (paper Fig. 7). Re-simulates online.
-
-PyCharm: Run with empty parameters (users 5–25, all algos by default).
-Select schemes: ``--algos causal ucb gdo`` or ``--algos all``.
-"""
+"""Sweep metrics vs number of MDs (online re-sim)."""
 import os
 import sys
 

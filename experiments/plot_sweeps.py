@@ -1,15 +1,5 @@
 #!/usr/bin/env python3
-"""Re-plot sweep results and refresh ``*.mat`` from ``perseed.csv``.
-
-Does **not** re-run simulations. Use after ``run_sweeps.py`` / ``sweep_*.py``.
-
-PyCharm: edit ``PYCHARM_*`` below, Run with empty parameters.
-
-CLI:
-  PYTHONPATH=. python3 experiments/plot_sweeps.py
-  PYTHONPATH=. python3 experiments/plot_sweeps.py --only snr users
-  PYTHONPATH=. python3 experiments/plot_sweeps.py --indir figures/sweeps/snr
-"""
+"""Replot sweeps from perseed.csv (no re-sim). Edit PYCHARM_* for IDE defaults."""
 from __future__ import annotations
 
 import argparse
@@ -28,7 +18,7 @@ from sweep_lib import (  # noqa: E402
 # =============================================================================
 # PyCharm defaults
 # =============================================================================
-PYCHARM_ROOT = "figures/sweeps"
+PYCHARM_ROOT = "figures/python figures/sweeps"
 # Empty → all subdirs that contain perseed.csv / perseed_*.csv
 PYCHARM_ONLY = []  # e.g. ["snr", "users", "arrival", "action_pick"]
 PYCHARM_ALGOS = None  # None = whatever is in CSV; or ["causal","ucb"] / "all"
@@ -83,7 +73,7 @@ def _replot_one(d, algos):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--root", default=None,
-                   help="sweeps root (default: figures/sweeps)")
+                   help="sweeps root (default: figures/python figures/sweeps)")
     p.add_argument("--indir", default=None,
                    help="single sweep dir with perseed.csv (overrides --root/--only)")
     p.add_argument("--only", nargs="+", default=None,

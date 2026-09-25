@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Sweep metrics vs SNR (paper Fig. 6). Re-simulates online (no checkpoints).
-
-PyCharm: Run with empty parameters (uses full algo set by default).
-Select schemes: Run Configuration → Parameters → ``--algos causal ucb gdo``
-"""
+"""Sweep metrics vs SNR (online re-sim)."""
 import os
 import sys
 

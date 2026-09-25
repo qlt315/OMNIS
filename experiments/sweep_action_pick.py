@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Action pick probability (paper Fig. 8) + exploration-knob sweep.
-
-PyCharm: Run with empty parameters (all algos by default).
-Select schemes: ``--algos causal ucb gdo`` or ``--algos all``.
-"""
+"""Action pick probability vs SNR / #MDs."""
 import os
 import sys
 
@@ -20,12 +16,9 @@ if __name__ == "__main__":
     add_common_args(p)
     p.add_argument("--snr", type=float, nargs="+", default=[2, 4, 6])
     p.add_argument("--n-users", type=int, nargs="+", default=[10, 15, 20])
-    p.add_argument("--betas", type=float, nargs="+",
-                   default=[0.55, 1.0, 2.0],
-                   help="Exploration knobs: causal_beta / UCB β / mapped DQN ε")
     args = p.parse_args()
     sweep_action_pick(
         algos=resolved_algos_from_args(args), seeds=tuple(args.seeds),
         slots=args.slots, snr_targets=args.snr, user_list=args.n_users,
-        beta_values=args.betas, out_root=args.out_root,
+        out_root=args.out_root,
     )

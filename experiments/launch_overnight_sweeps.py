@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Detach overnight sweeps so Cursor shell exits don't kill the job (macOS-safe)."""
+"""Detach overnight sweeps (macOS-safe)."""
 from __future__ import annotations
 
 import os
@@ -8,7 +8,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "figures", "sweeps")
+OUT = os.path.join(ROOT, "figures", "python figures", "sweeps")
 LOG = os.path.join(OUT, "overnight.log")
 PID = os.path.join(OUT, "overnight.pid")
 

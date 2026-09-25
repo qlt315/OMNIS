@@ -1,42 +1,4 @@
-"""Control-plane communication model for distributed vs centralized schemes.
-
-Wall-clock ``decision_time`` on a single machine does **not** include agent
-interaction. This module accounts for per-slot uplink/downlink bytes and
-control rounds, then converts to an equivalent time on a shared control
-channel (TDMA within a round):
-
-    T_comm = rounds * RTT + 8 * (uplink_B + downlink_B) / R_ctrl
-
-Association information (must be MD-obtainable)
------------------------------------------------
-  * **RSRP / radio quality** to candidate cells: measured locally at the MD
-    (0 control-plane bytes).
-  * **Per-cell available compute** (association count + GPU share hint):
-    ES → MD broadcast once per slot, piggybacked on the previous slot's
-    Round-2 downlink (see ``omnis/assoc_info.py``). Counted as
-    ``num_cells * B_CELL_COMPUTE`` **once** (not ×U).
-
-Protocol (every scheme, every slot after MD-side compute):
-  Round 1 — each MD → ES: report (context / obs / joint state / action)
-  ES runs BCD (+ joint decision for centralized)  [not in T_comm]
-  Round 2 — ES → each MD: action (if ES-chosen) + resource allocation
-            + cell-compute broadcast (for next-slot association)
-
-So ``rounds = 2`` (request/report + allocate). Learning feedback for online
-bandits / MAPPO piggybacks on the next slot's Round-1 uplink.
-
-Byte accounting:
-  - Per-MD payloads are multiplied by U (shared control channel → TDMA).
-  - Cell-compute broadcast is counted once per slot.
-  - Centralized joint controllers upload a larger local observation vector;
-    distributed MDs that decide locally only upload a compact action / obs.
-
-**Distributed bandits (UCB / DTS / Causal / MAPPO / RSS):**
-  MD-local decision uses local radio measurements + the last cell-compute
-  broadcast, then notifies the ES of the chosen action and receives
-  resource allocation (+ next broadcast). Learning labels (reward or Acc)
-  piggyback on the next slot's uplink.
-"""
+"""Control-plane bytes / RTT → equivalent comm time (not in local decision_time)."""
 
 from __future__ import annotations
 
@@ -66,10 +28,10 @@ def profile_bytes(name: str, user_num: int, local_obs_dim: int = 9,
     # One broadcast of per-cell compute state for next-slot association.
     cell_bcast = int(num_cells) * B_CELL_COMPUTE
 
-    # Distributed MD-local decision (UCB / DTS / Causal / MAPPO / RSS):
+    # Distributed MD-local decision (UCB / DTS / Causal / MAPPO):
     # R1 action + learning label piggyback; R2 alloc + cell-compute broadcast.
     # Radio (RSRP) is local — not in the byte count.
-    if name in ("ucb", "dts", "causal", "mappo", "rss"):
+    if name in ("ucb", "dts", "causal", "mappo"):
         up = U * (B_ACTION + B_REWARD)
         down = U * B_ALLOC + cell_bcast
         return up, down, rounds

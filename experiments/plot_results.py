@@ -1,16 +1,4 @@
-"""Plot comparison figures from saved convergence outputs.
-
-Reads ``perseed.csv`` + ``series/*.npz`` under ``--indir`` (Python source data;
-never deleted by this script). Missing algorithms are skipped.
-Also writes ``plot_data.mat`` + ``.pkl`` / ``.npz`` sidecars for exports.
-
-PyCharm: edit ``PYCHARM_*`` below, Run with empty parameters.
-
-Usage:
-  PYTHONPATH=. python3 experiments/plot_results.py
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/convergence
-  PYTHONPATH=. python3 experiments/plot_results.py --indir figures/convergence --algos causal ucb cto
-"""
+"""Plot convergence figures from perseed.csv + series/*.npz (keeps source CSV)."""
 
 from __future__ import annotations
 
@@ -43,7 +31,7 @@ except ImportError:
 # =============================================================================
 # PyCharm defaults (CLI flags override these)
 # =============================================================================
-PYCHARM_INDIR = "figures/convergence"
+PYCHARM_INDIR = "figures/python figures/convergence"
 PYCHARM_OUT = None                 # None → same as indir
 PYCHARM_ALGOS = None               # None → all in CSV; or ["causal","ucb"] / "all"
 PYCHARM_SLIDE = 5
@@ -54,12 +42,12 @@ PYCHARM_WRITE_MAT = True
 LABELS = {
     "causal": "OMNIS-Causal", "ucb": "OMNIS-UCB",
     "dqn": "DQN", "ppo": "PPO", "mappo": "MAPPO",
-    "gdo": "GDO", "rss": "RSS", "dts": "OMNIS-TS", "cto": "CTO",
+    "gdo": "GDO", "dts": "OMNIS-TS", "cto": "C-OMNIS+",
 }
 COLORS = {
     "causal": "#1f77b4", "ucb": "#ff7f0e", "dqn": "#2ca02c",
     "ppo": "#bcbd22", "mappo": "#e377c2",
-    "gdo": "#d62728", "rss": "#9467bd", "dts": "#8c564b", "cto": "#17becf",
+    "gdo": "#d62728", "dts": "#8c564b", "cto": "#17becf",
 }
 
 SCALAR_METRICS = (
@@ -69,41 +57,79 @@ SCALAR_METRICS = (
     "comm_uplink_B", "comm_downlink_B", "comm_rounds", "sec",
 )
 
-# Stacked runtime: selection + learning update + interaction + BCD.
+# Stacked runtime: selection + learning update + interaction + resource alloc.
 # Use median across seeds (mean is dominated by rare wall-clock outliers).
 RUNTIME_STACK = ("select_ms", "update_ms", "comm_ms", "bcd_ms")
-RUNTIME_STACK_LABELS = ("selection", "update", "interaction", "BCD")
+RUNTIME_STACK_LABELS = (
+    "selection", "update", "interaction", "resource allocation")
 RUNTIME_STACK_COLORS = ("#4c78a8", "#9ecae9", "#54a24b", "#f58518")
 
 
 def sliding_mean(x, w=5):
+    """Trailing window mean; NaNs (idle slots) are skipped in the window."""
     x = np.asarray(x, dtype=float)
-    if len(x) < w:
+    n = len(x)
+    if n < w:
         return x.copy()
-    return np.convolve(x, np.ones(w) / w, mode="valid")
+    out = np.empty(n - w + 1, dtype=float)
+    for i in range(out.size):
+        wdw = x[i:i + w]
+        m = np.isfinite(wdw)
+        out[i] = float(np.mean(wdw[m])) if m.any() else np.nan
+    return out
 
 
 def running_mean(x):
-    """Cumulative average: (r_1+...+r_t)/t — standard readable reward curve."""
+    """Cumulative average; NaNs (idle slots) skipped in sum and count."""
     x = np.asarray(x, dtype=float)
     if x.size == 0:
         return x.copy()
-    return np.cumsum(x) / np.arange(1, x.size + 1, dtype=float)
+    valid = np.isfinite(x)
+    csum = np.cumsum(np.where(valid, x, 0.0))
+    count = np.cumsum(valid.astype(float))
+    out = np.full_like(x, np.nan, dtype=float)
+    m = count > 0
+    out[m] = csum[m] / count[m]
+    return out
 
 
 def windowed_running_mean(x, w):
-    """Trailing-window average of width ``w`` (less smooth than full cummean)."""
+    """Trailing-window average of width ``w``; NaNs skipped."""
     x = np.asarray(x, dtype=float)
     n = x.size
     if n == 0:
         return x.copy()
     w = max(1, min(int(w), n))
-    c = np.cumsum(x)
     out = np.empty(n, dtype=float)
     for t in range(n):
         a = max(0, t - w + 1)
-        s = c[t] - (c[a - 1] if a > 0 else 0.0)
-        out[t] = s / float(t - a + 1)
+        wdw = x[a:t + 1]
+        m = np.isfinite(wdw)
+        out[t] = float(np.mean(wdw[m])) if m.any() else np.nan
+    return out
+
+
+def windowed_running_mean_from_zero(x, w):
+    """Trailing-window mean that starts at 0.
+
+    Idle NaNs → 0, and the window is left-padded with ``w-1`` zeros so the
+    first points are near the origin and the average rises over ~``w`` slots
+    instead of jumping to the first completion's score.
+    """
+    x = np.nan_to_num(np.asarray(x, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
+    n = x.size
+    if n == 0:
+        return x.copy()
+    w = max(1, int(w))
+    pad = np.zeros(w - 1, dtype=float)
+    xp = np.concatenate([pad, x])
+    c = np.cumsum(xp)
+    # window sum ending at index (w-1+t) in xp == index t in x
+    out = np.empty(n, dtype=float)
+    for t in range(n):
+        end = w - 1 + t
+        start = end - w
+        out[t] = (c[end] - (c[start] if start >= 0 else 0.0)) / float(w)
     return out
 
 
@@ -143,15 +169,22 @@ def bandplot(ax, series_list, color, label, sliding=None, lw=1.8, alpha=0.15,
         ax.fill_between(x, lo, hi, color=color, alpha=alpha)
 
 
-def _autoscale_ylim(ax, pad_frac=0.10, abs_pad=0.6, q_lo=10.0, q_hi=90.0):
-    """Y-limits from center curves, using percentiles so one scheme's deep
-    valley (e.g. GDO) does not squash everyone else.
-    """
+def _autoscale_ylim(ax, pad_frac=0.10, abs_pad=0.6, q_lo=10.0, q_hi=90.0,
+                    skip_first=0, skip_frac=0.0):
+    """Y-limits from curve percentiles; optional early-sample skip."""
     ys = []
     for line in ax.get_lines():
         y = np.asarray(line.get_ydata(), dtype=float)
+        if not y.size:
+            continue
+        y = y[np.isfinite(y)]
+        n_skip = int(skip_first)
+        if skip_frac > 0 and y.size:
+            n_skip = max(n_skip, int(round(skip_frac * y.size)))
+        if n_skip > 0 and y.size > n_skip + 1:
+            y = y[n_skip:]
         if y.size:
-            ys.append(y[np.isfinite(y)])
+            ys.append(y)
     if not ys:
         return
     y = np.concatenate(ys)
@@ -211,37 +244,17 @@ def _approx_eq(a, b, rtol=1e-3, atol=1e-3):
     return abs(float(a) - float(b)) <= atol + rtol * max(abs(float(a)), abs(float(b)), 1e-12)
 
 
-def _shared_bcd_ms(rows):
-    """Scenario-level BCD [ms/slot]: median wall over all (algo, seed) rows.
-
-    BCD is the same BW/GPU/MCS loop for every algorithm; per-algo wall times
-    differ mainly from OS contention / association noise, not from the MAB.
-    Runtime stacks therefore use one shared estimate so bars isolate selection
-    vs update vs interaction. Raw walls are kept as ``bcd_ms_wall``.
-    """
-    walls = []
-    for r in rows:
-        v = r.get("bcd_ms")
-        if v is None or v == "":
-            continue
-        walls.append(float(v))
-    if not walls:
-        return 0.0
-    return float(np.median(np.asarray(walls, dtype=float)))
-
-
 def enrich_runtime_rows(rows, user_num=None):
     """Fill / normalize runtime fields for stacking (old + new CSV formats).
 
     New convergence_lib: decision_ms already includes update; ms = decision+comm+bcd.
     Old CSV: decision_ms is decision-only; ms = decision+bcd+update; no comm_*.
 
-    Stack segments: selection + update + interaction/comm + BCD (shared).
+    Stack segments: selection + update + interaction/comm + per-algo
+    resource-allocation wall (BCD or GDO EG slice; CSV field ``bcd_ms``).
     """
     cfg = _comm_defaults(user_num=user_num)
-    bcd_shared = _shared_bcd_ms(rows)
 
-    # Diagnose wall-clock contamination before overwriting bcd_ms.
     by_algo = {}
     for r in rows:
         name = r["name"]
@@ -256,9 +269,9 @@ def enrich_runtime_rows(rows, user_num=None):
         if spread > 2.0:  # ms
             parts = ", ".join(f"{k}={v:.1f}" for k, v in sorted(algo_meds.items()))
             print(
-                f"note: BCD wall medians differ across algos "
+                f"note: resource-allocation wall medians differ across algos "
                 f"(spread={spread:.1f}ms: {parts}); "
-                f"runtime uses shared median bcd_ms={bcd_shared:.2f}",
+                f"runtime keeps per-algo walls",
                 flush=True,
             )
 
@@ -272,7 +285,7 @@ def enrich_runtime_rows(rows, user_num=None):
 
         # Always recompute interaction from the control-plane model so protocol
         # changes (rounds / payloads) apply without a full retrain. Decision
-        # stays measured; BCD is scenario-shared (see _shared_bcd_ms).
+        # and resource allocation stay measured per algorithm.
         comm = comm_ms_per_slot(
             name,
             user_num=cfg["user_num"],
@@ -293,7 +306,7 @@ def enrich_runtime_rows(rows, user_num=None):
 
         r["decision_ms"] = float(decision_stack)
         r["bcd_ms_wall"] = bcd_wall
-        r["bcd_ms"] = float(bcd_shared)
+        r["bcd_ms"] = float(bcd_wall)
         r["update_ms"] = upd  # parallel learning update [ms/slot]
         # selection-only = folded decision minus update (floored at 0)
         r["select_ms"] = float(max(decision_stack - upd, 0.0))
@@ -302,8 +315,7 @@ def enrich_runtime_rows(rows, user_num=None):
         r["comm_downlink_B"] = float(comm["comm_downlink_B"])
         r["comm_rounds"] = float(comm["comm_rounds"])
         r["ms_per_slot"] = float(
-            decision_stack + bcd_shared + float(comm["comm_ms"]))
-    cfg["bcd_ms_shared"] = bcd_shared
+            decision_stack + bcd_wall + float(comm["comm_ms"]))
     return rows, cfg
 
 
@@ -376,13 +388,16 @@ def series_of(rows, series_root, name, key):
 
 
 def _stack_mean_std(series_list):
-    """Stack seed curves to [nseed, T]; return mean, std, raw."""
+    """Stack seed curves to [nseed, T]; return mean, std, raw (NaN-aware)."""
     if not series_list:
         return None, None, None
     L = min(len(s) for s in series_list)
     arr = np.stack([s[:L] for s in series_list], axis=0).astype(np.float64)
-    mean = arr.mean(axis=0)
-    std = arr.std(axis=0, ddof=1) if arr.shape[0] > 1 else np.zeros(L)
+    mean = np.nanmean(arr, axis=0)
+    if arr.shape[0] > 1:
+        std = np.nanstd(arr, axis=0, ddof=1)
+    else:
+        std = np.zeros(L)
     return mean, std, arr
 
 
@@ -470,19 +485,25 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     print(f"comm model: users={comm_cfg['user_num']} "
           f"RTT={comm_cfg['rtt_s']*1e3:.2g}ms "
           f"R_ctrl={comm_cfg['ctrl_rate_bps']:.3g}bps", flush=True)
-    print(f"BCD (shared scenario median): "
-          f"{comm_cfg.get('bcd_ms_shared', float('nan')):.2f} ms/slot",
-          flush=True)
+    bcd_meds = []
+    for n in names:
+        vs = [r["bcd_ms"] for r in rows if r["name"] == n and "bcd_ms" in r]
+        if vs:
+            bcd_meds.append(f"{n}={float(np.median(vs)):.2f}")
+    if bcd_meds:
+        print(f"resource allocation (per-algo median ms/slot): "
+              f"{', '.join(bcd_meds)}",
+              flush=True)
 
-    # Primary reward: trailing-window running average of per-slot reward
-    # (mean ± std across seeds). W < T → less smooth than full cummean.
+    # Trailing-window reward; ylim from post-warmup percentiles.
     rew_w = 60
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
     any_curve = False
     for name in names:
         s = series_of(rows, sroot, name, "rew_series")
         if s:
-            s_avg = [windowed_running_mean(v, rew_w) for v in s]
+            s0 = [np.nan_to_num(np.asarray(v, dtype=float), nan=0.0) for v in s]
+            s_avg = [windowed_running_mean(v, rew_w) for v in s0]
             bandplot(ax, s_avg, COLORS.get(name, "#333"), LABELS.get(name, name),
                      robust=False, band=True, alpha=0.12, lw=1.9)
             any_curve = True
@@ -492,18 +513,8 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
         ax.set_title("Per-slot reward (Lyapunov objective)")
         ax.grid(True, alpha=0.3)
         ax.legend(fontsize=8)
-        # Y-limits from center curves only (t>=50); ignore band extremes.
-        ys = []
-        for line in ax.get_lines():
-            y = np.asarray(line.get_ydata(), dtype=float)
-            if y.size:
-                t0 = min(50, max(0, y.size // 10))
-                ys.append(y[t0:][np.isfinite(y[t0:])])
-        if ys:
-            y = np.concatenate(ys)
-            lo, hi = float(np.min(y)), float(np.max(y))
-            pad = max(0.08 * (hi - lo), 0.4)
-            ax.set_ylim(lo - pad, hi + pad)
+        _autoscale_ylim(ax, pad_frac=0.12, abs_pad=2.0, q_lo=5.0, q_hi=95.0,
+                        skip_first=rew_w, skip_frac=0.10)
         fig.tight_layout()
         fig.savefig(os.path.join(out_dir, "reward.png"), dpi=160)
     plt.close(fig)
@@ -519,7 +530,7 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
         ("acc_series", "accuracy.png", "Mean accuracy (mAP)", "Accuracy", True),
         ("delay_series", "delay.png", "Mean delay [s]", "Delay", True),
         ("energy_series", "energy.png", "Mean energy [J]", "Energy", True),
-        ("backlog_series", "backlog.png", "Mean backlog [bits]", "Queue backlog", False),
+        ("backlog_series", "backlog.png", "Mean backlog [tasks]", "Composite task backlog", False),
         ("vio_series", "violation.png", "Violation rate", "Constraint violation", True),
     ]
     for key, fname, ylabel, title, do_slide in components:
@@ -581,13 +592,37 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     ax.set_ylabel("Time per slot [ms]")
     ax.set_title(
         "Runtime per slot (median across seeds)\n"
-        "BCD = scenario median (algo-independent)")
+        "resource allocation = measured wall; interaction = control-plane model")
     ax.legend(fontsize=8)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
     runtime_path = os.path.join(out_dir, "runtime.png")
     fig.savefig(runtime_path, dpi=160)
     plt.close(fig)
+
+    # Compute-only stack (no modeled interaction): selection / update / alloc.
+    compute_keys = ("select_ms", "update_ms", "bcd_ms")
+    compute_labels = ("selection", "update", "resource allocation")
+    compute_colors = ("#4c78a8", "#9ecae9", "#f58518")
+    fig, ax = plt.subplots(figsize=(8.2, 4.8))
+    bottom = np.zeros(len(names), dtype=float)
+    for key, label, color in zip(compute_keys, compute_labels, compute_colors):
+        vals = np.asarray(stack_med[key], dtype=float)
+        ax.bar(x, vals, bottom=bottom, label=label, color=color)
+        bottom = bottom + vals
+    ax.set_xticks(x)
+    ax.set_xticklabels([LABELS.get(n, n) for n in names], rotation=18, ha="right")
+    ax.set_ylabel("Time per slot [ms]")
+    ax.set_title(
+        "Compute + resource allocation per slot (median across seeds)\n"
+        "excludes modeled control-plane interaction")
+    ax.legend(fontsize=8)
+    ax.grid(True, axis="y", alpha=0.3)
+    fig.tight_layout()
+    runtime_compute_path = os.path.join(out_dir, "runtime_compute.png")
+    fig.savefig(runtime_compute_path, dpi=160)
+    plt.close(fig)
+
     # Drop obsolete log-scale figure if present from older plot runs
     old_log = os.path.join(out_dir, "runtime_log.png")
     if os.path.isfile(old_log):
@@ -602,7 +637,7 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
         ("acc", "accuracy_bar.png", "Mean accuracy (mAP)", "Accuracy (mean ± std)"),
         ("delay", "delay_bar.png", "Mean delay [s]", "Delay (mean ± std)"),
         ("energy", "energy_bar.png", "Mean energy [J]", "Energy (mean ± std)"),
-        ("backlog", "backlog_bar.png", "Mean backlog [bits]", "Queue backlog (mean ± std)"),
+        ("backlog", "backlog_bar.png", "Mean backlog [tasks]", "Composite task backlog (mean ± std)"),
         ("vio", "violation_bar.png", "Violation rate", "Constraint violation (mean ± std)"),
     ]
     bar_paths = []
@@ -638,6 +673,7 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
 
     print(f"wrote plots -> {out_dir}/")
     print(f"runtime stack -> {runtime_path}", flush=True)
+    print(f"runtime compute -> {runtime_compute_path}", flush=True)
     if bar_paths:
         print(f"mean bars -> {len(bar_paths)} files (*_bar.png)", flush=True)
 
@@ -651,7 +687,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Plot OMNIS train results")
     p.add_argument("--indir", default=None,
                    help="directory with perseed.csv and series/ "
-                        "(default: PYCHARM_INDIR / figures/convergence)")
+                        "(default: PYCHARM_INDIR / figures/python figures/convergence)")
     p.add_argument("--out", default=None,
                    help="plot output dir (default: same as --indir)")
     p.add_argument("--algos", nargs="+", default=None,

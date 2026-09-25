@@ -1,12 +1,4 @@
-"""Centralized Double DQN baseline (CTO-aligned decision structure).
-
-  - One learner sees the **global state**
-  - One **joint action** a = (a_1, …, a_U) over all MDs
-  - One **team reward** R = mean_u (V·r_u + drift_u)
-  - Joint space A^U is intractable; like CTO we score a random
-    candidate pool of size ``dqn_max_candidates`` (default = cto_max_candidates)
-"""
-
+"""Centralized Double DQN baseline."""
 from __future__ import annotations
 
 import os
@@ -49,6 +41,10 @@ class DQN(OnlineRLBaseline):
         self.max_candidates = int(getattr(
             config, "dqn_max_candidates",
             getattr(config, "cto_max_candidates", 2000) or 2000))
+        # Cheaper target bootstrap than online selection (runtime + stability).
+        self.train_candidates = int(getattr(
+            config, "dqn_train_candidates",
+            min(256, self.max_candidates)))
 
         torch.manual_seed(self.seed)
         self.device = torch.device("cpu")
@@ -158,7 +154,7 @@ class DQN(OnlineRLBaseline):
 
         q_sa = self.q(s, a).unsqueeze(1)  # [B, 1] joint Q
         with torch.no_grad():
-            max_next = self._max_next_q(s2, self.max_candidates)
+            max_next = self._max_next_q(s2, self.train_candidates)
             target = r + self.gamma * (1.0 - done) * max_next
         loss = nn.functional.mse_loss(q_sa, target)
         self.opt.zero_grad()

@@ -1,17 +1,4 @@
-"""Loader for multi-cell SINR traces produced by phy_sim/run_traces.py.
-
-Trace schema (required): ``slot, cell_id, ue_id, sinr_db``.
-
-``sinr_db`` is the per-link SINR [dB] used by MCS/Acc/BLER tables (and by
-``observe_cell_sinr_db`` for true vs estimated CSI). Optional CSV columns
-``se_bps_hz``, ``n_layers`` are loaded when present (diagnostics).
-
-Optional sidecar: ``sinr_trace_<tag>_meta.json`` (phy=su_mimo, antenna counts).
-
-Provides Top-L cell candidates per UE/slot for the joint (model, cell) arm
-(legacy helper; OMNIS coarse-ranks with radio+compute in ``assoc_info``).
-"""
-
+"""Load multi-cell SINR traces from phy_sim."""
 from __future__ import annotations
 
 import csv
@@ -178,6 +165,12 @@ class SinrTrace:
 
     @staticmethod
     def from_config_dir(table_dir, tag="smoke7", ue_ids=None):
+        # Channel-gain traces compute SINR from the live transmitter set.
+        # The older pre-mixed SINR CSV remains only if that file is absent.
+        from omnis.channel_trace import load_channel_trace
+        channel = load_channel_trace(table_dir, tag=tag, ue_ids=ue_ids)
+        if channel is not None:
+            return channel
         # Prefer the site-aggregated trace (3 sectors folded per hex site -> one
         # logical cell), which matches the system model's per-cell ES / bandwidth
         # pool abstraction; fall back to the raw sector-level trace if absent.

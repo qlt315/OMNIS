@@ -1,20 +1,13 @@
-"""Unused myopic V·u+drift oracle (ablation / archive).
-
-GDO in ``gdo_main.py`` is the online empirical Acc-floor + SF-ESP greedy.
-This module keeps queue-aware argmax(V·u+drift) scoring for optional ablation
-— not imported by sweeps or convergence_all. Acc estimates use last realized Acc
-per model (or 0.5 before any obs); never the Acc table at decision time.
-"""
-
+"""Unused myopic V·u+drift oracle (archive)."""
 from __future__ import annotations
 
 import numpy as np
 from scipy.special import erf
 
-from baselines.rss_main import RSS
+from baselines.slot_env import SlotEnv
 
 
-class MyopicDPP(RSS):
+class MyopicDPP(SlotEnv):
     """Per-user argmax of V·utility + Lyapunov drift (no Acc-table oracle)."""
 
     def __init__(self, config):
@@ -25,8 +18,6 @@ class MyopicDPP(RSS):
         self._last_model_selection = None
         self._emp_acc_sum = {m["name"]: 0.0 for m in self.models}
         self._emp_acc_n = {m["name"]: 0 for m in self.models}
-        self.static_model_dic = {}
-        self.static_cell_rank_dic = {}
 
     def get_trans_rate(self, t):
         out = super().get_trans_rate(t)
@@ -92,8 +83,18 @@ class MyopicDPP(RSS):
     def model_selection(self, cand_cells_dic):
         out = self._greedy(
             self._last_task, cand_cells_dic, self._last_sinr_db_all)
-        self._last_model_selection = out[0]
-        return out
+        model_selection_dic, cell_dic = out
+        for user in self.users:
+            locked_cell = self.pipeline.locked_cell(user)
+            locked_model = self.pipeline.locked_model(user)
+            if locked_cell is not None and locked_model is not None:
+                model_selection_dic[user] = {
+                    "model": locked_model,
+                    "cell_rank": model_selection_dic.get(user, {}).get("cell_rank", 0),
+                }
+                cell_dic[user] = locked_cell
+        self._last_model_selection = model_selection_dic
+        return model_selection_dic, cell_dic
 
     def get_instant_metrics(self, task_dic, total_overhead_dic, reward_dic, acc_dic,
                             queue_info_dic=None):

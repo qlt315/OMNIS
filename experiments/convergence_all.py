@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Run online convergence for selected schemes (default: all).
-
-Writes CSVs + series + ``plot_data.mat/.pkl/.npz`` under ``--out``.
-Plot PNGs separately with ``plot_results.py`` (or pass ``--plot``).
-
-PyCharm: Run with empty parameters (all algos). To subset, either:
-  - set Parameters: ``--algos causal ucb gdo``
-  - or edit ``PYCHARM_CONV_ALGOS`` in ``convergence_lib.py``
-"""
+"""Run online convergence for selected schemes (default: all)."""
 import os
 import sys
 

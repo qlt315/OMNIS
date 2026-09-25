@@ -1,11 +1,4 @@
-"""Centralized branching PPO baseline.
-
-Fully centralized (vs MAPPO CTDE):
-  - Actor π(a_1..a_U | s_global) factored as ∏_i π_i(a_i | s) with shared trunk
-  - Critic V(s_global)
-  - Team reward = mean Lyapunov objective (same as DQN / MAPPO / bandits)
-  - On-policy GAE + clipped PPO; small net / short rollouts for wall-time
-"""
+"""Centralized branching PPO (shared trunk, team Lyapunov reward)."""
 
 from __future__ import annotations
 

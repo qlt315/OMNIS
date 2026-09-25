@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Online convergence / evaluation for the ucb scheme.
-
-Writes CSVs + series + ``plot_data.mat/.pkl/.npz`` under ``--out``
-(default figures/convergence).
-PyCharm: Run with empty parameters. Optional: ``--plot`` to also emit PNGs.
-"""
+"""Online convergence for ucb."""
 import os
 import sys
 
