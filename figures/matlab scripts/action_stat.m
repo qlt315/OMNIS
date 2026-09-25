@@ -21,15 +21,13 @@ algo_ylabels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
 n_algo = numel(algo_keys);
 n_model = numel(model_keys);
 
-% Per-algo color with 3 shades for stacked top-3 (palette order unchanged)
-palette = lines(7);
-[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
-cmap = palette(cidx, :);
+% Per-algo family color with 3 shades for stacked top-3
+cmap = algo_family_colors(algo_keys);
 color_matrix = zeros(n_algo * 3, 3);
 for i = 1:n_algo
     color_matrix((i - 1) * 3 + 1, :) = cmap(i, :);
-    color_matrix((i - 1) * 3 + 2, :) = cmap(i, :) * 0.75;
-    color_matrix((i - 1) * 3 + 3, :) = cmap(i, :) * 0.5;
+    color_matrix((i - 1) * 3 + 2, :) = local_lighten(cmap(i, :), 0.25);
+    color_matrix((i - 1) * 3 + 3, :) = local_lighten(cmap(i, :), 0.45);
 end
 
 snr_settings = cellstr(string(snr_mat.settings(:)));
@@ -143,4 +141,8 @@ function P = local_pick_matrix(mat, algo_keys, model_keys, setting_idx)
             end
         end
     end
+end
+
+function c = local_lighten(base, t)
+    c = min(max(base + (1 - base) * t, 0), 1);
 end

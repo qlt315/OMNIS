@@ -9,10 +9,8 @@ S = load(fullfile(repo_root, 'figures', 'python figures', 'convergence', 'plot_d
 
 algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo'};
 algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
-% Colors keep palette order: causal, ucb, gdo, dqn, ppo, mappo, cto
-palette = lines(7);
-[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
-colors = palette(cidx, :);
+% Family colors: OMNIS (blue shades), GDO (green), RL (orange shades)
+colors = algo_family_colors(algo_keys);
 
 win = 60;  % trailing window (same spirit as plot_results.py)
 T_max = 500;

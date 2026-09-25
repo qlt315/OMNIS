@@ -17,11 +17,10 @@ metric_labels = {'Reward', 'Latency [s]', 'Energy [J]', ...
     'Acc. [%]', 'Violation Prob.', 'Backlog [bits]'};
 acc_scale = [1, 1, 1, 100, 1, 1];
 
-% Colors/markers keep palette order: causal, ucb, gdo, dqn, ppo, mappo, cto
-palette = lines(7);
-[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
-colors = palette(cidx, :);
+% Family colors: OMNIS (blue shades), GDO (green), RL (orange shades)
+colors = algo_family_colors(algo_keys);
 base_styles = {'-o', '-s', '-d', '-^', '-v', '-p', '-h'};
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
 marker_styles = base_styles(cidx);
 
 figure('Position', [100, 100, 1100, 520]);

@@ -19,10 +19,8 @@ metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Acc. [%]', ...
 acc_scale = [1, 1, 100, 1, 1, 1];  % Acc -> %
 T_max = 500;
 
-% Colors keep palette order: causal, ucb, gdo, dqn, ppo, mappo, cto
-palette = lines(7);
-[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
-colors = palette(cidx, :);
+% Family colors: OMNIS (blue shades), GDO (green), RL (orange shades)
+colors = algo_family_colors(algo_keys);
 
 figure('Position', [100, 100, 1100, 700]);
 % compact (not none): leave room for bottom xlabels + south legend on resize

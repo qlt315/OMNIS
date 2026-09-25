@@ -1,7 +1,7 @@
 % Acc–vio Pareto from figures/python figures/sweeps/acc_vio/acc_vio_pareto.mat
 % Style aligned with conference OMNIS sweep scripts; does not save figures.
 %
-% Shared environment; OMNIS+ / GDO sweep feas_margin (annotated on markers).
+% Shared environment; OMNIS+ / GDO sweep feas_margin.
 
 this_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(this_dir));
@@ -15,16 +15,17 @@ algo_labels = {'OMNIS+', 'GDO'};
 colors = lines(numel(algo_keys));
 markers = {'s', 'o'};
 
-figure('Position', [100, 100, 720, 560]);
+figure('Position', [100, 100, 900, 220]);
 hold on;
 
+all_y = [];
+all_ye = [];
 for alg_idx = 1:numel(algo_keys)
     key = algo_keys{alg_idx};
     vio_f = sprintf('%s_vio_mean', key);
     acc_f = sprintf('%s_acc_mean', key);
     vio_s_f = sprintf('%s_vio_std', key);
     acc_s_f = sprintf('%s_acc_std', key);
-    knob_f = sprintf('%s_knob', key);
     if ~isfield(data, vio_f) || ~isfield(data, acc_f)
         warning('Missing %s frontier fields; skip', key);
         continue;
@@ -46,21 +47,17 @@ for alg_idx = 1:numel(algo_keys)
         ye = double(data.(acc_s_f)(:)') * 100;
         ye = ye(ord);
     end
-    errorbar(x, y, ye, ye, xe, xe, '-', ...
+    % Draw vertical and horizontal error bars separately so tiny Acc std
+    % is not swallowed when x-err dominates (esp. GDO on a flat axes).
+    eb_y = errorbar(x, y, ye, 'vertical', '-', ...
         'LineWidth', 2.5, 'Color', colors(alg_idx, :), ...
         'Marker', markers{alg_idx}, 'MarkerSize', 9, ...
-        'CapSize', 4, 'DisplayName', algo_labels{alg_idx});
-
-    if isfield(data, knob_f)
-        kn = double(data.(knob_f)(:)');
-        kn = kn(ord);
-        for i = 1:numel(x)
-            text(x(i), y(i), sprintf('  %.2f', kn(i)), ...
-                'Color', colors(alg_idx, :), ...
-                'FontSize', 12, 'FontName', 'Times New Roman', ...
-                'VerticalAlignment', 'bottom');
-        end
-    end
+        'CapSize', 6, 'DisplayName', algo_labels{alg_idx});
+    eb_x = errorbar(x, y, xe, 'horizontal', 'LineStyle', 'none', ...
+        'LineWidth', 2.5, 'Color', colors(alg_idx, :), ...
+        'CapSize', 6, 'HandleVisibility', 'off');
+    all_y = [all_y, y]; %#ok<AGROW>
+    all_ye = [all_ye, ye]; %#ok<AGROW>
 end
 
 xlabel('Violation Probability', 'FontSize', 14, 'FontName', 'Times New Roman');
@@ -72,9 +69,23 @@ ax.GridAlpha = 0.6;
 ax.Box = 'on';
 set(gca, 'FontSize', 14, 'FontName', 'Times New Roman');
 
+% Keep room so Acc error-bar caps are not clipped at the top/bottom.
+if ~isempty(all_y)
+    pad = max([all_ye(:); 0.15]);
+    ylim([min(all_y) - 1.2 * pad, max(all_y) + 1.2 * pad]);
+end
+
 lgd = legend(algo_labels, 'Orientation', 'horizontal', ...
-    'Location', 'southoutside', 'FontSize', 14, ...
+    'Location', 'best', 'FontSize', 14, ...
     'FontName', 'Times New Roman', 'NumColumns', numel(algo_labels));
 lgd.Box = 'off';
+
+text(mean(xlim), min(ylim) + 0.12 * (max(ylim) - min(ylim)), ...
+    'Feasibility Margin Increases', ...
+    'FontSize', 16, 'FontName', 'Times New Roman', ...
+    'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+    'Color', 'k');
+
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
-tighten_lr(gcf);
+tighten_all(gcf);
+
