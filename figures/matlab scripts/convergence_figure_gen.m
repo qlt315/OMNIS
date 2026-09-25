@@ -1,6 +1,6 @@
 % Convergence curves from figures/python figures/convergence/plot_data.mat
 % Smoothed mean series (Savitzky-Golay); does not save figures.
-% Algorithms: OMNIS+ (causal), OMNIS (UCB), GDO, PPO, MAPPO, CTO.
+% Algorithms: OMNIS+ (causal), C-OMNIS+ (CTO), OMNIS (UCB), GDO, PPO, MAPPO.
 
 this_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(this_dir));
@@ -8,8 +8,8 @@ addpath(this_dir);
 mat_path = fullfile(repo_root, 'figures', 'python figures', 'convergence', 'plot_data.mat');
 S = load(mat_path);
 
-algo_keys = {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO', 'CTO'};
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
 
 % Series field -> ylabel (Acc shown in %)
 series_fields = {'cum_reward_mean', 'delay_series_mean', 'acc_series_mean', ...
@@ -19,10 +19,14 @@ metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Acc. [%]', ...
 acc_scale = [1, 1, 100, 1, 1, 1];  % Acc -> %
 T_max = 500;
 
-colors = lines(numel(algo_keys));
+% Colors keep original palette order: causal, ucb, gdo, ppo, mappo, cto
+palette = lines(6);
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'});
+colors = palette(cidx, :);
 
 figure('Position', [100, 100, 1100, 700]);
-tiledlayout(2, 3, 'Padding', 'none', 'TileSpacing', 'compact');
+% compact (not none): leave room for bottom xlabels + south legend on resize
+tlo = tiledlayout(2, 3, 'Padding', 'compact', 'TileSpacing', 'compact');
 
 for metric_idx = 1:numel(series_fields)
     ax = nexttile;
@@ -54,7 +58,9 @@ for metric_idx = 1:numel(series_fields)
     end
 
     xlim([1, T_max]);
-    xlabel('Time Slot', 'FontSize', 14, 'FontName', 'Times New Roman');
+    if metric_idx > 3
+        xlabel('Time Slot', 'FontSize', 14, 'FontName', 'Times New Roman');
+    end
     ylabel(metric_labels{metric_idx}, 'FontSize', 14, 'FontName', 'Times New Roman');
     grid on;
     ax.GridColor = [0.2 0.2 0.2];
@@ -64,8 +70,11 @@ for metric_idx = 1:numel(series_fields)
 end
 
 lgd = legend(algo_labels, 'Orientation', 'horizontal', ...
-    'Location', 'southoutside', 'FontSize', 12, 'FontName', 'Times New Roman', ...
+    'FontSize', 14, 'FontName', 'Times New Roman', ...
     'NumColumns', numel(algo_labels));
+lgd.Layout.Tile = 'south';  % reserved band; survives vertical resize
 lgd.Box = 'off';
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
-tighten_lr(gcf);
+% Keep LR compact without killing bottom padding (avoid tighten_lr Padding=none).
+tlo.Padding = 'compact';
+

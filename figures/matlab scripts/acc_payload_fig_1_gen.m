@@ -48,7 +48,7 @@ for i = 1:2
 end
 
 % Create a shared legend and position it at the top
-lgd = legend(model_labels, 'FontSize', 12, 'FontName', 'Times New Roman', ...
+lgd = legend(model_labels, 'FontSize', 14, 'FontName', 'Times New Roman', ...
              'NumColumns', 3, 'Location', 'northoutside');
 lgd.Layout.Tile = 'north'; % Assign legend to the top space of the tiled layout
 tighten_lr(gcf);

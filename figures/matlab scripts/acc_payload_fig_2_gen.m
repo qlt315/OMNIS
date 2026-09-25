@@ -63,7 +63,7 @@ for i = 1:4
 end
 
 % Create a shared legend and position it between the first and second row
-lgd = legend(model_labels, 'FontSize', 12, 'FontName', 'Times New Roman', ...
+lgd = legend(model_labels, 'FontSize', 14, 'FontName', 'Times New Roman', ...
              'NumColumns', ceil(length(model_labels) / 2), 'Location', 'northoutside'); % 2-row legend
 
 % Move the legend between the first and second row

@@ -7,8 +7,8 @@ repo_root = fileparts(fileparts(this_dir));
 addpath(this_dir);
 S = load(fullfile(repo_root, 'figures', 'python figures', 'convergence', 'plot_data.mat'));
 
-algo_keys = {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO', 'CTO'};
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
 
 % Map keys -> indices in algo_names
 all_names = cellstr(string(S.algo_names(:)));
@@ -44,6 +44,17 @@ for j = 1:numel(stack_labels)
     b(j).DisplayName = stack_labels{j};
 end
 
+tot = sum(stack, 2);
+% Log y-axis: C-OMNIS+ (etc.) often >> others; linear scale hides short bars.
+pos_tot = tot(tot > 0);
+ymin = max(min(pos_tot) * 0.5, 1e-2);
+ymax = max(tot) * 1.35;
+for j = 1:numel(b)
+    b(j).BaseValue = ymin;
+end
+set(gca, 'YScale', 'log');
+ylim([ymin, ymax]);
+
 set(gca, 'XTick', 1:numel(algo_labels), 'XTickLabel', algo_labels, ...
     'FontSize', 13, 'FontName', 'Times New Roman');
 xtickangle(0);
@@ -52,14 +63,13 @@ grid on;
 ax.GridColor = [0.2 0.2 0.2];
 ax.GridAlpha = 0.5;
 ax.Box = 'on';
-lgd = legend('Location', 'northwest', 'FontSize', 12, 'FontName', 'Times New Roman');
+lgd = legend('Location', 'northwest', 'FontSize', 14, 'FontName', 'Times New Roman');
 lgd.Box = 'off';
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
 tighten_lr(gcf);
 hold off;
 
 % Print totals for quick check
-tot = sum(stack, 2);
 fprintf('Runtime totals (ms/slot):\n');
 for i = 1:numel(algo_labels)
     fprintf('  %-14s  select=%.2f  update=%.2f  comm=%.2f  bcd=%.2f  total=%.2f\n', ...

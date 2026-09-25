@@ -1,6 +1,6 @@
 % Action-pick top-3 bars from action_pick_{snr,users}.mat
 % Style aligned with conference action_stat.m; does not save figures.
-% Algorithms: OMNIS+, OMNIS, GDO, PPO, MAPPO, CTO (no DQN/TS).
+% Algorithms: OMNIS+, C-OMNIS+, OMNIS, GDO, PPO, MAPPO (no DQN/TS).
 
 this_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(this_dir));
@@ -12,14 +12,16 @@ usr_mat = load(fullfile(repo_root, 'figures', 'python figures', 'sweeps', 'actio
 model_keys = {'Box3', 'Box6', 'Box12', 'Standard3', 'Standard6', 'Standard12'};
 model_labels = {'Box-3', 'Box-6', 'Box-12', 'Standard-3', 'Standard-6', 'Standard-12'};
 
-algo_keys = {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'};
-algo_ylabels = {'OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO', 'CTO'};
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
+algo_ylabels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
 
 n_algo = numel(algo_keys);
 n_model = numel(model_keys);
 
-% Per-algo color with 3 shades for stacked top-3
-cmap = lines(n_algo);
+% Per-algo color with 3 shades for stacked top-3 (palette order unchanged)
+palette = lines(6);
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'});
+cmap = palette(cidx, :);
 color_matrix = zeros(n_algo * 3, 3);
 for i = 1:n_algo
     color_matrix((i - 1) * 3 + 1, :) = cmap(i, :);
@@ -74,7 +76,7 @@ for i = 1:6
     yticks(1:n_algo);
     yticklabels(algo_ylabels);
     xlim([0, 1.15]);
-    % Hug the bars: default ylim [0.5, n+0.5] leaves empty bands above OMNIS+ / below CTO.
+    % Hug the bars: default ylim [0.5, n+0.5] leaves empty bands above/below.
     ylim([0.65, n_algo + 0.35]);
     set(gca, 'FontSize', 14, 'FontName', 'Times New Roman', 'YDir', 'reverse');
     grid on;

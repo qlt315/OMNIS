@@ -8,8 +8,8 @@ addpath(this_dir);
 data = load(fullfile(repo_root, 'figures', 'python figures', 'sweeps', 'snr', 'snr.mat'));
 
 snr_values = double(data.axis(:)');
-algo_keys = {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO', 'CTO'};
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
 
 % mat fields use {algo}_{metric}_mean
 metric_keys = {'reward', 'delay', 'energy', 'acc', 'vio', 'backlog'};
@@ -17,8 +17,12 @@ metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Energy [J]', ...
     'Avg. Acc. [%]', 'Avg. Violation Prob.', 'Avg. Backlog [bits]'};
 acc_scale = [1, 1, 1, 100, 1, 1];
 
-colors = lines(numel(algo_keys));
-marker_styles = {'-o', '-s', '-d', '-^', '-v', '-p', '-h'};
+% Colors/markers keep original palette order: causal, ucb, gdo, ppo, mappo, cto
+palette = lines(6);
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'});
+colors = palette(cidx, :);
+base_styles = {'-o', '-s', '-d', '-^', '-v', '-p'};
+marker_styles = base_styles(cidx);
 
 figure('Position', [100, 100, 1100, 520]);
 tiledlayout(2, 3, 'Padding', 'none', 'TileSpacing', 'tight');
@@ -55,7 +59,7 @@ for metric_idx = 1:numel(metric_keys)
 end
 
 lgd = legend(algo_labels, 'Orientation', 'horizontal', ...
-    'FontSize', 12, 'FontName', 'Times New Roman', 'NumColumns', numel(algo_labels));
+    'FontSize', 14, 'FontName', 'Times New Roman', 'NumColumns', numel(algo_labels));
 lgd.Layout.Tile = 'south';
 lgd.Box = 'off';
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');

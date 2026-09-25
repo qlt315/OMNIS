@@ -7,9 +7,12 @@ repo_root = fileparts(fileparts(this_dir));
 addpath(this_dir);
 S = load(fullfile(repo_root, 'figures', 'python figures', 'convergence', 'plot_data.mat'));
 
-algo_keys = {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'};
-algo_labels = {'OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO', 'CTO'};
-colors = lines(numel(algo_keys));
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
+% Colors keep original palette order: causal, ucb, gdo, ppo, mappo, cto
+palette = lines(6);
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'});
+colors = palette(cidx, :);
 
 win = 60;  % trailing window (same spirit as plot_results.py)
 T_max = 500;
@@ -55,13 +58,13 @@ end
 
 xlim([1, T_max]);
 xlabel('Time Slot', 'FontSize', 14, 'FontName', 'Times New Roman');
-ylabel('Running Average Reward', 'FontSize', 14, 'FontName', 'Times New Roman');
+ylabel('Average Reward', 'FontSize', 14, 'FontName', 'Times New Roman');
 grid on;
 ax.GridColor = [0.2 0.2 0.2];
 ax.GridAlpha = 0.6;
 ax.Box = 'on';
 set(gca, 'FontSize', 14, 'FontName', 'Times New Roman');
-lgd = legend('Location', 'best', 'FontSize', 12, 'FontName', 'Times New Roman');
+lgd = legend('Location', 'best', 'FontSize', 14, 'FontName', 'Times New Roman');
 lgd.Box = 'off';
 
 if ~isempty(ys_for_ylim)

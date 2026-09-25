@@ -60,7 +60,7 @@ for i = 1:rate_num
 end
 
 % Create a shared legend and position it in a single row
-lgd = legend(model_labels, 'FontSize', 12, 'FontName', 'Times New Roman', ...
+lgd = legend(model_labels, 'FontSize', 14, 'FontName', 'Times New Roman', ...
              'NumColumns', length(model_labels), 'Location', 'northoutside'); % Single-row legend
 
 % Move the legend between the first and second row
