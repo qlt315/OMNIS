@@ -413,6 +413,12 @@ def export_mat(path, rows, series_root, names, slide):
         % S.series.causal.cum_reward       % [nseed x T] raw
         % S.series.causal.seeds            % [nseed x 1]
     """
+    # Runtime fields: median across seeds (mean is dominated by rare wall outliers,
+    # e.g. one PPO seed with update_ms≈900). Quality metrics stay as mean.
+    _RUNTIME_MEDIAN = frozenset({
+        "ms_per_slot", "decision_ms", "select_ms", "comm_ms", "bcd_ms",
+        "bcd_ms_wall", "update_ms", "sec",
+    })
     n = len(names)
     summary = {m: np.full(n, np.nan, dtype=np.float64) for m in SCALAR_METRICS}
     for i, name in enumerate(names):
@@ -420,7 +426,13 @@ def export_mat(path, rows, series_root, names, slide):
         if not sub:
             continue
         for m in SCALAR_METRICS:
-            summary[m][i] = float(np.mean([r[m] for r in sub]))
+            vals = [r[m] for r in sub if m in r]
+            if not vals:
+                continue
+            if m in _RUNTIME_MEDIAN:
+                summary[m][i] = float(np.median(vals))
+            else:
+                summary[m][i] = float(np.mean(vals))
 
     series_struct = {}
     for name in names:

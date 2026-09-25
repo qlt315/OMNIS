@@ -1,6 +1,6 @@
 % SNR sweep from figures/python figures/sweeps/snr/snr.mat
 % Style aligned with conference OMNIS scripts; does not save figures.
-% Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
+% Plots OMNIS (better of UCB/TS); includes DQN; omits OMNIS-TS.
 
 this_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(this_dir));
@@ -8,20 +8,20 @@ addpath(this_dir);
 data = load(fullfile(repo_root, 'figures', 'python figures', 'sweeps', 'snr', 'snr.mat'));
 
 snr_values = double(data.axis(:)');
-algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
-algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
 
 % mat fields use {algo}_{metric}_mean
 metric_keys = {'reward', 'delay', 'energy', 'acc', 'vio', 'backlog'};
-metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Energy [J]', ...
-    'Avg. Acc. [%]', 'Avg. Violation Prob.', 'Avg. Backlog [bits]'};
+metric_labels = {'Reward', 'Latency [s]', 'Energy [J]', ...
+    'Acc. [%]', 'Violation Prob.', 'Backlog [bits]'};
 acc_scale = [1, 1, 1, 100, 1, 1];
 
-% Colors/markers keep original palette order: causal, ucb, gdo, ppo, mappo, cto
-palette = lines(6);
-[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'});
+% Colors/markers keep palette order: causal, ucb, gdo, dqn, ppo, mappo, cto
+palette = lines(7);
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
 colors = palette(cidx, :);
-base_styles = {'-o', '-s', '-d', '-^', '-v', '-p'};
+base_styles = {'-o', '-s', '-d', '-^', '-v', '-p', '-h'};
 marker_styles = base_styles(cidx);
 
 figure('Position', [100, 100, 1100, 520]);

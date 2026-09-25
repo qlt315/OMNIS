@@ -1,14 +1,14 @@
 % Stacked runtime bar from figures/python figures/convergence/plot_data.mat
 % Stack: selection + update + interaction + BCD (ms/slot). Does not save figures.
-% Plots OMNIS (better of UCB/TS); omits DQN and OMNIS-TS.
+% Plots OMNIS (better of UCB/TS); includes DQN; omits OMNIS-TS.
 
 this_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(this_dir));
 addpath(this_dir);
 S = load(fullfile(repo_root, 'figures', 'python figures', 'convergence', 'plot_data.mat'));
 
-algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
-algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
 
 % Map keys -> indices in algo_names
 all_names = cellstr(string(S.algo_names(:)));
@@ -29,7 +29,7 @@ comm_ms = double(sm.comm_ms(idx));
 bcd_ms = double(sm.bcd_ms(idx));
 
 stack = [select_ms(:), update_ms(:), comm_ms(:), bcd_ms(:)];  % [n_algo x 4]
-stack_labels = {'selection', 'update', 'interaction', 'BCD'};
+stack_labels = {'Action Selection', 'Model Update', 'Interaction', 'Resource Allocation'};
 stack_colors = [0.298, 0.471, 0.659;  % #4c78a8
                 0.620, 0.792, 0.914;  % #9ecae9
                 0.329, 0.635, 0.294;  % #54a24b
@@ -45,15 +45,8 @@ for j = 1:numel(stack_labels)
 end
 
 tot = sum(stack, 2);
-% Log y-axis: C-OMNIS+ (etc.) often >> others; linear scale hides short bars.
-pos_tot = tot(tot > 0);
-ymin = max(min(pos_tot) * 0.5, 1e-2);
-ymax = max(tot) * 1.35;
-for j = 1:numel(b)
-    b(j).BaseValue = ymin;
-end
-set(gca, 'YScale', 'log');
-ylim([ymin, ymax]);
+ymax = max(tot) * 1.15;
+ylim([0, ymax]);
 
 set(gca, 'XTick', 1:numel(algo_labels), 'XTickLabel', algo_labels, ...
     'FontSize', 13, 'FontName', 'Times New Roman');

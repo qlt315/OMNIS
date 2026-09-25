@@ -1,23 +1,23 @@
 % Reward convergence (single panel) from figures/python figures/convergence/plot_data.mat
 % Matches Python reward.png style: running-average Lyapunov reward.
-% Does not save figures. Plots OMNIS; omits DQN and OMNIS-TS.
+% Does not save figures. Plots OMNIS; includes DQN; omits OMNIS-TS.
 
 this_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(this_dir));
 addpath(this_dir);
 S = load(fullfile(repo_root, 'figures', 'python figures', 'convergence', 'plot_data.mat'));
 
-algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
-algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
-% Colors keep original palette order: causal, ucb, gdo, ppo, mappo, cto
-palette = lines(6);
-[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'});
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
+% Colors keep palette order: causal, ucb, gdo, dqn, ppo, mappo, cto
+palette = lines(7);
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
 colors = palette(cidx, :);
 
 win = 60;  % trailing window (same spirit as plot_results.py)
 T_max = 500;
 
-figure('Position', [120, 120, 860, 480]);
+figure('Position', [120, 120, 900, 320]);  % wide + short; labels kept via ensure_axes_label_room
 ax = gca;
 hold on;
 
@@ -74,5 +74,9 @@ if ~isempty(ys_for_ylim)
 end
 
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
-tighten_lr(gcf);
+fig = gcf;
+tighten_lr(fig);
+ensure_axes_label_room(fig);
+% Re-fit bottom/top insets whenever the window is squashed so xlabel stays visible.
+fig.SizeChangedFcn = @(f, ~) ensure_axes_label_room(f);
 hold off;

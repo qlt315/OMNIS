@@ -354,6 +354,12 @@ def rebuild_summary(out_dir, rows):
     ordered = [n for n in ALGO_NAMES if n in agg] + [
         n for n in names if n not in ALGO_NAMES]
 
+    # Runtime: report median in the "mean" column (same outlier-robust rule as
+    # plot_results / MATLAB plot_data.mat). Quality metrics stay as arithmetic mean.
+    _RUNTIME_MEDIAN = frozenset({
+        "ms_per_slot", "decision_ms", "select_ms", "comm_ms", "bcd_ms",
+        "update_ms", "sec",
+    })
     summary = os.path.join(out_dir, "summary.csv")
     with open(summary, "w", newline="") as f:
         w = csv.writer(f)
@@ -361,8 +367,11 @@ def rebuild_summary(out_dir, rows):
         for name in ordered:
             for m in metrics:
                 v = np.asarray(agg[name][m], dtype=float)
+                if v.size == 0:
+                    continue
                 std = float(v.std(ddof=1)) if len(v) > 1 else 0.0
-                w.writerow([name, m, f"{v.mean():.6g}", f"{std:.6g}"])
+                center = float(np.median(v)) if m in _RUNTIME_MEDIAN else float(v.mean())
+                w.writerow([name, m, f"{center:.6g}", f"{std:.6g}"])
     return agg, ordered
 
 
@@ -404,7 +413,7 @@ def merge_results(out_dir, new_rows):
 
 
 def print_summary(agg, algo_names):
-    print("\n=== SUMMARY (mean ± std) ===")
+    print("\n=== SUMMARY (mean ± std; ms/slot = median ± std) ===")
     hdr = (f"{'name':8} {'reward':>10} {'acc':>8} {'delay':>8} {'energy':>8} "
            f"{'backlog':>10} {'vio':>8} {'ms/slot':>10}")
     print(hdr)
@@ -412,14 +421,15 @@ def print_summary(agg, algo_names):
         if name not in agg:
             continue
 
-        def fmt(m, w=8):
+        def fmt(m, w=8, *, center="mean"):
             v = np.asarray(agg[name][m])
             s = float(v.std(ddof=1)) if len(v) > 1 else 0.0
-            return f"{v.mean():{w}.3f}±{s:.2f}"
+            c = float(np.median(v)) if center == "median" else float(v.mean())
+            return f"{c:{w}.3f}±{s:.2f}"
 
         print(f"{name:8} {fmt('reward',10)} {fmt('acc')} {fmt('delay')} "
               f"{fmt('energy')} {fmt('backlog',10)} {fmt('vio')} "
-              f"{fmt('ms_per_slot',10)}")
+              f"{fmt('ms_per_slot',10, center='median')}")
 
 
 def resolve_algos(names):

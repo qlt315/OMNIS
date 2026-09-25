@@ -1,6 +1,6 @@
 % Convergence curves from figures/python figures/convergence/plot_data.mat
 % Smoothed mean series (Savitzky-Golay); does not save figures.
-% Algorithms: OMNIS+ (causal), C-OMNIS+ (CTO), OMNIS (UCB), GDO, PPO, MAPPO.
+% Algorithms: OMNIS+ (causal), C-OMNIS+ (CTO), OMNIS (UCB), GDO, DQN, PPO, MAPPO.
 
 this_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(this_dir));
@@ -8,8 +8,8 @@ addpath(this_dir);
 mat_path = fullfile(repo_root, 'figures', 'python figures', 'convergence', 'plot_data.mat');
 S = load(mat_path);
 
-algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'ppo', 'mappo'};
-algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'PPO', 'MAPPO'};
+algo_keys = {'causal', 'cto', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo'};
+algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
 
 % Series field -> ylabel (Acc shown in %)
 series_fields = {'cum_reward_mean', 'delay_series_mean', 'acc_series_mean', ...
@@ -19,9 +19,9 @@ metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Acc. [%]', ...
 acc_scale = [1, 1, 100, 1, 1, 1];  % Acc -> %
 T_max = 500;
 
-% Colors keep original palette order: causal, ucb, gdo, ppo, mappo, cto
-palette = lines(6);
-[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'ppo', 'mappo', 'cto'});
+% Colors keep palette order: causal, ucb, gdo, dqn, ppo, mappo, cto
+palette = lines(7);
+[~, cidx] = ismember(algo_keys, {'causal', 'ucb', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'});
 colors = palette(cidx, :);
 
 figure('Position', [100, 100, 1100, 700]);
