@@ -14,7 +14,7 @@ algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
 % mat fields use {algo}_{metric}_mean
 metric_keys = {'reward', 'delay', 'energy', 'acc', 'vio', 'backlog'};
 metric_labels = {'Reward', 'Latency [s]', 'Energy [J]', ...
-    'Acc. [%]', 'Violation Prob.', 'Backlog [bits]'};
+    'Acc. [%]', 'Violation Prob.', 'Backlog [tasks]'};
 acc_scale = [1, 1, 1, 100, 1, 1];
 
 % Family colors: OMNIS (blue shades), GDO (green), RL (orange shades)

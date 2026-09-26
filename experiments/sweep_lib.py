@@ -37,7 +37,7 @@ METRIC_YLABEL = {
     "energy": "Avg. Energy [J]",
     "acc": "Avg. Acc.",
     "vio": "Avg. Violation Prob. (delay|energy)",
-    "backlog": "Avg. Backlog [bits]",
+    "backlog": "Backlog [tasks]",
 }
 LABELS = {
     "causal": "OMNIS-Causal", "ucb": "OMNIS-UCB",

@@ -15,7 +15,7 @@ algo_labels = {'OMNIS+', 'C-OMNIS+', 'OMNIS', 'GDO', 'DQN', 'PPO', 'MAPPO'};
 series_fields = {'cum_reward_mean', 'delay_series_mean', 'acc_series_mean', ...
     'energy_series_mean', 'backlog_series_mean', 'vio_series_mean'};
 metric_labels = {'Avg. Reward', 'Avg. Latency [s]', 'Avg. Acc. [%]', ...
-    'Avg. Energy [J]', 'Avg. Backlog [bits]', 'Avg. Violation Prob.'};
+    'Avg. Energy [J]', 'Avg. Backlog [tasks]', 'Avg. Violation Prob.'};
 acc_scale = [1, 1, 100, 1, 1, 1];  % Acc -> %
 T_max = 500;
 
