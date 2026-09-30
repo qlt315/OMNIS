@@ -32,7 +32,7 @@ DEFAULT_SWEEP_ALGOS = tuple(ALGO_NAMES)
 METRICS = ("reward", "delay", "energy", "acc", "vio", "backlog")
 LOG_Y_METRICS = frozenset({"delay", "backlog"})
 METRIC_YLABEL = {
-    "reward": "Avg. Reward (V·u+drift)",
+    "reward": "Avg. reward (per-slot V·u+drift)",
     "delay": "Avg. Latency [s]",
     "energy": "Avg. Energy [J]",
     "acc": "Avg. Acc.",

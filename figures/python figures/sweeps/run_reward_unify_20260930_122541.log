@@ -1,0 +1,2 @@
+=== main sweeps Wed Sep 30 12:25:41 CST 2026 ===
+bash: line 4: 38770 Segmentation fault: 11  python3 experiments/run_sweeps.py --slots 500 --seeds 0 1 2

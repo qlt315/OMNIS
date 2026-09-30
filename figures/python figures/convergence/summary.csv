@@ -1,5 +1,5 @@
 name,metric,mean,std
-causal,reward,132.772,2.35715
+causal,reward,9.15061,0.221363
 causal,acc,0.213001,0.00235185
 causal,delay,1.44601,0.0260327
 causal,energy,0.0386272,0.000720523
@@ -15,7 +15,7 @@ causal,comm_uplink_B,600,0
 causal,comm_downlink_B,956,0
 causal,comm_rounds,2,0
 causal,sec,65.5678,8.57997
-ucb,reward,107.437,3.65962
+ucb,reward,7.40661,0.318014
 ucb,acc,0.138719,0.00647828
 ucb,delay,1.51336,0.0484085
 ucb,energy,0.0438263,0.00315068
@@ -31,7 +31,7 @@ ucb,comm_uplink_B,600,0
 ucb,comm_downlink_B,956,0
 ucb,comm_rounds,2,0
 ucb,sec,45.7004,2.45378
-dts,reward,101.008,3.49084
+dts,reward,6.96416,0.340736
 dts,acc,0.171143,0.00280491
 dts,delay,1.65519,0.0470241
 dts,energy,0.0567675,0.00300115
@@ -47,7 +47,7 @@ dts,comm_uplink_B,600,0
 dts,comm_downlink_B,956,0
 dts,comm_rounds,2,0
 dts,sec,49.1926,2.89476
-gdo,reward,110.211,3.09496
+gdo,reward,7.5923,0.217025
 gdo,acc,0.233021,0.00123435
 gdo,delay,1.69988,0.0274856
 gdo,energy,0.0597995,0.00119472
@@ -63,7 +63,7 @@ gdo,comm_uplink_B,1100,0
 gdo,comm_downlink_B,1056,0
 gdo,comm_rounds,2,0
 gdo,sec,58.3947,3.43508
-dqn,reward,98.9488,2.28674
+dqn,reward,6.81865,0.151074
 dqn,acc,0.172943,0.0020828
 dqn,delay,1.67815,0.0289552
 dqn,energy,0.058875,0.0017968
@@ -79,7 +79,7 @@ dqn,comm_uplink_B,1200,0
 dqn,comm_downlink_B,1056,0
 dqn,comm_rounds,2,0
 dqn,sec,84.4909,17.8415
-ppo,reward,98.3849,2.40782
+ppo,reward,6.77783,0.139603
 ppo,acc,0.174076,0.00145755
 ppo,delay,1.6895,0.0376436
 ppo,energy,0.0596521,0.00151096
@@ -95,7 +95,7 @@ ppo,comm_uplink_B,1200,0
 ppo,comm_downlink_B,1056,0
 ppo,comm_rounds,2,0
 ppo,sec,52.1997,0.892128
-mappo,reward,99.1589,2.85752
+mappo,reward,6.83501,0.205708
 mappo,acc,0.170346,0.00339335
 mappo,delay,1.66996,0.0344205
 mappo,energy,0.0584287,0.00170515
@@ -111,7 +111,7 @@ mappo,comm_uplink_B,600,0
 mappo,comm_downlink_B,956,0
 mappo,comm_rounds,2,0
 mappo,sec,53.6549,5.53337
-cto,reward,133.705,2.0138
+cto,reward,9.21354,0.188215
 cto,acc,0.210118,0.00136109
 cto,delay,1.43225,0.0266056
 cto,energy,0.0374201,0.00100611

@@ -1,0 +1,4 @@
+=== main sweeps Wed Sep 30 12:28:07 CST 2026 ===
+[2026-09-30 12:28:09] START sweeps smoke=False algos=['causal', 'ucb', 'dts', 'gdo', 'dqn', 'ppo', 'mappo', 'cto'] skip=[] cwd=/Users/qlt315/Documents/GitHub/OMNIS
+[2026-09-30 12:28:09] === begin snr ===
+[snr 1/144] causal seed=0 snr_db=0 users=10 slots=500

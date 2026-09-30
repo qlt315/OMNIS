@@ -124,12 +124,11 @@ def _lyapunov_completion_values(agent):
 
 
 def reward_series(agent):
-    """Per-slot mean Lyapunov objective for convergence curves.
+    """Per-slot mean Lyapunov objective (shared by curves and scalar reward).
 
     Each user contributes ``V·u + drift`` on completion and **0** if idle, then
     average over users. Empty early slots are therefore ~0, so running averages
     start near the origin instead of jumping to the first completion's score.
-    Scalar CSV ``reward`` still uses ``mean_task_reward`` (task index only).
     """
     V = agent.lyapunov_v
     T = len(agent.instant_metrics[agent.users[0]]["reward"])
@@ -162,9 +161,13 @@ def reward_series(agent):
 
 
 def mean_task_reward(agent):
-    """Scalar reported reward: equal weight per completed task."""
-    vals = _lyapunov_completion_values(agent)
-    return float(np.mean(vals)) if vals else float("nan")
+    """Scalar reported reward: mean over slots of ``reward_series`` (idle→0).
+
+    Matches convergence curves and sweep bar/line plots. Accuracy, delay,
+    energy, and violation remain completion-averaged elsewhere.
+    """
+    obj = reward_series(agent)
+    return float(np.mean(obj)) if len(obj) else float("nan")
 
 
 def algo_ms_per_slot(agent, slots, name=None):
