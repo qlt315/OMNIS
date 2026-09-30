@@ -46,48 +46,31 @@ class GDO(SlotEnv):
         self._last_parallel_update_s = time.time() - t0
 
     def _forecast_uplink_bw(self, user, cell_id, last_bw):
-        """Same association-share BW forecast as OMNIS+."""
+        """Same association-share + grant-EWMA BW forecast as OMNIS+."""
         del last_bw
-        if cell_id is None:
+        from omnis.compute_stats import ensure_compute_stats
+        stats = ensure_compute_stats(self)
+        granted = stats.bw_grant_hat(user)
+        if granted is None:
             granted = self._last_bandwidth.get(user)
-            if granted is None:
+        if cell_id is None:
+            if granted is None or float(granted) <= 1.0:
                 return float(self.total_bandwidth) / max(self.user_num, 1)
             return float(granted)
         state = getattr(self, "_cell_compute_state", None) or {}
         n_assoc = int(state.get(int(cell_id), {}).get("n_assoc", 0))
         share = float(self.total_bandwidth) / max(n_assoc + 1, 1)
-        granted = self._last_bandwidth.get(user)
         if granted is None or float(granted) <= 1.0:
             return share
         return min(float(granted), share)
 
     def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0,
                              cell_id=None):
-        """OMNIS+-aligned sojourn: service + Q^j·edge + grant wait."""
+        """Same measurement-driven hats as OMNIS+ (fair comparison)."""
         del rate_m
-        md = self.md_params[user]
-        es = self.es_params
-        local_d = (
-            self.head_flops[model_name] * 1e-9
-            / (md["freq"] * md["cores"] * md["flops_per_cycle"]))
-        local_e = md["power_coeff"] * md["freq"] ** 3 * local_d
-        bw = self._forecast_uplink_bw(
-            user, cell_id,
-            self._last_bandwidth.get(
-                user, self.total_bandwidth / max(self.user_num, 1)))
-        se = max(self.mcs_table.delay_se(model_name, mcs_idx, snr_db), 1e-9)
-        bits = self._payload_bits(model_name)
-        trans_d = bits / max(float(bw) * se, 1e-12)
-        gpu_hat = max(float(self._gpu_hat_for_association(user, cell_id=cell_id)), 1e-12)
-        edge_d = self.tail_flops[model_name] * 1e-9 / (
-            gpu_hat * es["cores"] * es["flops_per_cycle"])
-        edge_e = es["power_coeff"] * gpu_hat ** 3 * edge_d
-        service = local_d + trans_d + edge_d
-        q_j = float(self.pipeline.jobs_ahead(user, cell_id=cell_id))
-        grant = radio_grant_wait(local_d, self.slot_duration)
-        sojourn = service + q_j * edge_d + grant
-        energy = local_e + md["trans_power"] * (trans_d + grant) + edge_e
-        return service, sojourn, energy
+        from omnis.compute_stats import predict_service_overheads
+        return predict_service_overheads(
+            self, user, model_name, mcs_idx, snr_db=snr_db, cell_id=cell_id)
 
     def _mcs_for_snr(self, model_name, snr_db):
         bler_t = getattr(self, "bler_target", self.mcs_table.bler_target)

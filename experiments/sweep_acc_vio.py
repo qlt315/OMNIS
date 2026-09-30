@@ -260,8 +260,15 @@ def sweep_acc_vio(
     gdo_margins=None,
     out_root="figures/python figures/sweeps",
 ):
-    causal_margins = list(causal_margins or [0.78, 0.84, 0.88, 0.92, 0.96, 1.00])
-    gdo_margins = list(gdo_margins or [0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.00])
+    causal_margins = list(causal_margins or [
+        # Hard gate only binds below ~0.75 after measurement-driven hats;
+        # denser low-margin points stretch the Pareto (high band stays flat).
+        0.50, 0.55, 0.60, 0.65, 0.70, 0.78, 0.88, 1.00,
+    ])
+    gdo_margins = list(gdo_margins or [
+        # Extend below 0.70 so GDO vio overlaps OMNIS+ (~0.12–0.15).
+        0.50, 0.55, 0.60, 0.65, 0.70, 0.80, 0.90, 1.00,
+    ])
     cls_map = dict(ALGOS)
     out_dir = sweep_outdir(out_root, "acc_vio")
     off = offset_for_snr_target(snr_db, users=users)
@@ -309,9 +316,9 @@ if __name__ == "__main__":
     p.add_argument("--users", type=int, default=25)
     p.add_argument("--snr-db", type=float, default=5.0)
     p.add_argument("--causal-margins", type=float, nargs="+",
-                   default=[0.78, 0.84, 0.88, 0.92, 0.96, 1.00])
+                   default=[0.50, 0.55, 0.60, 0.65, 0.70, 0.78, 0.88, 1.00])
     p.add_argument("--gdo-margins", type=float, nargs="+",
-                   default=[0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.00])
+                   default=[0.50, 0.55, 0.60, 0.65, 0.70, 0.80, 0.90, 1.00])
     p.add_argument("--replot-only", action="store_true",
                    help="Rebuild plots/mat from existing causal/gdo CSV rows")
     p.add_argument("--out-root", default="figures/python figures/sweeps")

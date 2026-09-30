@@ -9,16 +9,18 @@ Journal extension: multi-cell Top-L association, queueing + Lyapunov control, ca
 ## Structure
 ```bash
 OMNIS/
-│── baselines/                      # DTS, CTO, GDO, DQN, PPO, MAPPO
+│── baselines/                      # DTS, CTO, GDO, DQN, PPO, MAPPO (+ slot/RL envs)
 │── omnis/                          # Simulator, causal MAB, PHY helpers
 │── experiments/
 │   ├── convergence_lib.py          # Shared online runner (+ PYCHARM_CONV_*)
 │   ├── convergence_all.py / convergence_*.py  # → CSV + series + exports
+│   ├── train_*.py / train_all.py   # Thin wrappers around convergence runners
 │   ├── run_sweeps.py / sweep_*.py  # Parameter sweeps → figures/python figures/sweeps/
 │   ├── plot_results.py             # Convergence PNGs + plot_data.mat/.pkl/.npz
 │   ├── plot_sweeps.py              # Sweep PNGs + <name>.mat/.pkl/.npz from CSV
 │   └── comm_model.py               # Control-plane bytes / RTT → comm_ms
 │── phy_sim/                        # Sionna PHY; see phy_sim/README.md
+│── split_dnn/                      # Split-DNN train/eval (Box/Standard/ENT); see its README
 │── sys_data/
 │   ├── config.py                   # Config (points at phy_sim/output)
 │   └── acc_data/                   # Optional seed curves for phy_sim/synth_acc
@@ -27,8 +29,8 @@ OMNIS/
 │   │   ├── convergence/            # online convergence curves (default)
 │   │   └── sweeps/                 # snr / users / arrival / action_pick / acc_vio
 │   ├── matlab figures/             # exported .eps / .fig
-│   └── matlab scripts/             # MATLAB figure generators (from *.mat)
-│── observations/                   # Observation figure scripts
+│   ├── matlab scripts/             # MATLAB figure generators (from *.mat)
+│   └── acc_payload_data.* / acc_snr_data.*   # offline DNN measurement sheets
 ```
 
 ## How to Try OMNIS
@@ -140,7 +142,9 @@ PHY BLER/SE (from Sionna tables) may still drive delay, energy, and queues.
    already observed, and are not moved to an idle cell.
    Decision time is the sum of per-MD work. The control uplink carries
    observations rather than a local action.
-4. This repository does not include training code for the multi-branch dynamic split DNN; it interfaces to evaluation tables. For DNN details, contact Ian Andrew Harshbarger (iharshba@uci.edu).
+4. Split-DNN training/eval lives in `split_dnn/` (see that README). The online
+   simulator does not import it; it uses payload sizes in `Config.data_size` and PHY Acc/BLER
+   tables under `phy_sim/output/`. Historical DNN contact: Ian Andrew Harshbarger (iharshba@uci.edu).
 5. Runtime plots report one stacked bar: **decision** (algo compute) + **interaction** (control-plane) + **BCD**. Metric mean bars are separate `*_bar.png` files.
 
 ## Contributing

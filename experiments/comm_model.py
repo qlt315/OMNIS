@@ -8,6 +8,10 @@ B_REWARD = 8          # scalar learning feedback (piggyback next uplink)
 B_ALLOC = 16          # bandwidth + GPU (+ MCS ack)
 B_CONTEXT = 32        # QoS weights / constraints / coarse SNR
 B_FLOAT = 4
+# MD→ES: branch + measured local delay/energy (offload report)
+B_LOCAL_MEAS = 12
+# ES→MD: concurrency + f_bar + edge delay/energy (completion report)
+B_EDGE_MEAS = 20
 # Per logical cell: n_assoc + f_share (MD-visible compute for association)
 B_CELL_COMPUTE = 8
 
@@ -27,30 +31,31 @@ def profile_bytes(name: str, user_num: int, local_obs_dim: int = 9,
     rounds = CONTROL_ROUNDS
     # One broadcast of per-cell compute state for next-slot association.
     cell_bcast = int(num_cells) * B_CELL_COMPUTE
+    # Measurement exchange shared by all schemes (fair comparison).
+    meas_up = U * B_LOCAL_MEAS
+    meas_down = U * B_EDGE_MEAS
 
     # Distributed MD-local decision (UCB / DTS / Causal / MAPPO):
-    # R1 action + learning label piggyback; R2 alloc + cell-compute broadcast.
-    # Radio (RSRP) is local — not in the byte count.
+    # R1 action + learning label + local meas; R2 alloc + edge meas + bcast.
     if name in ("ucb", "dts", "causal", "mappo"):
-        up = U * (B_ACTION + B_REWARD)
-        down = U * B_ALLOC + cell_bcast
+        up = U * (B_ACTION + B_REWARD) + meas_up
+        down = U * B_ALLOC + cell_bcast + meas_down
         return up, down, rounds
 
-    # GDO / SEM-O-RAN: R1 context/offers; R2 ES-chosen action + alloc + bcast.
+    # GDO / SEM-O-RAN: R1 context/offers + local meas; R2 action + alloc + meas.
     if name == "gdo":
-        up = U * B_CONTEXT
-        down = U * (B_ACTION + B_ALLOC) + cell_bcast
+        up = U * B_CONTEXT + meas_up
+        down = U * (B_ACTION + B_ALLOC) + cell_bcast + meas_down
         return up, down, rounds
 
-    # Centralized joint controller: ES already holds compute state; still
-    # broadcast so MDs can audit / for a uniform control-plane budget.
+    # Centralized joint controller: full local obs + measurement exchange.
     if name in ("cto", "dqn", "ppo"):
-        up = U * local
-        down = U * (B_ACTION + B_ALLOC) + cell_bcast
+        up = U * local + meas_up
+        down = U * (B_ACTION + B_ALLOC) + cell_bcast + meas_down
         return up, down, rounds
 
-    # Fallback: decentralized notify + alloc + bcast
-    return U * B_ACTION, U * B_ALLOC + cell_bcast, rounds
+    # Fallback: decentralized notify + alloc + meas + bcast
+    return U * B_ACTION + meas_up, U * B_ALLOC + cell_bcast + meas_down, rounds
 
 
 def comm_ms_per_slot(name: str, user_num: int, local_obs_dim: int,

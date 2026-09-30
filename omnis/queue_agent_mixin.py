@@ -112,6 +112,14 @@ def task_dpp_drift(agent, user, model_name, mcs_idx, energy_hat, snr_db=0.0,
                    cell_id=None):
     """Lyapunov drift: same uplink forecast and grant wait as admission."""
     from omnis.radio_obs import radio_grant_wait
+    from omnis.task_pipeline import STAGE_EDGE
+
+    pipe = getattr(agent, "pipeline", None)
+    if cell_id is None and pipe is not None:
+        locked = pipe.locked_cell(user)
+        if locked is not None:
+            cell_id = int(locked)
+
     bw_fn = getattr(agent, "_bw_override", None)
     if bw_fn is not None and cell_id is not None:
         bandwidth_hat = float(bw_fn(user, cell_id))
@@ -123,18 +131,35 @@ def task_dpp_drift(agent, user, model_name, mcs_idx, energy_hat, snr_db=0.0,
         bandwidth_hat = agent._last_bandwidth.get(
             user, agent.total_bandwidth / agent.user_num)
     se_eff = max(agent.mcs_table.goodput_se(model_name, mcs_idx, snr_db), 1e-12)
-    md = agent.md_params[user]
     es = agent.es_params
-    local_d = (agent.head_flops[model_name] * 1e-9
-               / (md["freq"] * md["cores"] * md["flops_per_cycle"]))
+    from omnis.compute_stats import ensure_compute_stats
+    stats = ensure_compute_stats(agent)
+    local_d, _local_e = stats.local_hat(user, model_name)
     bits = agent.pipeline.uplink_residual_bits(user)
     if bits <= 1e-9:
         bits = agent._payload_bits(model_name)
     tx_d = bits / max(bandwidth_hat * se_eff, 1e-12)
-    # FIFO: tagged task eventually gets the full cell GPU pool F^e.
-    gpu_hat = max(float(es["freq"]), 1e-12)
-    edge_d = (agent.tail_flops[model_name] * 1e-9
-              / (gpu_hat * es["cores"] * es["flops_per_cycle"]))
+    # Concurrent GPU share from MD-visible broadcast / last grant — never
+    # assume the full pool F^e (that would leak an oracle ES view).
+    from omnis.assoc_info import expected_gpu_if_join
+    from omnis.gpu_alloc import forecast_gpu_share
+    at = pipe.active.get(user) if pipe is not None else None
+    in_edge = at is not None and at.stage == STAGE_EDGE
+    if cell_id is not None and hasattr(agent, "_cell_compute_state"):
+        if in_edge:
+            q = int((agent._cell_compute_state or {}).get(
+                int(cell_id), {}).get("q_edge", 0))
+            gpu_hat = forecast_gpu_share(
+                q, float(es["freq"]), already_in_edge=True)
+        else:
+            gpu_hat = float(expected_gpu_if_join(
+                cell_id, agent._cell_compute_state,
+                es["freq"], getattr(agent, "user_num", 1)))
+    else:
+        gpu_hat = float(agent._last_gpu.get(
+            user, float(es["freq"]) / max(getattr(agent, "user_num", 1), 1)))
+    gpu_hat = max(gpu_hat, 1e-12)
+    edge_d, _edge_e = stats.edge_hat(model_name, gpu_hat)
     tau_s = max(
         local_d + tx_d + edge_d
         + radio_grant_wait(local_d, getattr(agent, "slot_duration", 1.0)),

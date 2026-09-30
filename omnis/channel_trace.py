@@ -89,18 +89,19 @@ class ChannelTrace:
             power[int(ue_local)] = p_w
         return sinr, power
 
+    def forecast_tx_power_w(self, t, ue_local, cell, bandwidth_hz):
+        """Fixed uplink power (no fractional power control)."""
+        del t, ue_local, cell, bandwidth_hz
+        return float(self.p_max_w)
+
     def _path_loss_db(self, H):
         gain = float(np.sum(np.abs(H) ** 2) / max(self.n_rx * self.n_tx, 1))
         return -10.0 * np.log10(max(gain, 1e-30))
 
     def _tx_power_w(self, pl_db, bandwidth_hz):
-        p_max_dbm = 10.0 * np.log10(self.p_max_w) + 30.0
-        prbs = max(float(bandwidth_hz), self.prb_hz) / self.prb_hz
-        p_dbm = min(
-            p_max_dbm,
-            self.p0_dbm + 10.0 * np.log10(prbs) + self.alpha * float(pl_db),
-        )
-        return float(10.0 ** ((p_dbm - 30.0) / 10.0))
+        """Constant transmit power \(P_{\max}\) (matches Config.md trans_power)."""
+        del pl_db, bandwidth_hz
+        return float(self.p_max_w)
 
     def _link_sinr(self, slot, ue_local, cell, bandwidth_hz, transmitters):
         H = self.H[slot, cell, ue_local].astype(np.complex128)
@@ -132,8 +133,11 @@ class ChannelTrace:
         sinr_l = layer_psd * np.square(singular[:n_lay].real)
         sinr_l = np.maximum(sinr_l, 1e-30)
         beta = self.eesm_beta
-        sinr_eff = -beta * np.log(np.mean(np.exp(-sinr_l / beta)))
-        return float(10.0 * np.log10(max(sinr_eff, 1e-30))), power
+        # Stable EESM: clip exponents; cap effective SINR.
+        x = np.clip(-sinr_l / beta, -80.0, 80.0)
+        sinr_eff = float(-beta * np.log(np.mean(np.exp(x))))
+        sinr_eff = float(np.clip(sinr_eff, 1e-30, 1e6))
+        return float(10.0 * np.log10(sinr_eff)), power
 
     def _noise_limited_sinr_db(self):
         """Cube [slot, cell, ue] with an empty transmitter set and a full-pool grant.
@@ -143,24 +147,19 @@ class ChannelTrace:
         after a loaded slot.
         """
         H = self.H.astype(np.complex128, copy=False)
-        gain = np.sum(np.abs(H) ** 2, axis=(-2, -1)) / float(self.n_rx * self.n_tx)
-        pl_db = -10.0 * np.log10(np.maximum(gain, 1e-30))
-        p_max_dbm = 10.0 * np.log10(self.p_max_w) + 30.0
-        prbs = max(self.bandwidth_hz, self.prb_hz) / self.prb_hz
-        p_dbm = np.minimum(
-            p_max_dbm,
-            self.p0_dbm + 10.0 * np.log10(prbs) + self.alpha * pl_db,
-        )
-        power = 10.0 ** ((p_dbm - 30.0) / 10.0)
+        power = float(self.p_max_w)
         gram = np.einsum("...ri,...rj->...ij", H.conj(), H)
         gram = 0.5 * (gram + np.swapaxes(gram, -1, -2).conj())
         eig = np.linalg.eigvalsh(gram)
         n_lay = max(1, min(self.n_layers, eig.shape[-1]))
         layer_psd = (power / self.bandwidth_hz) / float(n_lay)
-        sinr_l = layer_psd[..., None] * np.maximum(eig[..., -n_lay:], 1e-30) / self.noise_psd
+        sinr_l = layer_psd * np.maximum(eig[..., -n_lay:], 1e-30) / self.noise_psd
+        sinr_l = np.maximum(sinr_l, 1e-30)
         beta = self.eesm_beta
-        sinr_eff = -beta * np.log(np.mean(np.exp(-sinr_l / beta), axis=-1))
-        return (10.0 * np.log10(np.maximum(sinr_eff, 1e-30))).astype(np.float64)
+        x = np.clip(-sinr_l / beta, -80.0, 80.0)
+        sinr_eff = -beta * np.log(np.mean(np.exp(x), axis=-1))
+        sinr_eff = np.clip(sinr_eff, 1e-30, 1e6)
+        return (10.0 * np.log10(sinr_eff)).astype(np.float64)
 
 
 def load_channel_trace(table_dir, tag="smoke7", ue_ids=None):

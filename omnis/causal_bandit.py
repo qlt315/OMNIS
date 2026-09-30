@@ -131,7 +131,7 @@ class CausalMAB:
 
     def _predict_mcs_vectorized(self, snr_db, model_name, task, overhead_parts):
         """Vectorized ILLA over all MCS for one (model, snr, user-base)."""
-        local_d, local_e, edge_d, edge_e, payload, bw, backlog, p_tx = overhead_parts
+        local_d, local_e, edge_d, edge_e, payload, bw, backlog, p_tx = overhead_parts[:8]
         bler, goodput = self.scm.mcs_table.bler_goodput_all_mcs(model_name, snr_db)
         mcs_idx = np.asarray(self.scm.available_mcs, dtype=int)
         se = self.scm.mcs_table._se_arr
@@ -168,6 +168,23 @@ class CausalMAB:
             return len(self.gp)
         return sum(len(g) for g in self._gps.values())
 
+    def _overhead_from_parts(self, parts, model_name, mcs_idx, snr_db, task,
+                             md_wait=0.0):
+        """(service, sojourn, energy) from ILLA parts — skip full predict_overheads."""
+        local_d, local_e, edge_d, edge_e, payload, bw, _backlog, p_tx = parts[:8]
+        se_eff = max(self.scm.mcs_table.delay_se(model_name, mcs_idx, snr_db), 1e-12)
+        trans_d = float(payload) / max(float(bw) * se_eff, 1e-12)
+        slot = float(task.get("slot_duration", 1.0))
+        grant = 0.0
+        if local_d > 1e-12 and slot > 0.0:
+            frac = float(local_d) % slot
+            if frac > 1e-9:
+                grant = slot - frac
+        service = float(local_d) + grant + trans_d + float(edge_d)
+        sojourn = service + float(md_wait)
+        energy = float(local_e) + float(p_tx) * trans_d + float(edge_e)
+        return service, sojourn, energy
+
     def _score_user_arms(self, user, top_cells, sinr_db_by_cell, task,
                          predict_overheads, drift_score, overhead_parts_by_model=None):
         """Per-MD analytic work: M×L vectorized ILLA + overhead hats (no GP).
@@ -176,6 +193,9 @@ class CausalMAB:
           * ``None`` — scalar MCS loop (legacy),
           * ``dict[model_name -> parts]`` — shared GPU (no cell),
           * ``callable(model_name, cell_id) -> parts`` — cell-aware vectorized ILLA.
+
+        When parts are available, sojourn/energy reuse those parts after MCS
+        selection (no second full ``predict_overheads`` call per arm).
         """
         L = len(top_cells)
         mcs_hats = []
@@ -184,6 +204,7 @@ class CausalMAB:
         xs = []
         parts_fn = overhead_parts_by_model if callable(overhead_parts_by_model) else None
         parts_map = None if parts_fn else overhead_parts_by_model
+        md_wait = float(task.get("md_pending_wait", 0.0))
         for model_idx, model in enumerate(self.scm.models):
             name = model['name']
             for cell_rank in range(L):
@@ -200,9 +221,13 @@ class CausalMAB:
                     model_idx=model_idx, overhead_parts=parts,
                     cell_id=None if parts is not None else cell_id)
                 mcs_hats.append(mcs_hat)
-                overhead_hats.append(
-                    predict_overheads(name, mcs_hat, snr_db=snr_db,
-                                      cell_id=cell_id))
+                if parts is not None:
+                    overhead_hats.append(self._overhead_from_parts(
+                        parts, name, mcs_hat, snr_db, task, md_wait=md_wait))
+                else:
+                    overhead_hats.append(
+                        predict_overheads(name, mcs_hat, snr_db=snr_db,
+                                          cell_id=cell_id))
                 xs.append(self._make_x(snr_db, model_idx, mcs_hat))
                 arm_meta.append((model_idx, cell_id, snr_db))
         return user, task, mcs_hats, overhead_hats, drift_score, arm_meta, xs

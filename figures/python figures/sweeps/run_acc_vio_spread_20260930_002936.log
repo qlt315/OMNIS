@@ -1,0 +1,79 @@
+[acc_vio/causal] seed=0 causal_feas_margin=0.78
+    acc=0.2039 vio=0.133 reward=127.7
+[acc_vio/causal] seed=1 causal_feas_margin=0.78
+    acc=0.2069 vio=0.152 reward=126.4
+[acc_vio/causal] seed=2 causal_feas_margin=0.78
+    acc=0.2083 vio=0.150 reward=126.6
+[acc_vio/causal] seed=0 causal_feas_margin=0.84
+    acc=0.2076 vio=0.143 reward=127.5
+[acc_vio/causal] seed=1 causal_feas_margin=0.84
+    acc=0.2064 vio=0.149 reward=124.3
+[acc_vio/causal] seed=2 causal_feas_margin=0.84
+    acc=0.2078 vio=0.157 reward=125.8
+[acc_vio/causal] seed=0 causal_feas_margin=0.88
+    acc=0.2095 vio=0.141 reward=128.0
+[acc_vio/causal] seed=1 causal_feas_margin=0.88
+    acc=0.2115 vio=0.141 reward=127.4
+[acc_vio/causal] seed=2 causal_feas_margin=0.88
+    acc=0.2091 vio=0.152 reward=126.3
+[acc_vio/causal] seed=0 causal_feas_margin=0.92
+    acc=0.2111 vio=0.141 reward=128.4
+[acc_vio/causal] seed=1 causal_feas_margin=0.92
+    acc=0.2092 vio=0.139 reward=127.5
+[acc_vio/causal] seed=2 causal_feas_margin=0.92
+    acc=0.2090 vio=0.150 reward=127.0
+[acc_vio/causal] seed=0 causal_feas_margin=0.96
+    acc=0.2114 vio=0.142 reward=127.9
+[acc_vio/causal] seed=1 causal_feas_margin=0.96
+    acc=0.2098 vio=0.145 reward=127.6
+[acc_vio/causal] seed=2 causal_feas_margin=0.96
+    acc=0.2104 vio=0.161 reward=126.6
+[acc_vio/causal] seed=0 causal_feas_margin=1.0
+    acc=0.2105 vio=0.146 reward=126.8
+[acc_vio/causal] seed=1 causal_feas_margin=1.0
+    acc=0.2099 vio=0.153 reward=124.8
+[acc_vio/causal] seed=2 causal_feas_margin=1.0
+    acc=0.2151 vio=0.161 reward=126.2
+[acc_vio/gdo] seed=0 gdo_feas_margin=0.7
+    acc=0.1944 vio=0.174 reward=118.0
+[acc_vio/gdo] seed=1 gdo_feas_margin=0.7
+    acc=0.2002 vio=0.176 reward=118.5
+[acc_vio/gdo] seed=2 gdo_feas_margin=0.7
+    acc=0.1992 vio=0.173 reward=118.1
+[acc_vio/gdo] seed=0 gdo_feas_margin=0.75
+    acc=0.2072 vio=0.177 reward=117.0
+[acc_vio/gdo] seed=1 gdo_feas_margin=0.75
+    acc=0.2091 vio=0.191 reward=116.7
+[acc_vio/gdo] seed=2 gdo_feas_margin=0.75
+    acc=0.2085 vio=0.187 reward=115.6
+[acc_vio/gdo] seed=0 gdo_feas_margin=0.8
+    acc=0.2149 vio=0.198 reward=114.2
+[acc_vio/gdo] seed=1 gdo_feas_margin=0.8
+    acc=0.2135 vio=0.192 reward=115.1
+[acc_vio/gdo] seed=2 gdo_feas_margin=0.8
+    acc=0.2175 vio=0.188 reward=114.6
+[acc_vio/gdo] seed=0 gdo_feas_margin=0.85
+    acc=0.2191 vio=0.204 reward=111.2
+[acc_vio/gdo] seed=1 gdo_feas_margin=0.85
+    acc=0.2193 vio=0.207 reward=111.9
+[acc_vio/gdo] seed=2 gdo_feas_margin=0.85
+    acc=0.2208 vio=0.206 reward=113.3
+[acc_vio/gdo] seed=0 gdo_feas_margin=0.9
+    acc=0.2222 vio=0.222 reward=108.8
+[acc_vio/gdo] seed=1 gdo_feas_margin=0.9
+    acc=0.2237 vio=0.213 reward=111.4
+[acc_vio/gdo] seed=2 gdo_feas_margin=0.9
+    acc=0.2218 vio=0.210 reward=110.5
+[acc_vio/gdo] seed=0 gdo_feas_margin=0.95
+    acc=0.2270 vio=0.227 reward=106.6
+[acc_vio/gdo] seed=1 gdo_feas_margin=0.95
+    acc=0.2267 vio=0.226 reward=107.8
+[acc_vio/gdo] seed=2 gdo_feas_margin=0.95
+    acc=0.2264 vio=0.231 reward=107.3
+[acc_vio/gdo] seed=0 gdo_feas_margin=1.0
+    acc=0.2260 vio=0.243 reward=102.8
+[acc_vio/gdo] seed=1 gdo_feas_margin=1.0
+    acc=0.2293 vio=0.256 reward=101.9
+[acc_vio/gdo] seed=2 gdo_feas_margin=1.0
+    acc=0.2257 vio=0.260 reward=100.9
+[acc_vio] done in 12.0 min → figures/python figures/sweeps/acc_vio/

@@ -233,6 +233,10 @@ python run_traces.py --slots 1000 --tag smoke7
 |----------|----------|
 | `output/mcs_def.csv` | `McsTable` |
 | `output/bler_table.csv` | BLER / goodput |
+| `output/acc_table.csv` | Channel-conditioned Acc (when present; else synth curves) |
 | `output/acc_clean.csv` | Clean accuracy anchors |
-| `output/channel_*.npz` | `ChannelTrace` (live IRC SINR) |
+| `output/channel_*.npz` | `ChannelTrace` / `SinrTrace` (live IRC SINR) |
 | `output/channel_*_meta.json` | antenna, layer, and power-control metadata |
+
+Split-DNN branch training that supplies measured payloads / Acc calibration inputs is in
+`../split_dnn/` (not invoked by these scripts at runtime).

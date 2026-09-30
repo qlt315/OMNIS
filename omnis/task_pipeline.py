@@ -1,4 +1,4 @@
-"""MD task queue + ES compute FIFO; sticky association until task done."""
+"""MD task queue + ES concurrent GPU sharing; sticky association until done."""
 
 from __future__ import annotations
 
@@ -64,8 +64,14 @@ class Task:
     local_e: float = 0.0
     tx_s: float = 0.0
     tx_e: float = 0.0
+    # Wall-clock wait in STAGE_TX before the first positive radio grant.
+    radio_wait_s: float = 0.0
     edge_s: float = 0.0
     edge_e: float = 0.0
+    # Time-average GPU share over the edge stage (for online work stats).
+    edge_f_bar: float = 0.0
+    edge_f_mass: float = 0.0  # ∫ f dt
+    edge_f_time: float = 0.0  # ∫ dt while in edge
     md_wait_s: float = 0.0
     edge_wait_s: float = 0.0
     t_admit: Optional[float] = None
@@ -80,7 +86,7 @@ class Task:
 
     @property
     def service_delay(self) -> float:
-        return float(self.local_s + self.tx_s + self.edge_s)
+        return float(self.local_s + self.radio_wait_s + self.tx_s + self.edge_s)
 
     @property
     def e2e_delay(self) -> float:
@@ -92,7 +98,7 @@ class Task:
 
 
 class TaskPipeline:
-    """Per-MD pending/active tasks and per-cell edge FIFO queues."""
+    """Per-MD pending/active tasks and per-cell edge compute queues."""
 
     def __init__(self, users, num_cells: int):
         self.users = list(users)
@@ -172,16 +178,13 @@ class TaskPipeline:
         return float(max(task.residual, 0.0))
 
     def jobs_ahead(self, user: str, cell_id: Optional[int] = None) -> float:
-        """Q^j: edge jobs ahead of the tagged task (paper proxy)."""
-        if cell_id is None:
-            cell_id = self.locked_cell(user)
-        if cell_id is None:
-            return 0.0
-        q = self.edge_q[int(cell_id)]
-        at = self.active.get(user)
-        if at is not None and at.stage == STAGE_EDGE and at in q:
-            return float(max(0, list(q).index(at)))
-        return float(len(q))
+        """Legacy hook: under concurrent GPU sharing there is no FIFO wait.
+
+        Contention enters through a smaller shared ``f^e``, not jobs-ahead.
+        Kept for call-site compatibility; always returns 0.
+        """
+        del user, cell_id
+        return 0.0
 
     def enqueue_arrivals(self, user: str, n: int, qos: dict):
         for _ in range(int(max(0, n))):
@@ -232,6 +235,13 @@ class TaskPipeline:
     def _complete(self, task: Task, energy_budget: float):
         if task.t_done is None:
             task.t_done = self.time_s
+        if task.t_edge_start is not None:
+            # Realized edge service is wall-clock under concurrent sharing.
+            task.edge_s = max(0.0, float(task.t_done) - float(task.t_edge_start))
+        if task.edge_f_time > 1e-15:
+            task.edge_f_bar = float(task.edge_f_mass) / float(task.edge_f_time)
+        else:
+            task.edge_f_bar = 0.0
         task.stage = STAGE_DONE
         user = task.user
         if self.active[user] is task:
@@ -258,11 +268,12 @@ class TaskPipeline:
         energy_budget: Dict[str, float],
         default_gpu_hz: float = 0.0,
     ):
-        """Advance by ``dt`` seconds. Edge queues are FIFO (one head per cell).
+        """Advance by ``dt`` seconds with concurrent edge GPU sharing.
 
-        Within-slot causality: edge service for a task cannot start before its
-        uplink completion time in this slot. A mid-slot HOL with gpu_hz=0 is
-        granted ``default_gpu_hz`` (full pool) for the remaining time.
+        Within-slot causality: edge service cannot start before uplink
+        completion. All ready edge tasks in a cell share the GPU pool in
+        parallel; ``gpu_hz`` weights are renormalized onto ``default_gpu_hz``
+        (the cell pool) among currently ready tasks.
         """
         if dt <= 0:
             return
@@ -289,11 +300,15 @@ class TaskPipeline:
                     task.stage = STAGE_TX
                     task.residual = float(task.payload_bits)
             if task.stage == STAGE_TX and rem > 0:
-                rate = max(
+                rate = (
                     float(bandwidth.get(user, 0.0))
-                    * float(goodput_se.get(user, 0.0)),
-                    1e-12,
+                    * float(goodput_se.get(user, 0.0))
                 )
+                if rate <= 1e-9:
+                    # No grant this slot: wait counts as delay, not TX energy.
+                    task.radio_wait_s += rem
+                    rem = 0.0
+                    continue
                 bits = rate * rem
                 served = min(bits, task.residual)
                 air = served / rate
@@ -301,60 +316,96 @@ class TaskPipeline:
                 task.tx_s += air
                 task.tx_e = float(tx_power[user]) * task.tx_s
                 t_cursor += air
+                rem -= air
                 if task.residual <= 1e-9:
                     task.residual = 0.0
                     task.t_tx_done = t_cursor
                     task.stage = STAGE_EDGE
                     self.edge_q[int(task.cell_id)].append(task)
 
-        # --- ES compute FIFO with within-slot time cursor ---
+        # --- ES concurrent GPU sharing with within-slot time cursor ---
         for cell in range(self.num_cells):
             t_cursor = slot_start
             while t_cursor < slot_end - 1e-12 and self.edge_q[cell]:
-                head = self.edge_q[cell][0]
-                if head.stage != STAGE_EDGE:
-                    break
-                earliest = slot_start
-                if head.t_tx_done is not None:
-                    earliest = max(earliest, float(head.t_tx_done))
-                if t_cursor < earliest:
-                    t_cursor = earliest
-                if t_cursor >= slot_end - 1e-12:
-                    break
-
-                f = float(gpu_hz.get(head.user, 0.0))
-                if f <= 1e-12:
-                    f = max(f_pool, 1e-12)
-                tau_e = head.edge_delay_unit / f
-
-                if head.t_edge_start is None:
-                    head.t_edge_start = t_cursor
-                    head.edge_s = tau_e
-                    head.residual = tau_e
-                    head.edge_e = (
-                        head.edge_power_coeff * (f ** 2) * head.edge_delay_unit
+                ready = [
+                    t for t in self.edge_q[cell]
+                    if t.stage == STAGE_EDGE
+                    and (t.t_tx_done is None or float(t.t_tx_done) <= t_cursor + 1e-12)
+                ]
+                if not ready:
+                    next_ready = min(
+                        (
+                            float(t.t_tx_done)
+                            for t in self.edge_q[cell]
+                            if t.t_tx_done is not None
+                            and float(t.t_tx_done) > t_cursor + 1e-12
+                        ),
+                        default=slot_end,
                     )
-                    if head.t_tx_done is not None:
-                        head.edge_wait_s = max(
-                            0.0, head.t_edge_start - float(head.t_tx_done)
-                        )
+                    t_cursor = min(next_ready, slot_end)
+                    continue
+
+                raw = {
+                    t.user: max(float(gpu_hz.get(t.user, 0.0)), 0.0)
+                    for t in ready
+                }
+                s_raw = sum(raw.values())
+                pool = f_pool if f_pool > 1e-12 else max(s_raw, 1e-12)
+                if s_raw <= 1e-12:
+                    freqs = {t.user: pool / len(ready) for t in ready}
                 else:
-                    if head.edge_s > 1e-12:
-                        head.residual *= tau_e / head.edge_s
-                    head.edge_s = tau_e
-                    head.edge_e = (
-                        head.edge_power_coeff * (f ** 2) * head.edge_delay_unit
-                    )
+                    freqs = {u: pool * w / s_raw for u, w in raw.items()}
 
-                rem_slot = slot_end - t_cursor
-                step = min(rem_slot, head.residual)
-                head.residual -= step
+                for t in ready:
+                    f = max(freqs[t.user], 1e-12)
+                    tau_e = t.edge_delay_unit / f
+                    if t.t_edge_start is None:
+                        t.t_edge_start = t_cursor
+                        t.edge_s = tau_e
+                        t.residual = tau_e
+                        t.edge_e = 0.0
+                        # Concurrent share: execution starts as soon as ready.
+                        t.edge_wait_s = 0.0
+                    else:
+                        if t.edge_s > 1e-12:
+                            t.residual *= tau_e / t.edge_s
+                        t.edge_s = tau_e
+
+                rem_to_done = min(t.residual for t in ready)
+                next_join = min(
+                    (
+                        float(t.t_tx_done)
+                        for t in self.edge_q[cell]
+                        if t.t_tx_done is not None
+                        and float(t.t_tx_done) > t_cursor + 1e-12
+                    ),
+                    default=slot_end,
+                )
+                step = min(rem_to_done, next_join - t_cursor, slot_end - t_cursor)
+                if step <= 1e-15:
+                    t_cursor = min(max(t_cursor + 1e-15, next_join), slot_end)
+                    continue
+
+                for t in ready:
+                    f = max(freqs[t.user], 1e-12)
+                    t.residual -= step
+                    # Instantaneous edge power ζ f^3 over wall time.
+                    t.edge_e += t.edge_power_coeff * (f ** 3) * step
+                    t.edge_f_mass += f * step
+                    t.edge_f_time += step
+
                 t_cursor += step
-                if head.residual <= 1e-12:
-                    head.t_done = t_cursor
-                    self._complete(head, energy_budget[head.user])
-                else:
-                    break
+                for t in list(self.edge_q[cell]):
+                    if (
+                        t.stage == STAGE_EDGE
+                        and t.residual <= 1e-12
+                        and (
+                            t.t_tx_done is None
+                            or float(t.t_tx_done) <= t_cursor + 1e-12
+                        )
+                    ):
+                        t.t_done = t_cursor
+                        self._complete(t, energy_budget[t.user])
 
         self.time_s = slot_end
 

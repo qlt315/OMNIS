@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 
+from omnis.gpu_alloc import forecast_gpu_share
+
 
 def init_cell_compute_state(num_cells: int, es_freq: float, user_num: int):
     """Prior before the first slot: empty compute queues, full GPU pool."""
@@ -19,9 +21,9 @@ def update_cell_compute_state(cell_dic, gpu_allocation_dic, num_cells: int,
     """Build the next-slot broadcast from association + compute-queue lengths.
 
     ``q_edge_by_cell`` maps cell_id -> number of tasks in the ES computing queue.
-    GPU share is no longer broadcast: under FIFO edge service the HOL uses the
-    full pool when scheduled.
+    Contending MDs forecast a concurrent GPU share ``F^e / (Q^e+1)``.
     """
+    del gpu_allocation_dic  # shares are derived from queue length at scoring time
     counts = {int(c): 0 for c in range(int(num_cells))}
     for _user, cell in (cell_dic or {}).items():
         c = int(cell)
@@ -42,12 +44,14 @@ def expected_gpu_if_join(cell_id, cell_compute_state, es_freq: float,
                          user_num: int) -> float:
     """MD-side forecast of GPU frequency when the task reaches the ES.
 
-    Under FIFO the head-of-line task uses the full pool. Contention is the
-    broadcast queue length, which enters sojourn as jobs ahead, not as a
-    smaller frequency.
+    Under concurrent sharing the tagged task splits the pool with the
+    broadcast queue length (plus itself).
     """
-    del cell_id, cell_compute_state, user_num
-    return float(es_freq)
+    del user_num
+    c = int(cell_id)
+    st = (cell_compute_state or {}).get(c) or {}
+    return forecast_gpu_share(
+        int(st.get("q_edge", 0)), float(es_freq), already_in_edge=False)
 
 
 def compute_queue_broadcast(cell_id, cell_compute_state) -> int:

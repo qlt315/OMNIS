@@ -28,7 +28,7 @@ class ResidualGP:
         # Large std when no observations → Acc UCB/TS explores (乱搞).
         self.empty_prior_std = float(max(
             empty_prior_std, 10.0 * np.sqrt(max(self.signal_var, 1e-12))))
-        # Cap observations (sliding window) so 300-slot runs stay O(max_obs^2).
+        # Cap observations (sliding window) so predict/add stay O(max_obs^2).
         self.max_obs = int(max_obs) if max_obs else 0
 
         self._n = 0
@@ -52,10 +52,24 @@ class ResidualGP:
         self._cap = new_cap
 
     def _kernel(self, X1, X2):
-        d = (X1[:, None, :] - X2[None, :, :]) / self.length_scales
-        r = np.sqrt(np.sum(d * d, axis=-1))
-        sqrt3_r = np.sqrt(3.0) * r
-        return self.signal_var * (1.0 + sqrt3_r) * np.exp(-sqrt3_r)
+        """Anisotropic Matern-3/2 via float32 Gram matmul (BLAS), like fast_gp."""
+        ls = np.asarray(self.length_scales, dtype=np.float32)
+        Xf = np.asarray(X1, dtype=np.float32) / ls
+        Yf = np.asarray(X2, dtype=np.float32) / ls
+        x2 = np.einsum("ij,ij->i", Xf, Xf)
+        y2 = np.einsum("ij,ij->i", Yf, Yf)
+        d2 = Xf @ Yf.T
+        d2 *= -2.0
+        d2 += x2[:, None]
+        d2 += y2[None, :]
+        np.maximum(d2, 0.0, out=d2)
+        d = np.sqrt(d2, out=d2)
+        d *= np.float32(np.sqrt(3.0))
+        e = np.exp(-d)
+        K = e * d
+        K += e
+        K *= np.float32(self.signal_var)
+        return np.asarray(K, dtype=np.float64)
 
     def add(self, x, y_obs):
         x = np.asarray(x, dtype=float).ravel()

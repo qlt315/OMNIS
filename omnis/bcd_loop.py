@@ -142,17 +142,8 @@ def run_bcd_slot(agent, task_dic, model_selection_dic, trans_rate_dic,
             phy_choice_dic, snr_dic=snr_dic)
         edge_overhead_dic = agent.get_edge_overhead(
             model_selection_dic, gpu_allocation_dic)
-        # BCD proxy: τ̂^r = τ̂^s + Q^j τ̂^e (jobs ahead in FIFO).
-        pipe = getattr(agent, "pipeline", None)
-        queue_wait_dic = {}
-        for user in agent.users:
-            cell = cell_dic.get(user)
-            edge_d = float(edge_overhead_dic[user]["delay"])
-            if pipe is not None and hasattr(pipe, "jobs_ahead"):
-                ahead = float(pipe.jobs_ahead(user, cell_id=cell))
-            else:
-                ahead = 0.0
-            queue_wait_dic[user] = ahead * edge_d
+        # BCD proxy: τ̂^r = τ̂^s; contention is already in shared f̂^e.
+        queue_wait_dic = {user: 0.0 for user in agent.users}
         total_overhead_dic = agent.get_total_overhead(
             local_overhead_dic, trans_overhead_dic, edge_overhead_dic,
             queue_wait_dic)

@@ -2,7 +2,6 @@ import numpy as np
 import time
 from scipy.special import erf
 import random
-import cvxpy as cp
 import matplotlib.pyplot as plt
 from sys_data.config import Config
 import omnis.util as util  # Assuming UtilityFunction is part of util module
@@ -117,6 +116,10 @@ class DTS:
         self.mab_no_update = bool(getattr(config, 'mab_no_update', False))
         self.mab_freeze_after = int(getattr(config, 'mab_freeze_after', 0) or 0)
         self.log_pred_error = bool(getattr(config, 'log_pred_error', True))
+        self.log_proxy_calib = bool(getattr(config, 'log_proxy_calib', False))
+        self.proxy_calib = []
+        self.compute_realism_logstd = float(
+            getattr(config, 'compute_realism_logstd', 0.0))
         self._mab_update_slots = 0
         self.pred_err_reward = []
         # MD-visible per-cell compute broadcast (updated after each BCD slot)
@@ -140,9 +143,8 @@ class DTS:
             base = {}
             for model in self.models:
                 name = model['name']
-                local_d = (self.head_flops[name] * 1e-9
-                           / (md['freq'] * md['cores'] * md['flops_per_cycle']))
-                local_e = md['power_coeff'] * md['freq'] ** 3 * local_d
+                from omnis.compute_stats import ensure_compute_stats
+                local_d, local_e = ensure_compute_stats(self).local_hat(user, name)
                 base[name] = (local_d, local_e, payload_bits(self.data_size, name),
                               bw, backlog, p_tx)
             self._oh_user_base[user] = base
@@ -309,61 +311,22 @@ class DTS:
 
     def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0,
                              cell_id=None):
-        """Analytic Payload -> {Delay, Energy}; GPU from cell-compute broadcast."""
+        """Same measurement-driven hats as OMNIS+ (fair comparison)."""
         del rate_m
-        es = self.es_params
-        gpu_hat = self._gpu_hat_for_association(user, cell_id=cell_id)
+        from omnis.compute_stats import predict_service_overheads
         cache = self._oh_cache
-        if cache is not None and self._oh_user_base is not None:
+        if cache is not None:
             key = (user, model_name, int(mcs_idx), float(snr_db),
                    -1 if cell_id is None else int(cell_id))
             hit = cache.get(key)
             if hit is not None:
                 return hit
-            local_d, local_e, payload, bw, backlog, p_tx = (
-                self._oh_user_base[user][model_name])
-            edge_d = (self.tail_flops[model_name] * 1e-9
-                      / (gpu_hat * es['cores'] * es['flops_per_cycle']))
-            edge_e = es['power_coeff'] * gpu_hat ** 3 * edge_d
-            # Delay/energy: clamped delivery SE (avoid 1/1e-12 blow-ups).
-            # Queue drain elsewhere still uses uncapped goodput_se.
-            se_eff = self.mcs_table.delay_se(model_name, mcs_idx, snr_db)
-            rate_hat = max(bw * se_eff, 1e-12)
-            trans_delay = payload / max(rate_hat, 1e-12)
-            trans_energy = p_tx * trans_delay
-            service_delay = local_d + trans_delay + edge_d
-            q_j = float(self.pipeline.jobs_ahead(user, cell_id=cell_id))
-            sojourn_delay = service_delay + q_j * edge_d
-            total_energy = local_e + trans_energy + edge_e
-            out = (service_delay, sojourn_delay, total_energy)
+            out = predict_service_overheads(
+                self, user, model_name, mcs_idx, snr_db=snr_db, cell_id=cell_id)
             cache[key] = out
             return out
-
-        md = self.md_params[user]
-        es = self.es_params
-
-        head_flops = self.head_flops[model_name]
-        local_delay = head_flops * 1e-9 / (md['freq'] * md['cores'] * md['flops_per_cycle'])
-        local_energy = md['power_coeff'] * md['freq'] ** 3 * local_delay
-
-        bandwidth_hat = self._last_bandwidth.get(user, self.total_bandwidth / self.user_num)
-        se_eff = self.mcs_table.delay_se(model_name, mcs_idx, snr_db)
-        rate_hat = max(bandwidth_hat * se_eff, 1e-12)  # [bit/s]
-        bits = self._payload_bits(model_name)
-        trans_delay = bits / rate_hat
-        trans_energy = md['trans_power'] * trans_delay
-
-        gpu_hat = self._gpu_hat_for_association(user, cell_id=cell_id)
-        tail_flops = self.tail_flops[model_name]
-        edge_delay = tail_flops * 1e-9 / (
-            max(gpu_hat, 1e-12) * es['cores'] * es['flops_per_cycle'])
-        edge_energy = es['power_coeff'] * gpu_hat ** 3 * edge_delay
-
-        service_delay = local_delay + trans_delay + edge_delay
-        q_j = float(self.pipeline.jobs_ahead(user, cell_id=cell_id))
-        sojourn_delay = service_delay + q_j * edge_delay
-        total_energy = local_energy + trans_energy + edge_energy
-        return service_delay, sojourn_delay, total_energy
+        return predict_service_overheads(
+            self, user, model_name, mcs_idx, snr_db=snr_db, cell_id=cell_id)
 
 
     def dpp_drift(self, user, model_name, mcs_idx, energy_hat, snr_db=0.0, cell_id=None):
@@ -378,9 +341,9 @@ class DTS:
         if self._oh_user_base is not None:
             local_d, local_e, payload, bw, _backlog, p_tx = (
                 self._oh_user_base[user][model_name])
-            edge_d = (self.tail_flops[model_name] * 1e-9
-                      / (gpu_hat * es['cores'] * es['flops_per_cycle']))
-            edge_e = es['power_coeff'] * gpu_hat ** 3 * edge_d
+            from omnis.compute_stats import local_edge_compute_parts
+            local_d, local_e, edge_d, edge_e = local_edge_compute_parts(
+                self, user, model_name, gpu_hat)
             bler, goodput = self.mcs_table.bler_goodput_all_mcs(model_name, snr_db)
             mcs_idx = np.asarray(self.available_mcs, dtype=int)
             se = self.mcs_table._se_arr
@@ -519,24 +482,19 @@ class DTS:
             cell_dic, snr_dic=snr_dic)
 
     def gpu_resource_allocation(self, task_dic, model_selection_dic, users=None):
-        """FIFO edge service: computing-queue head gets the full GPU pool."""
+        """Continuous GPU frequency share among concurrent edge-stage MDs."""
+        from omnis.gpu_alloc import allocate_edge_gpu
+        from omnis.compute_stats import ensure_compute_stats
         users = self.users if users is None else users
-        gpu_allocation_dict = {user: 0.0 for user in users}
-        pipe = getattr(self, "pipeline", None)
-        if pipe is None:
-            n = max(len(users), 1)
-            return {u: self.es_params["freq"] / n for u in users}
-        f_tot = float(self.es_params["freq"])
-        claimed = set()
-        for cell in range(self.num_cells):
-            q = pipe.edge_q[cell]
-            if not q:
-                continue
-            head = q[0]
-            if head.user in users and head.user not in claimed:
-                gpu_allocation_dict[head.user] = f_tot
-                claimed.add(head.user)
-        return gpu_allocation_dict
+        return allocate_edge_gpu(
+            getattr(self, "pipeline", None),
+            self.es_params,
+            task_dic,
+            model_selection_dic,
+            users,
+            self.num_cells,
+            ensure_compute_stats(self),
+        )
 
 
     def gpu_resource_allocation_all_cells(self, task_dic, model_selection_dic, cell_dic):
@@ -565,7 +523,15 @@ class DTS:
                                  trans_overhead_dic[user]['delay'])
                 total_energy = (local_overhead_dic[user]['energy'] + edge_overhead_dic[user]['energy'] +
                                 trans_overhead_dic[user]['energy'])
-                drift = self.dpp_drift(user, model_name_u, mcs, total_energy, snr_db=snr_db)
+                cell_id = None
+                pipe = getattr(self, "pipeline", None)
+                if pipe is not None:
+                    locked = pipe.locked_cell(user)
+                    if locked is not None:
+                        cell_id = int(locked)
+                drift = self.dpp_drift(
+                    user, model_name_u, mcs, total_energy,
+                    snr_db=snr_db, cell_id=cell_id)
                 if (service_delay <= task_dic[user]['delay_constraint']
                         and total_energy <= task_dic[user]['energy_constraint']):
                     score = drift
@@ -610,29 +576,24 @@ class DTS:
         return acc_dic
 
     def get_local_overhead(self, model_selection_dic):
-        """Local residual delay/energy (0 once the active task has left local)."""
+        """Local residual delay/energy from online stats / observed residual."""
         from omnis.task_pipeline import STAGE_LOCAL
+        from omnis.compute_stats import ensure_compute_stats
 
+        stats = ensure_compute_stats(self)
         local_overhead_dic = {}
         for user in model_selection_dic.keys():
             chosen_model_m = model_selection_dic[user]["model"]
-            head_flops = self.head_flops[chosen_model_m]
-            flops_per_cycle = self.md_params[user]['flops_per_cycle']
-            num_cores = self.md_params[user]['cores']
-            gpu_freq = self.md_params[user]['freq']
-            full_delay = head_flops * 1e-9 / (gpu_freq * num_cores * flops_per_cycle)
+            full_d, full_e = stats.local_hat(user, chosen_model_m)
             at = self.pipeline.active.get(user)
             if at is None:
-                local_delay = full_delay
+                local_delay, local_energy = full_d, full_e
             elif at.stage == STAGE_LOCAL:
                 local_delay = float(at.residual)
+                local_energy = full_e * min(local_delay / max(full_d, 1e-12), 1.0)
             else:
-                local_delay = 0.0
-            local_energy = self.md_params[user]['power_coeff'] * gpu_freq ** 3 * local_delay
-            local_overhead_dic[user] = {
-                "delay": local_delay,
-                "energy": local_energy
-            }
+                local_delay, local_energy = 0.0, 0.0
+            local_overhead_dic[user] = {"delay": local_delay, "energy": local_energy}
         return local_overhead_dic
 
 
@@ -653,39 +614,38 @@ class DTS:
             else:
                 se_eff = max(self.mcs_table.se[mcs_dic[user]], 1e-12)
             trans_delay = data_size_m / (bandwidth_m * se_eff)
-            trans_energy = self.md_params[user]['trans_power'] * trans_delay
+            from omnis.compute_stats import tx_power_forecast
+            pipe = getattr(self, "pipeline", None)
+            cell = pipe.locked_cell(user) if pipe is not None else None
+            p_tx = tx_power_forecast(
+                self, user, cell_id=cell, bw_hz=bandwidth_m)
+            trans_energy = p_tx * trans_delay
             trans_overhead_dic[user] = {"delay": trans_delay, "energy": trans_energy}
         return trans_overhead_dic
 
 
     def get_edge_overhead(self, model_selection_dic, gpu_allocation_dic):
-        """Calculate edge processing overhead, including delay and energy consumption, for selected models."""
+        """Edge delay/energy from online work stats (no FLOPs maps)."""
+        from omnis.compute_stats import ensure_compute_stats
 
-        edge_overhead_dic = {}  # Dictionary to store delay and energy consumption for each user
-
+        stats = ensure_compute_stats(self)
+        edge_overhead_dic = {}
         for user in model_selection_dic.keys():
-            chosen_model_m = model_selection_dic[user]["model"]  # Get the selected model for this user
-            # Extract relevant parameters
-            tail_flops_m = self.tail_flops[chosen_model_m]  # FLOPs of the tail model
-            flops_per_cycle_m = self.es_params['flops_per_cycle']  # FLOPs per cycle for this user
-            num_cores_m = self.es_params['cores']  # Number of cores for this user
-            gpu_freq_m = max(float(gpu_allocation_dic.get(user, 0.0)), 1e-12)
+            chosen_model_m = model_selection_dic[user]["model"]
+            gpu_freq_m = max(float(gpu_allocation_dic.get(user, 0.0)), 0.0)
             if gpu_freq_m <= 1e-12:
-                gpu_freq_m = float(self.es_params['freq'])
-
-            # Compute edge processing delay
-            edge_delay = tail_flops_m * 1e-9 / (gpu_freq_m * num_cores_m * flops_per_cycle_m)
-
-            # Compute edge energy consumption with the ES power coefficient
-            edge_energy = self.es_params['power_coeff'] * gpu_freq_m ** 3 * edge_delay
-
-            # Store delay and energy in the result dictionary for the user
-            edge_overhead_dic[user] = {
-                "delay": edge_delay,
-                "energy": edge_energy
-            }
-
-        return edge_overhead_dic  # Return dictionary with local overhead for all users
+                from omnis.gpu_alloc import forecast_gpu_share
+                from omnis.task_pipeline import STAGE_EDGE
+                pipe = getattr(self, "pipeline", None)
+                cell = pipe.locked_cell(user) if pipe is not None else None
+                q = pipe.compute_queue_len(cell) if cell is not None else 0
+                at = pipe.active.get(user) if pipe is not None else None
+                in_edge = at is not None and at.stage == STAGE_EDGE
+                gpu_freq_m = forecast_gpu_share(
+                    q, float(self.es_params['freq']), already_in_edge=in_edge)
+            edge_delay, edge_energy = stats.edge_hat(chosen_model_m, gpu_freq_m)
+            edge_overhead_dic[user] = {"delay": edge_delay, "energy": edge_energy}
+        return edge_overhead_dic
 
     def get_total_overhead(self, local_overhead_dic, trans_overhead_dic, edge_overhead_dic,
                            queue_wait_dic=None):

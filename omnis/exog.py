@@ -16,6 +16,39 @@ def keyed_rng(seed, *parts) -> np.random.RandomState:
     return np.random.RandomState(int.from_bytes(h.digest(), "little") % (2**32))
 
 
+def compute_flops_mult(seed, user, t_arrive, stage: str, logstd: float) -> float:
+    """Mean-one lognormal multiplier for hardware compute jitter.
+
+    Realized local/edge FLOPs are scaled by ``ξ`` with
+    ``log ξ ~ N(-σ²/2, σ²)`` so ``E[ξ]=1``. Captures mild per-inference
+    DVFS / cache / runtime variability (not sustained thermal collapse).
+    ``logstd=0`` disables (returns 1). Stage is ``\"local\"`` or ``\"edge\"``.
+    """
+    std = float(logstd)
+    if std <= 1e-12:
+        return 1.0
+    # Mean-preserving: E[exp(Z)]=1 for Z~N(-σ²/2, σ²).
+    z = keyed_rng(
+        seed, "flops", str(user), float(t_arrive), str(stage)
+    ).normal(-0.5 * std * std, std)
+    return float(np.exp(z))
+
+
+def md_pending_wait(pipeline, user: str) -> float:
+    """Observed MD-side wait of the HOL pending / active task [s]."""
+    at = pipeline.active.get(user)
+    if at is not None:
+        if at.md_wait_s > 0:
+            return float(at.md_wait_s)
+        if at.t_arrive is not None:
+            return max(0.0, float(pipeline.time_s) - float(at.t_arrive))
+        return 0.0
+    q = pipeline.pending.get(user)
+    if q:
+        return max(0.0, float(pipeline.time_s) - float(q[0].t_arrive))
+    return 0.0
+
+
 def exog_seed(agent) -> int:
     return int(getattr(agent, "seed", 0))
 

@@ -72,9 +72,9 @@ class CTO(OMNIS):
                 else:
                     bw = self._forecast_uplink_bw(user, cell_id, bw)
                 gpu_hat = self._gpu_hat_for_association(user, cell_id=cell_id)
-                edge_d = (self.tail_flops[model_name] * 1e-9
-                          / (gpu_hat * es["cores"] * es["flops_per_cycle"]))
-                edge_e = es["power_coeff"] * gpu_hat ** 3 * edge_d
+                from omnis.compute_stats import local_edge_compute_parts
+                local_d, local_e, edge_d, edge_e = local_edge_compute_parts(
+                    self, user, model_name, gpu_hat)
                 return (local_d, local_e, edge_d, edge_e, payload, bw,
                         backlog_b, p_tx)
 
@@ -84,6 +84,8 @@ class CTO(OMNIS):
             task_u["backlog_tasks"] = task_u["backlog_bits"]
             task_u["dpp_task_scale"] = float(self.dpp_task_scale)
             task_u["slot_duration"] = float(self.slot_duration)
+            from omnis.exog import md_pending_wait
+            task_u["md_pending_wait"] = float(md_pending_wait(self.pipeline, user))
             return (
                 user, cand_cells_dic[user], sinr_db_all_dic[user],
                 task_u, predict_overheads, drift_score, parts_for_cell)

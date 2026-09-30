@@ -250,8 +250,9 @@ def enrich_runtime_rows(rows, user_num=None):
     New convergence_lib: decision_ms already includes update; ms = decision+comm+bcd.
     Old CSV: decision_ms is decision-only; ms = decision+bcd+update; no comm_*.
 
-    Stack segments: selection + update + interaction/comm + per-algo
-    resource-allocation wall (BCD or GDO EG slice; CSV field ``bcd_ms``).
+    Stack segments: selection + update + interaction/comm + resource allocation.
+    Allocation uses a *shared median* of per-algo wall medians (same ES BCD
+    path across schemes); raw walls are kept in ``bcd_ms_wall``.
     """
     cfg = _comm_defaults(user_num=user_num)
 
@@ -262,16 +263,24 @@ def enrich_runtime_rows(rows, user_num=None):
         if v is None or v == "":
             continue
         by_algo.setdefault(name, []).append(float(v))
+    shared_bcd = 0.0
     if by_algo:
         algo_meds = {k: float(np.median(v)) for k, v in by_algo.items()}
+        shared_bcd = float(np.median(list(algo_meds.values())))
         meds = list(algo_meds.values())
         spread = max(meds) - min(meds)
+        parts = ", ".join(f"{k}={v:.1f}" for k, v in sorted(algo_meds.items()))
         if spread > 2.0:  # ms
-            parts = ", ".join(f"{k}={v:.1f}" for k, v in sorted(algo_meds.items()))
             print(
                 f"note: resource-allocation wall medians differ across algos "
                 f"(spread={spread:.1f}ms: {parts}); "
-                f"runtime keeps per-algo walls",
+                f"runtime stack uses shared median bcd_ms={shared_bcd:.2f}",
+                flush=True,
+            )
+        else:
+            print(
+                f"resource allocation: shared median bcd_ms={shared_bcd:.2f} "
+                f"(per-algo walls: {parts})",
                 flush=True,
             )
 
@@ -285,7 +294,7 @@ def enrich_runtime_rows(rows, user_num=None):
 
         # Always recompute interaction from the control-plane model so protocol
         # changes (rounds / payloads) apply without a full retrain. Decision
-        # and resource allocation stay measured per algorithm.
+        # stays measured per algorithm; allocation uses shared median below.
         comm = comm_ms_per_slot(
             name,
             user_num=cfg["user_num"],
@@ -306,7 +315,8 @@ def enrich_runtime_rows(rows, user_num=None):
 
         r["decision_ms"] = float(decision_stack)
         r["bcd_ms_wall"] = bcd_wall
-        r["bcd_ms"] = float(bcd_wall)
+        # Fair cross-algo stack: shared ES allocation cost.
+        r["bcd_ms"] = float(shared_bcd if by_algo else bcd_wall)
         r["update_ms"] = upd  # parallel learning update [ms/slot]
         # selection-only = folded decision minus update (floored at 0)
         r["select_ms"] = float(max(decision_stack - upd, 0.0))
@@ -315,7 +325,7 @@ def enrich_runtime_rows(rows, user_num=None):
         r["comm_downlink_B"] = float(comm["comm_downlink_B"])
         r["comm_rounds"] = float(comm["comm_rounds"])
         r["ms_per_slot"] = float(
-            decision_stack + bcd_wall + float(comm["comm_ms"]))
+            decision_stack + float(r["bcd_ms"]) + float(comm["comm_ms"]))
     return rows, cfg
 
 
@@ -497,15 +507,19 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     print(f"comm model: users={comm_cfg['user_num']} "
           f"RTT={comm_cfg['rtt_s']*1e3:.2g}ms "
           f"R_ctrl={comm_cfg['ctrl_rate_bps']:.3g}bps", flush=True)
-    bcd_meds = []
+    wall_meds = []
     for n in names:
-        vs = [r["bcd_ms"] for r in rows if r["name"] == n and "bcd_ms" in r]
+        vs = [r["bcd_ms_wall"] for r in rows
+              if r["name"] == n and r.get("bcd_ms_wall") is not None]
         if vs:
-            bcd_meds.append(f"{n}={float(np.median(vs)):.2f}")
-    if bcd_meds:
-        print(f"resource allocation (per-algo median ms/slot): "
-              f"{', '.join(bcd_meds)}",
-              flush=True)
+            wall_meds.append(f"{n}={float(np.median(vs)):.2f}")
+    shared_vs = [r["bcd_ms"] for r in rows if r.get("bcd_ms") is not None]
+    if wall_meds and shared_vs:
+        print(
+            f"resource allocation: stack bcd_ms={float(np.median(shared_vs)):.2f} "
+            f"(shared); raw walls: {', '.join(wall_meds)}",
+            flush=True,
+        )
 
     # Trailing-window reward; ylim from post-warmup percentiles.
     rew_w = 60
@@ -604,7 +618,7 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     ax.set_ylabel("Time per slot [ms]")
     ax.set_title(
         "Runtime per slot (median across seeds)\n"
-        "resource allocation = measured wall; interaction = control-plane model")
+        "resource allocation = shared median wall; interaction = control-plane model")
     ax.legend(fontsize=8)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
@@ -627,7 +641,7 @@ def plot_results(indir, out_dir=None, algos=None, slide=5, mat_path=None,
     ax.set_ylabel("Time per slot [ms]")
     ax.set_title(
         "Compute + resource allocation per slot (median across seeds)\n"
-        "excludes modeled control-plane interaction")
+        "allocation = shared median wall; excludes modeled interaction")
     ax.legend(fontsize=8)
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()

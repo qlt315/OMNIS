@@ -70,6 +70,22 @@ class Config:
         self.mab_no_update = False
         self.mab_freeze_after = 0
         self.log_pred_error = True
+        # Multiplicative compute jitter ξ~LogNormal(0,σ²) on realized FLOPs
+        # (simulator physics only). Models mild per-inference hardware
+        # variability: DVFS/thermal micro-jitter, cache/runtime contention,
+        # framework scheduling — not sustained thermal throttling.
+        # Empirically σ≈0.08–0.12 → ~8–12% CV; 0 disables.
+        self.compute_realism_logstd = 0.1
+        # Online compute stats (decision side; FLOPs remain simulator-only).
+        # Mild cold-start priors + hierarchical fallbacks (not FLOPs maps).
+        # n0=1: use the first measurement immediately.
+        self.compute_stats_alpha = 0.2
+        self.compute_stats_n0 = 1
+        self.compute_prior_local_s = 1e-3
+        self.compute_prior_local_e = 5e-4
+        self.compute_prior_W = 5e-3
+        self.compute_prior_E_norm = 5e-3
+        self.compute_prior_tx_power = 0.1
         self.dpp_bit_scale = float(np.mean(list(self.data_size_bits.values())))
         self.dpp_task_scale = 3.0
         self.dpp_energy_scale = 1.0
@@ -146,7 +162,9 @@ class Config:
         self.causal_explore_slots = 80
         self.causal_init_random = 2
         self.causal_empty_prior_std = 1.0
-        self.causal_gp_max_obs = 500
+        # Sliding-window GP size: smaller → faster predict/add; 250 keeps
+        # recent interventional Acc coverage without O(500^2) cost.
+        self.causal_gp_max_obs = 250
         self.causal_beta = 0.12
         self.causal_feas_margin = 0.88
         self.causal_gp_length_scales = [6.0, 0.40, 2.0, 0.20]

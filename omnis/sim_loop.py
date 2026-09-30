@@ -275,10 +275,31 @@ def run_discrete_simulation(agent):
             local_e = md["power_coeff"] * md["freq"] ** 3 * local_d
             edge_unit = (agent.tail_flops[model_name] * 1e-9
                          / (es["cores"] * es["flops_per_cycle"]))
-            agent.pipeline.admit(
+            # Realized compute: mean-one lognormal ξ (hardware jitter:
+            # DVFS/cache/runtime). Hats never see FLOPs/ξ — only EWMA.
+            logstd = float(getattr(agent, "compute_realism_logstd", 0.0))
+            if logstd > 1e-12:
+                from omnis.exog import compute_flops_mult, exog_seed
+                hol = agent.pipeline.pending[user][0]
+                t_arr = float(hol.t_arrive)
+                seed = exog_seed(agent)
+                local_mult = compute_flops_mult(
+                    seed, user, t_arr, "local", logstd)
+                edge_mult = compute_flops_mult(
+                    seed, user, t_arr, "edge", logstd)
+                local_d = local_d * local_mult
+                local_e = md["power_coeff"] * md["freq"] ** 3 * local_d
+                edge_unit = edge_unit * edge_mult
+            admitted = agent.pipeline.admit(
                 user, model_name, cell_id,
                 agent._payload_bits(model_name),
                 local_d, local_e, edge_unit, float(es["power_coeff"]))
+            if (admitted is not None
+                    and getattr(agent, "log_proxy_calib", False)):
+                from omnis.proxy_calib import attach_admit_proxy
+                snr_db = float(sinr_est_db_all_dic[user].get(cell_id, 0.0))
+                attach_admit_proxy(
+                    agent, admitted, task_dic[user], snr_db)
 
         active_users = [
             u for u in agent.users if agent.pipeline.active[u] is not None
@@ -309,8 +330,8 @@ def run_discrete_simulation(agent):
         snr_true_dic = {u: 1e-12 for u in agent.users}
         snr_est_dic = {u: 1e-12 for u in agent.users}
 
-        # Radio BCD: BW/MCS only for MDs with residual uplink bits (M^u).
-        # GPU is FIFO: full pool to each cell's edge HOL, outside the radio BCD.
+        # Radio BCD: BW/MCS for MDs with residual uplink bits (M^u).
+        # GPU: continuous share among concurrent edge-stage tasks per cell.
         snr_est_dic = {
             u: 10 ** (sinr_est_db_all_dic[u][cand_cells_dic[u][0]] / 10)
             for u in agent.users
@@ -375,6 +396,8 @@ def run_discrete_simulation(agent):
         # Do not log mid-task predicted overhead into evaluation metrics;
         # BCD already used its own proxy inside run_bcd_slot. Realized e2e
         # delay/energy/reward are written only on task completion below.
+        # ES uplink airtime is measured (timestamps / grant accounting), not
+        # estimated — MD alone forecasts uplink at admission.
 
         for user in agent.users:
             agent.instant_metrics[user]["mcs"].append(phy_choice_dic[user])
@@ -445,6 +468,15 @@ def run_discrete_simulation(agent):
         done_by_user = {}
         for task in done_tasks:
             done_by_user.setdefault(task.user, []).append(task)
+            # Shared measurement-driven compute stats (all algos).
+            t_stats = time.perf_counter()
+            from omnis.compute_stats import ensure_compute_stats
+            ensure_compute_stats(agent).update_from_task(task)
+            if hasattr(agent, "update_time"):
+                agent.update_time += time.perf_counter() - t_stats
+            if getattr(agent, "log_proxy_calib", False):
+                from omnis.proxy_calib import record_completion
+                record_completion(agent, task)
 
         learn_snr, learn_mcs, learn_acc = {}, {}, {}
         learn_ctx, learn_msel, learn_rew = {}, {}, {}
@@ -478,7 +510,8 @@ def run_discrete_simulation(agent):
                 reward_dic[user] = agent.get_reward(
                     {user: td}, {user: acc},
                     {user: total_overhead_dic[user]})[user]
-                learn_snr[user] = snr_lin
+                # GP features use MD-observable CSI (est), not true PHY SINR.
+                learn_snr[user] = float(snr_est_dic.get(user, snr_lin))
                 learn_mcs[user] = mcs
                 learn_acc[user] = acc
                 learn_ctx[user] = context_dic.get(user, {
@@ -518,6 +551,8 @@ def run_discrete_simulation(agent):
         for u, bw in bandwidth_allocation_dic.items():
             if bw > 0:
                 agent._last_bandwidth[u] = bw
+                from omnis.compute_stats import ensure_compute_stats
+                ensure_compute_stats(agent).update_bw_grant(u, bw)
         for u, g in gpu_allocation_dic.items():
             if g > 0:
                 agent._last_gpu[u] = g
