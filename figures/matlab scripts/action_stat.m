@@ -127,6 +127,28 @@ end
 set(findall(gcf, '-property', 'FontName'), 'FontName', 'Times New Roman');
 set(findall(gcf, '-property', 'FontSize'), 'FontSize', fs);
 
+% Compact left/right figure margins (keep subplot relative layout).
+m = 0.01;   % 左右目标边距
+axs = findall(gcf, 'Type', 'axes');
+axs = axs(~arrayfun(@(a) strcmpi(a.Tag, 'legend'), axs));
+set(axs, 'Units', 'normalized'); drawnow
+
+n = numel(axs);
+pos = zeros(n, 4);
+outerL = inf; outerR = -inf;
+for k = 1:n
+    pos(k, :) = axs(k).Position;
+    ti = axs(k).TightInset;
+    outerL = min(outerL, pos(k, 1) - ti(1));
+    outerR = max(outerR, pos(k, 1) + pos(k, 3) + ti(3));
+end
+span = outerR - outerL;
+scale = (1 - 2 * m) / span;
+shift = m - outerL * scale;
+for k = 1:n
+    axs(k).Position = [pos(k, 1) * scale + shift, pos(k, 2), pos(k, 3) * scale, pos(k, 4)];
+end
+
 function P = local_pick_matrix(mat, algo_keys, model_keys, setting_idx)
 %LOCAL_PICK_MATRIX Build [n_algo x n_model] pick probs for one setting.
     n_a = numel(algo_keys);

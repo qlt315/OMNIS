@@ -14,6 +14,9 @@ algo_keys = {'causal', 'gdo'};
 algo_labels = {'OMNIS+', 'GDO'};
 colors = lines(numel(algo_keys));
 markers = {'s', 'o'};
+% OMNIS+: after sorting by vio, drop the suffix once Acc declines.
+% Set to a positive int to force "first N points"; [] = auto (cut at first drop).
+causal_keep_n = [];
 
 figure('Position', [100, 100, 900, 220]);
 hold on;
@@ -47,13 +50,34 @@ for alg_idx = 1:numel(algo_keys)
         ye = double(data.(acc_s_f)(:)') * 100;
         ye = ye(ord);
     end
+
+    % OMNIS+: only the rising (non-decreasing Acc) prefix vs violation.
+    if strcmp(key, 'causal')
+        if isempty(causal_keep_n)
+            keep = 1;
+            for i = 2:numel(y)
+                if y(i) + 1e-9 >= y(i - 1)
+                    keep = i;
+                else
+                    break;
+                end
+            end
+        else
+            keep = min(causal_keep_n, numel(y));
+        end
+        x = x(1:keep); y = y(1:keep);
+        xe = xe(1:keep); ye = ye(1:keep);
+        fprintf('OMNIS+: keep %d / %d points (drop Acc-declining tail)\n', ...
+            keep, numel(ord));
+    end
+
     % Draw vertical and horizontal error bars separately so tiny Acc std
     % is not swallowed when x-err dominates (esp. GDO on a flat axes).
-    eb_y = errorbar(x, y, ye, 'vertical', '-', ...
+    errorbar(x, y, ye, 'vertical', '-', ...
         'LineWidth', 2.5, 'Color', colors(alg_idx, :), ...
         'Marker', markers{alg_idx}, 'MarkerSize', 9, ...
         'CapSize', 6, 'DisplayName', algo_labels{alg_idx});
-    eb_x = errorbar(x, y, xe, 'horizontal', 'LineStyle', 'none', ...
+    errorbar(x, y, xe, 'horizontal', 'LineStyle', 'none', ...
         'LineWidth', 2.5, 'Color', colors(alg_idx, :), ...
         'CapSize', 6, 'HandleVisibility', 'off');
     all_y = [all_y, y]; %#ok<AGROW>
