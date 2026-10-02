@@ -1,0 +1,904 @@
+
+% Journals
+
+% First the Full Name is given, then the abbreviation used in the AMS Math
+% Reviews, with an indication if it could not be found there.
+% Note the 2nd overwrites the 1st, so swap them if you want the full name.
+
+ %{AMS}
+ @String{AMSTrans = "American Mathematical Society Translations" }
+ @String{AMSTrans = "Amer. Math. Soc. Transl." }
+ @String{BullAMS = "Bulletin of the American Mathematical Society" }
+ @String{BullAMS = "Bull. Amer. Math. Soc." }
+ @String{ProcAMS = "Proceedings of the American Mathematical Society" }
+ @String{ProcAMS = "Proc. Amer. Math. Soc." }
+ @String{TransAMS = "Transactions of the American Mathematical Society" }
+ @String{TransAMS = "Trans. Amer. Math. Soc." }
+
+ %ACM
+ @String{CACM = "Communications of the {ACM}" }
+ @String{CACM = "Commun. {ACM}" }
+ @String{CompServ = "Comput. Surveys" }
+ @String{JACM = "J. ACM" }
+ @String{ACMMathSoft = "{ACM} Transactions on Mathematical Software" }
+ @String{ACMMathSoft = "{ACM} Trans. Math. Software" }
+ @String{SIGNUM = "{ACM} {SIGNUM} Newsletter" }
+ @String{SIGNUM = "{ACM} {SIGNUM} Newslett." }
+
+ @String{AmerSocio = "American Journal of Sociology" }
+ @String{AmerStatAssoc = "Journal of the American Statistical Association" }
+ @String{AmerStatAssoc = "J. Amer. Statist. Assoc." }
+ @String{ApplMathComp = "Applied Mathematics and Computation" }
+ @String{ApplMathComp = "Appl. Math. Comput." }
+ @String{AmerMathMonthly = "American Mathematical Monthly" }
+ @String{AmerMathMonthly = "Amer. Math. Monthly" }
+ @String{BIT = "{BIT}" }
+ @String{BritStatPsych = "British Journal of Mathematical and Statistical
+          Psychology" }
+ @String{BritStatPsych = "Brit. J. Math. Statist. Psych." }
+ @String{CanMathBull = "Canadian Mathematical Bulletin" }
+ @String{CanMathBull = "Canad. Math. Bull." }
+ @String{CompApplMath = "Journal of Computational and Applied Mathematics" }
+ @String{CompApplMath = "J. Comput. Appl. Math." }
+ @String{CompPhys = "Journal of Computational Physics" }
+ @String{CompPhys = "J. Comput. Phys." }
+ @String{CompStruct = "Computers and Structures" }
+ @String{CompStruct = "Comput. \& Structures" }
+ @String{CompJour = "The Computer Journal" }
+ @String{CompJour = "Comput. J." }
+ @String{CompSysSci = "Journal of Computer and System Sciences" }
+ @String{CompSysSci = "J. Comput. System Sci." }
+ @String{Computing = "Computing" }
+ @String{ContempMath = "Contemporary Mathematics" }
+ @String{ContempMath = "Contemp. Math." }
+ @String{Crelle = "Crelle's Journal" }
+ @String{GiornaleMath = "Giornale di Mathematiche" }
+ @String{GiornaleMath = "Giorn. Mat." } % didn't find in AMS MR., ibid.
+
+ %IEEE
+ @String{Computer = "{IEEE} Computer" }
+ @String{IEEETransComp = "{IEEE} Transactions on Computers" }
+ @String{IEEETransComp = "{IEEE} Trans. Comput." }
+ @String{IEEETransAC = "{IEEE} Transactions on Automatic Control" }
+ @String{IEEETransAC = "{IEEE} Trans. Automat. Control" }
+ @String{IEEESpec = "{IEEE} Spectrum" } % didn't find in AMS MR
+ @String{ProcIEEE = "Proceedings of the {IEEE}" }
+ @String{ProcIEEE = "Proc. {IEEE}" } % didn't find in AMS MR
+ @String{IEEETransAeroElec = "{IEEE} Transactions on Aerospace and Electronic
+     Systems" }
+ @String{IEEETransAeroElec = "{IEEE} Trans. Aerospace Electron. Systems" }
+
+ @String{IMANumerAna = "{IMA} Journal of Numerical Analysis" }
+ @String{IMANumerAna = "{IMA} J. Numer. Anal." }
+ @String{InfProcLet = "Information Processing Letters" }
+ @String{InfProcLet = "Inform. Process. Lett." }
+ @String{InstMathApp = "Journal of the Institute of Mathematics and
+     its Applications" }
+ @String{InstMathApp = "J. Inst. Math. Appl." }
+ @String{IntControl = "International Journal of Control" }
+ @String{IntControl = "Internat. J. Control" }
+ @String{IntNumerEng = "International Journal for Numerical Methods in
+     Engineering" }
+ @String{IntNumerEng = "Internat. J. Numer. Methods Engrg." }
+ @String{IntSuper = "International Journal of Supercomputing Applications" }
+ @String{IntSuper = "Internat. J. Supercomputing Applic." } % didn't find
+%% in AMS MR
+ @String{Kibernetika = "Kibernetika" }
+ @String{JResNatBurStand = "Journal of Research of the National Bureau
+     of Standards" }
+ @String{JResNatBurStand = "J. Res. Nat. Bur. Standards" }
+ @String{LinAlgApp = "Linear Algebra and its Applications" }
+ @String{LinAlgApp = "Linear Algebra Appl." }
+ @String{MathAnaAppl = "Journal of Mathematical Analysis and Applications" }
+ @String{MathAnaAppl = "J. Math. Anal. Appl." }
+ @String{MathAnnalen = "Mathematische Annalen" }
+ @String{MathAnnalen = "Math. Ann." }
+ @String{MathPhys = "Journal of Mathematical Physics" }
+ @String{MathPhys = "J. Math. Phys." }
+ @String{MathComp = "Mathematics of Computation" }
+ @String{MathComp = "Math. Comp." }
+ @String{MathScand = "Mathematica Scandinavica" }
+ @String{MathScand = "Math. Scand." }
+ @String{TablesAidsComp = "Mathematical Tables and Other Aids to Computation" }
+ @String{TablesAidsComp = "Math. Tables Aids Comput." }
+ @String{NumerMath = "Numerische Mathematik" }
+ @String{NumerMath = "Numer. Math." }
+ @String{PacificMath = "Pacific Journal of Mathematics" }
+ @String{PacificMath = "Pacific J. Math." }
+ @String{ParDistComp = "Journal of Parallel and Distributed Computing" }
+ @String{ParDistComp = "J. Parallel and Distrib. Comput." } % didn't find
+%% in AMS MR
+ @String{ParComputing = "Parallel Computing" }
+ @String{ParComputing = "Parallel Comput." }
+ @String{PhilMag = "Philosophical Magazine" }
+ @String{PhilMag = "Philos. Mag." }
+ @String{ProcNAS = "Proceedings of the National Academy of Sciences
+                    of the USA" }
+ @String{ProcNAS = "Proc. Nat. Acad. Sci. U. S. A." }
+ @String{Psychometrika = "Psychometrika" }
+ @String{QuartMath = "Quarterly Journal of Mathematics, Oxford, Series (2)" }
+ @String{QuartMath = "Quart. J. Math. Oxford Ser. (2)" }
+ @String{QuartApplMath = "Quarterly of Applied Mathematics" }
+ @String{QuartApplMath = "Quart. Appl. Math." }
+ @String{RevueInstStat = "Review of the International Statisical Institute" }
+ @String{RevueInstStat = "Rev. Inst. Internat. Statist." }
+
+ %SIAM
+ @String{JSIAM = "Journal of the Society for Industrial and Applied
+     Mathematics" }
+ @String{JSIAM = "J. Soc. Indust. Appl. Math." }
+ @String{JSIAMB = "Journal of the Society for Industrial and Applied
+     Mathematics, Series B, Numerical Analysis" }
+ @String{JSIAMB = "J. Soc. Indust. Appl. Math. Ser. B Numer. Anal." }
+ @String{SIAMAlgMeth = "{SIAM} Journal on Algebraic and Discrete Methods" }
+ @String{SIAMAlgMeth = "{SIAM} J. Algebraic Discrete Methods" }
+ @String{SIAMAppMath = "{SIAM} Journal on Applied Mathematics" }
+ @String{SIAMAppMath = "{SIAM} J. Appl. Math." }
+ @String{SIAMComp = "{SIAM} Journal on Computing" }
+ @String{SIAMComp = "{SIAM} J. Comput." }
+ @String{SIAMMatrix = "{SIAM} Journal on Matrix Analysis and Applications" }
+ @String{SIAMMatrix = "{SIAM} J. Matrix Anal. Appl." }
+ @String{SIAMNumAnal = "{SIAM} Journal on Numerical Analysis" }
+ @String{SIAMNumAnal = "{SIAM} J. Numer. Anal." }
+ @String{SIAMReview = "{SIAM} Review" }
+ @String{SIAMReview = "{SIAM} Rev." }
+ @String{SIAMSciStat = "{SIAM} Journal on Scientific and Statistical
+     Computing" }
+ @String{SIAMSciStat = "{SIAM} J. Sci. Statist. Comput." }
+
+ @String{SoftPracExp = "Software Practice and Experience" }
+ @String{SoftPracExp = "Software Prac. Experience" } % didn't find in AMS MR
+ @String{StatScience = "Statistical Science" }
+ @String{StatScience = "Statist. Sci." }
+ @String{Techno = "Technometrics" }
+ @String{USSRCompMathPhys = "{USSR} Computational Mathematics and Mathematical
+     Physics" }
+ @String{USSRCompMathPhys = "{U. S. S. R.} Comput. Math. and Math. Phys." }
+ @String{VLSICompSys = "Journal of {VLSI} and Computer Systems" }
+ @String{VLSICompSys = "J. {VLSI} Comput. Syst." }
+ @String{ZAngewMathMech = "Zeitschrift fur Angewandte Mathematik und
+     Mechanik" }
+ @String{ZAngewMathMech = "Z. Angew. Math. Mech." }
+ @String{ZAngewMathPhys = "Zeitschrift fur Angewandte Mathematik und Physik" }
+ @String{ZAngewMathPhys = "Z. Angew. Math. Phys." }
+
+% Publishers % ================================================= |
+
+ @String{Academic = "Academic Press" }
+ @String{ACMPress = "{ACM} Press" }
+ @String{AdamHilger = "Adam Hilger" }
+ @String{AddisonWesley = "Addison-Wesley" }
+ @String{AllynBacon = "Allyn and Bacon" }
+ @String{AMS = "American Mathematical Society" }
+ @String{Birkhauser = "Birkh{\"a}user" }
+ @String{CambridgePress = "Cambridge University Press" }
+ @String{Chelsea = "Chelsea" }
+ @String{ClaredonPress = "Claredon Press" }
+ @String{DoverPub = "Dover Publications" }
+ @String{Eyolles = "Eyolles" }
+ @String{HoltRinehartWinston = "Holt, Rinehart and Winston" }
+ @String{Interscience = "Interscience" }
+ @String{JohnsHopkinsPress = "The Johns Hopkins University Press" }
+ @String{JohnWileySons = "John Wiley and Sons" }
+ @String{Macmillan = "Macmillan" }
+ @String{MathWorks = "The Math Works Inc." }
+ @String{McGrawHill = "McGraw-Hill" }
+ @String{NatBurStd = "National Bureau of Standards" }
+ @String{NorthHolland = "North-Holland" }
+ @String{OxfordPress = "Oxford University Press" }  %address Oxford or London?
+ @String{PergamonPress = "Pergamon Press" }
+ @String{PlenumPress = "Plenum Press" }
+ @String{PrenticeHall = "Prentice-Hall" }
+ @String{SIAMPub = "{SIAM} Publications" }
+ @String{Springer = "Springer-Verlag" }
+ @String{TexasPress = "University of Texas Press" }
+ @String{VanNostrand = "Van Nostrand" }
+ @String{WHFreeman = "W. H. Freeman and Co." }
+
+%Entries
+@ARTICLE{Langtian2024,
+  author={Qin, Langtian and Lu, Hancheng and Chen, Yuang and Chong, Baolin and Wu, Feng},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Toward Decentralized Task Offloading and Resource Allocation in User-Centric MEC}, 
+  year={2024},
+  volume={23},
+  number={12},
+  pages={11807-11823}}
+
+@ARTICLE{Hongyu2020,
+  author={Xiang, Hongyu and Yan, Shi and Peng, Mugen},
+  journal={IEEE Transactions on Wireless Communications}, 
+  title={A Realization of Fog-RAN Slicing via Deep Reinforcement Learning}, 
+  year={2020},
+  volume={19},
+  number={4},
+  pages={2515-2527},
+  doi={10.1109/TWC.2020.2965927}}
+
+@ARTICLE{Salvatore2018,
+  author={D’Oro, Salvatore and Restuccia, Francesco and Melodia, Tommaso and Palazzo, Sergio},
+  journal={IEEE/ACM Transactions on Networking}, 
+  title={Low-Complexity Distributed Radio Access Network Slicing: Algorithms and Experimental Results}, 
+  year={2018},
+  volume={26},
+  number={6},
+  pages={2815-2828},
+  doi={10.1109/TNET.2018.2878965}}
+
+@ARTICLE{Yao2021,
+  author={Sun, Yao and Qin, Shuang and Feng, Gang and Zhang, Lei and Imran, Muhammad Ali},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Service Provisioning Framework for RAN Slicing: User Admissibility, Slice Association and Bandwidth Allocation}, 
+  year={2021},
+  volume={20},
+  number={12},
+  pages={3409-3422},
+  doi={10.1109/TMC.2020.3000657}}
+
+@ARTICLE{Salvatore2021,
+  author={D’Oro, Salvatore and Bonati, Leonardo and Restuccia, Francesco and Melodia, Tommaso},
+  journal={IEEE/ACM Transactions on Networking}, 
+  title={Coordinated 5G Network Slicing: How Constructive Interference Can Boost Network Throughput}, 
+  year={2021},
+  volume={29},
+  number={4},
+  pages={1881-1894},
+  doi={10.1109/TNET.2021.3073272}}
+
+@ARTICLE{Veloso2024,
+  author={Nahum, Cleverson Veloso and Lopes, Victor Hugo L. and Dreifuerst, Ryan M. and Batista, Pedro and Correa, Ilan and Cardoso, Kleber Vieira and Klautau, Aldebaro and Heath, Robert W.},
+  journal={IEEE Transactions on Wireless Communications}, 
+  title={Intent-Aware Radio Resource Scheduling in a RAN Slicing Scenario Using Reinforcement Learning}, 
+  year={2024},
+  volume={23},
+  number={3},
+  pages={2253-2267},
+  doi={10.1109/TWC.2023.3297014}}
+
+@ARTICLE{Mehdi2022,
+  author={Setayesh, Mehdi and Bahrami, Shahab and Wong, Vincent W.S.},
+  journal={IEEE Transactions on Wireless Communications}, 
+  title={Resource Slicing for eMBB and URLLC Services in Radio Access Network Using Hierarchical Deep Learning}, 
+  year={2022},
+  volume={21},
+  number={11},
+  pages={8950-8966},
+  doi={10.1109/TWC.2022.3171264}}
+
+@ARTICLE{Kai2022,
+  author={Yu, Kai and Zhou, Haibo and Tang, Zhixuan and Shen, Xuemin and Hou, Fen},
+  journal={IEEE Transactions on Wireless Communications}, 
+  title={Deep Reinforcement Learning-Based RAN Slicing for UL/DL Decoupled Cellular V2X}, 
+  year={2022},
+  volume={21},
+  number={5},
+  pages={3523-3535},
+  doi={10.1109/TWC.2021.3122941}}
+
+@inproceedings{Kai2022Mobicom,
+author = {Huang, Kai and Gao, Wei},
+title = {Real-time neural network inference on extremely weak devices: agile offloading with explainable AI},
+year = {2022},
+publisher = {ACM},
+address = {New York, NY, USA},
+doi = {10.1145/3495243.3560551},
+pages = {200–213},
+booktitle= {ACM MobiCom}
+}
+
+@ARTICLE{Guangji2023,
+  author={Chen, Guangji and Wu, Qingqing and Liu, Ruiqi and Wu, Jingxian and Fang, Chao},
+  journal={IEEE Journal on Selected Areas in Communications}, 
+  title={IRS Aided MEC Systems With Binary Offloading: A Unified Framework for Dynamic IRS Beamforming}, 
+  year={2023},
+  volume={41},
+  number={2},
+  pages={349-365},
+  doi={10.1109/JSAC.2022.3228605}}
+
+@ARTICLE{Bo2021,
+  author={Yang, Bo and Cao, Xuelin and Bassey, Joshua and Li, Xiangfang and Qian, Lijun},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Computation Offloading in Multi-Access Edge Computing: A Multi-Task Learning Approach}, 
+  year={2021},
+  volume={20},
+  number={9},
+  pages={2745-2762},
+  doi={10.1109/TMC.2020.2990630}}
+
+@ARTICLE{Phu2021,
+  author={Nguyen, Phu X. and Tran, Dinh-Hieu and Onireti, Oluwakayode and Tin, Phu Tran and Nguyen, Sang Quang and Chatzinotas, Symeon and Vincent Poor, H.},
+  journal={IEEE Internet of Things Journal}, 
+  title={Backscatter-Assisted Data Offloading in OFDMA-Based Wireless-Powered Mobile Edge Computing for IoT Networks}, 
+  year={2021},
+  volume={8},
+  number={11},
+  pages={9233-9243},
+  doi={10.1109/JIOT.2021.3057360}}
+
+@ARTICLE{Xiaoheng2023,
+  author={Deng, Xiaoheng and Yin, Jian and Guan, Peiyuan and Xiong, Neal N. and Zhang, Lan and Mumtaz, Shahid},
+  journal={IEEE Internet of Things Journal}, 
+  title={Intelligent Delay-Aware Partial Computing Task Offloading for Multiuser Industrial Internet of Things Through Edge Computing}, 
+  year={2023},
+  volume={10},
+  number={4},
+  pages={2954-2966},
+  doi={10.1109/JIOT.2021.3123406}}
+
+@ARTICLE{Liang2023,
+  author={Zhao, Liang and Zhao, Zijia and Zhang, Enchao and Hawbani, Ammar and Al-Dubai, Ahmed Y. and Tan, Zhiyuan and Hussain, Amir},
+  journal={IEEE Journal on Selected Areas in Communications}, 
+  title={A Digital Twin-Assisted Intelligent Partial Offloading Approach for Vehicular Edge Computing}, 
+  year={2023},
+  volume={41},
+  number={11},
+  pages={3386-3400},
+  doi={10.1109/JSAC.2023.3310062}}
+
+@ARTICLE{Umber2020,
+  author={Saleem, Umber and Liu, Yu and Jangsher, Sobia and Tao, Xiaoming and Li, Yong},
+  journal={IEEE Transactions on Vehicular Technology}, 
+  title={Latency Minimization for D2D-Enabled Partial Computation Offloading in Mobile Edge Computing}, 
+  year={2020},
+  volume={69},
+  number={4},
+  pages={4472-4486},
+  doi={10.1109/TVT.2020.2978027}}
+
+@ARTICLE{Ying2024,
+  author={Chen, Ying and Li, Kaixin and Wu, Yuan and Huang, Jiwei and Zhao, Lian},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Energy Efficient Task Offloading and Resource Allocation in Air-Ground Integrated MEC Systems: A Distributed Online Approach}, 
+  year={2024},
+  volume={23},
+  number={8},
+  pages={8129-8142},
+  doi={10.1109/TMC.2023.3346431}}
+
+@ARTICLE{Hongbo2023,
+  author={Jiang, Hongbo and Dai, Xingxia and Xiao, Zhu and Iyengar, Arun},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Joint Task Offloading and Resource Allocation for Energy-Constrained Mobile Edge Computing}, 
+  year={2023},
+  volume={22},
+  number={7},
+  pages={4000-4015},
+  doi={10.1109/TMC.2022.3150432}}
+
+@ARTICLE{Xin2021,
+  author={Tang, Xin and Chen, Xu and Zeng, Liekang and Yu, Shuai and Chen, Lin},
+  journal={IEEE Internet of Things Journal}, 
+  title={Joint Multiuser DNN Partitioning and Computational Resource Allocation for Collaborative Edge Intelligence}, 
+  year={2021},
+  volume={8},
+  number={12},
+  pages={9511-9522},
+  doi={10.1109/JIOT.2020.3010258}}
+
+@ARTICLE{Yiran2024,
+  author={Li, Yiran and Liu, Zhen and Kou, Ze and Wang, Yannan and Zhang, Guoqiang and Li, Yidong and Sun, Yongqi},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Real-Time Adaptive Partition and Resource Allocation for Multi-User End-Cloud Inference Collaboration in Mobile Environment}, 
+  year={2024},
+  volume={23},
+  number={12},
+  pages={13076-13094},
+  doi={10.1109/TMC.2024.3430103}}
+
+@ARTICLE{Maoqiang2024,
+  author={Wu, Maoqiang and Yang, Ruibin and Huang, Xumin and Wu, Yuan and Kang, Jiawen and Xie, Shengli},
+  journal={IEEE Transactions on Vehicular Technology}, 
+  title={Joint Optimization of Model Partition and Resource Allocation for Split Federated Learning Over Vehicular Edge Networks}, 
+  year={2024},
+  volume={73},
+  number={10},
+  pages={15860-15865},
+  doi={10.1109/TVT.2024.3399011}}
+
+@ARTICLE{Yizeng2022,
+  author={Han, Yizeng and Huang, Gao and Song, Shiji and Yang, Le and Wang, Honghui and Wang, Yulin},
+  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence}, 
+  title={Dynamic Neural Networks: A Survey}, 
+  year={2022},
+  volume={44},
+  number={11},
+  pages={7436-7456},
+  doi={10.1109/TPAMI.2021.3117837}}
+
+@ARTICLE{Tianshu2024,
+  author={Chu, Tianshu and Yang, Zuopeng and Huang, Xiaolin},
+  journal={IEEE Transactions on Circuits and Systems for Video Technology}, 
+  title={Improving the Post-Training Neural Network Quantization by Prepositive Feature Quantization}, 
+  year={2024},
+  volume={34},
+  number={4},
+  pages={3056-3060},
+  doi={10.1109/TCSVT.2023.3311923}}
+
+@INPROCEEDINGS{Yaohui2020,
+  author={Cai, Yaohui and Yao, Zhewei and Dong, Zhen and Gholami, Amir and Mahoney, Michael W. and Keutzer, Kurt},
+  booktitle={IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 
+  title={ZeroQ: A Novel Zero Shot Quantization Framework}, 
+  year={2020},
+  pages={13166-13175},
+  doi={10.1109/CVPR42600.2020.01318}}
+
+@INPROCEEDINGS{Ian2024,
+  author={Harshbarger, Ian and Zejda, Colin and Levorato, Marco},
+  booktitle={IEEE Military Communications Conference (MILCOM)}, 
+  title={Condar: Context-Aware Distributed Dynamic Object Detection on Radar Data}, 
+  year={2024},
+  pages={875-880},
+  doi={10.1109/MILCOM61039.2024.10773874}}
+
+@INPROCEEDINGS{Timothy2024,
+  author={Johnsen, Timothy K and Harshbarger, Ian and Xia, Zixia and Levorato, Marco},
+  booktitle={IEEE 25th International Symposium on a World of Wireless, Mobile and Multimedia Networks (WoWMoM)}, 
+  title={NaviSplit: Dynamic Multi-Branch Split DNNs for Efficient Distributed Autonomous Navigation}, 
+  year={2024},
+  pages={196-201},
+  doi={10.1109/WoWMoM60985.2024.00041}}
+
+@ARTICLE{Corrado2024TMC,
+  author={Puligheddu, Corrado and Ashdown, Jonathan and Chiasserini, Carla Fabiana and Restuccia, Francesco},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={SEM-O-RAN: Semantic O-RAN Slicing for Mobile Edge Offloading of Computer Vision Tasks}, 
+  year={2024},
+  volume={23},
+  number={7},
+  pages={7785-7800},
+  doi={10.1109/TMC.2023.3339056}}
+
+@misc{kim2021,
+  title        = {{PQK}: Model Compression via Pruning, Quantization, and Knowledge Distillation},
+  author       = {Kim, Jangho and Chang, Simyung and Kwak, Nojun},
+  year         = {2021},
+  howpublished = {arXiv:2106.14681}
+}
+
+@misc{muralidharan2024,
+  title        = {Compact Language Models via Pruning and Knowledge Distillation},
+  author       = {Muralidharan, Saurav and Sreenivas, Sharath Turuvekere and Joshi, Raviraj and Chochowski, Marcin and Patwary, Mostofa and Shoeybi, Mohammad and Catanzaro, Bryan and Kautz, Jan and Molchanov, Pavlo},
+  year         = {2024},
+  howpublished = {arXiv:2407.14679}
+}
+
+@ARTICLE{Qifan2023,
+  author={Fu, Qifan and Xie, Huiqiang and Qin, Zhijin and Slabaugh, Gregory and Tao, Xiaoming},
+  journal={IEEE Wireless Communications Letters}, 
+  title={Vector Quantized Semantic Communication System}, 
+  year={2023},
+  volume={12},
+  number={6},
+  pages={982-986},
+  doi={10.1109/LWC.2023.3255221}}
+
+@ARTICLE{Danlan2023,
+  author={Huang, Danlan and Gao, Feifei and Tao, Xiaoming and Du, Qiyuan and Lu, Jianhua},
+  journal={IEEE Journal on Selected Areas in Communications}, 
+  title={Toward Semantic Communications: Deep Learning-Based Image Semantic Coding}, 
+  year={2023},
+  volume={41},
+  number={1},
+  pages={55-71},
+  doi={10.1109/JSAC.2022.3221999}}
+
+@ARTICLE{Jiawei2022,
+  author={Shao, Jiawei and Mao, Yuyi and Zhang, Jun},
+  journal={IEEE Journal on Selected Areas in Communications}, 
+  title={Learning Task-Oriented Communication for Edge Inference: An Information Bottleneck Approach}, 
+  year={2022},
+  volume={40},
+  number={1},
+  pages={197-211},
+  doi={10.1109/JSAC.2021.3126087}}
+
+@INPROCEEDINGS{Arnav2022,
+  author={Malawade, Arnav Vaibhav and Mortlock, Trier and Al Faruque, Mohammad Abdullah},
+  booktitle={ACM/IEEE 13th International Conference on Cyber-Physical Systems (ICCPS)}, 
+  title={HydraFusion: Context-Aware Selective Sensor Fusion for Robust and Efficient Autonomous Vehicle Perception}, 
+  year={2022},
+  pages={68-79},
+  doi={10.1109/ICCPS54341.2022.00013}}
+
+@INPROCEEDINGS{Kaiming2016,
+  author={He, Kaiming and others},
+  booktitle={IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, 
+  title={Deep Residual Learning for Image Recognition}, 
+  year={2016},
+  pages={770-778},
+  doi={10.1109/CVPR.2016.90}}
+
+@ARTICLE{Zhangjing2019,
+  author={Wang, Zhangjing and others},
+  journal={IEEE Access}, 
+  title={Multi-Sensor Fusion in Automated Driving: A Survey}, 
+month={Dec.},
+  year={2019},
+  volume={8},
+  pages={2847-2868},
+  doi={10.1109/ACCESS.2019.2962554}}
+
+@INPROCEEDINGS{Corrado2024ICDCS,
+  author={Puligheddu, Corrado and Varshney, Nancy and Hassan, Tanzil and Ashdown, Jonathan and Restuccia, Francesco and Chiasserini, Carla Fabiana},
+  booktitle={IEEE 44th International Conference on Distributed Computing Systems (ICDCS)}, 
+  title={OffloaDNN: Shaping DNNs for Scalable Offloading of Computer Vision Tasks at the Edge}, 
+  year={2024},
+  pages={624-634},
+  doi={10.1109/ICDCS60910.2024.00064}}
+
+@INPROCEEDINGS{Yoshitomo2022,
+  author={Matsubara, Yoshitomo and Callegaro, Davide and Singh, Sameer and Levorato, Marco and Restuccia, Francesco},
+  booktitle={IEEE 23rd International Symposium on a World of Wireless, Mobile and Multimedia Networks (WoWMoM)}, 
+  title={BottleFit: Learning Compressed Representations in Deep Neural Networks for Effective and Efficient Split Computing}, 
+  year={2022},
+  pages={337-346},
+  doi={10.1109/WoWMoM54355.2022.00032}}
+
+@inproceedings{matsubara2022supervised,
+  title={{Supervised Compression for Resource-Constrained Edge Computing Systems}},
+  author={Matsubara, Yoshitomo and Yang, Ruihan and Levorato, Marco and Mandt, Stephan},
+  booktitle={IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
+  pages={2685-2695},
+  month={January},
+  year={2022}
+}
+
+@inproceedings{Jacob2018,
+  title={{SQuantization and Training of Neural Networks for Efficient
+Integer-Arithmetic-Only Inference}},
+  author={Jacob, Benoit and Skirmantas, Kligys and Chen, Bo and Zhu, Menglong and Tang, Matthew and Howard, Andrew  and Adam, Hartwig and Kalenichenko, Dmitry},
+  booktitle={IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
+  pages={2704-2713},
+  year={2018}
+}
+
+@misc{ReLeQ,
+  title        = {{ReLeQ}: A Reinforcement Learning Approach for Deep Quantization of Neural Networks},
+  author       = {Elthakeb, Ahmed T. and Pilligundla, Prannoy and Mireshghallah, FatemehSadat and Yazdanbakhsh, Amir and Esmaeilzadeh, Hadi},
+  year         = {2020},
+  howpublished = {arXiv:1811.01704}
+}
+
+@misc{MPQ,
+  title        = {{MixQuant}: Mixed Precision Quantization with a Bit-width Optimization Search},
+  author       = {Kloberdanz, Eliska and Le, Wei},
+  year         = {2023},
+  howpublished = {arXiv:2309.17341}
+}
+
+@ARTICLE{Changfeng2021,
+  author={Ding, Changfeng and Wang, Jun-Bo and Zhang, Hua and Lin, Min and Wang, Jiangzhou},
+  journal={IEEE Transactions on Wireless Communications}, 
+  title={Joint MU-MIMO Precoding and Resource Allocation for Mobile-Edge Computing}, 
+  year={2021},
+  volume={20},
+  number={3},
+  pages={1639-1654},
+  doi={10.1109/TWC.2020.3035153}}
+
+@ARTICLE{Chang2024,
+  author={Wu, Chang and Lu, Hancheng and Chen, Yuang and Qin, Langtian},
+  journal={IEEE Transactions on Communications}, 
+  title={Cross-Layer Optimization for Statistical QoS Provision in C-RAN With Finite-Length Coding}, 
+  year={2024},
+  volume={72},
+  number={6},
+  pages={3393-3407},
+  doi={10.1109/TCOMM.2024.3370817}}
+
+@INPROCEEDINGS{Ayala2024INFOCOM,
+  author={Ayala-Romero, Jose A. and Lo Schiavo, Leonardo and Garcia-Saavedra, Andres and Costa-Perez, Xavier},
+  booktitle={IEEE Conference on Computer Communications (INFOCOM)}, 
+  title={Mean-Field Multi-Agent Contextual Bandit for Energy-Efficient Resource Allocation in vRANs}, 
+  year={2024},
+  pages={911-920},
+  doi={10.1109/INFOCOM52122.2024.10621197}}
+
+@INPROCEEDINGS{Ayala2021INFOCOM,
+  author={Ayala-Romero, Jose A. and Garcia-Saavedra, Andres and Costa-Perez, Xavier and Iosifidis, George},
+  booktitle={IEEE Conference on Computer Communications (INFOCOM)}, 
+  title={Bayesian Online Learning for Energy-Aware Resource Orchestration in Virtualized RANs}, 
+  year={2021},
+  pages={1-10},
+  doi={10.1109/INFOCOM42981.2021.9488845}}
+
+@ARTICLE{Yan2024,
+  author={Yan, Jia and Lu, Qin and Giannakis, Georgios B.},
+  journal={IEEE Transactions on Wireless Communications}, 
+  title={Bayesian Optimization for Online Management in Dynamic Mobile Edge Computing}, 
+  year={2024},
+  volume={23},
+  number={4},
+  pages={3425-3436},
+  doi={10.1109/TWC.2023.3307875}}
+
+@ARTICLE{Lin2022,
+  author={Lin, Yan and Zhang, Yijin and Li, Jun and Shu, Feng and Li, Chunguo},
+  journal={IEEE Internet of Things Journal}, 
+  title={Popularity-Aware Online Task Offloading for Heterogeneous Vehicular Edge Computing Using Contextual Clustering of Bandits}, 
+  year={2022},
+  volume={9},
+  number={7},
+  pages={5422-5433},
+  doi={10.1109/JIOT.2021.3109003}}
+
+@inproceedings{Krause2011,
+author = {Krause, Andreas and Ong, Cheng Soon},
+title = {Contextual Gaussian process bandit optimization},
+year = {2011},
+publisher = {Curran Associates Inc.},
+address = {Red Hook, NY, USA},
+booktitle = {25th International Conference on Neural Information Processing Systems},
+series = {NIPS'11}
+}
+
+@inproceedings{Zefan2024,
+author = {Wang, Zefan and Wang, Yitong and Zhao, Jun},
+title = {Resource Allocation and Secure Wireless Communication in the Large Model based Mobile Edge Computing System},
+year = {2024},
+publisher = {ACM},
+address = {New York, NY, USA},
+doi = {10.1145/3641512.3686373},
+booktitle = {Twenty-Fifth International Symposium on Theory, Algorithmic Foundations, and Protocol Design for Mobile Networks and Mobile Computing},
+pages = {111–120},
+series = {MobiHoc '24}
+}
+
+@inproceedings{Chang2024MobiHhoc,
+author = {Liu, Chang and Zhao, Jun},
+title = {Resource Allocation for Stable LLM Training in Mobile Edge Computing},
+year = {2024},
+publisher = {ACM},
+address = {New York, NY, USA},
+doi = {10.1145/3641512.3686358},
+booktitle = {Twenty-Fifth International Symposium on Theory, Algorithmic Foundations, and Protocol Design for Mobile Networks and Mobile Computing},
+pages = {81–90},
+series = {MobiHoc '24}
+}
+
+@ARTICLE{Chenwu2023,
+  author={Zhang, Chenwu and Lu, Hancheng and Chen, Chang Wen},
+  journal={IEEE Transactions on Wireless Communications}, 
+  title={Reconfigurable Intelligent Surfaces-Enhanced Uplink User-Centric Networks on Energy Efficiency Optimization}, 
+  year={2023},
+  volume={22},
+  number={12},
+  pages={9013-9028},
+  doi={10.1109/TWC.2023.3267819}}
+
+@article{cvxpy,
+  author       = {Steven Diamond and Stephen Boyd},
+  title        = {{CVXPY}: A {P}ython-Embedded Modeling Language for Convex Optimization},
+  journal      = {Journal of Machine Learning Research},
+  note         = {To appear},
+  year         = {2016}
+}
+
+@INPROCEEDINGS{Yunlu2022,
+  author={Xiao, Yunlu and Mähönen, Petri and Simić, Ljiljana},
+  booktitle={IEEE International Conference on Communications (ICC)}, 
+  title={Mobility Performance Analysis of Scalable Cell-Free Massive MIMO}, 
+  year={2022},
+  pages={2543-2548},
+  doi={10.1109/ICC45855.2022.9839102}}
+
+@ARTICLE{Tao2023,
+  author={Ouyang, Tao and Chen, Xu and Zhou, Zhi and Li, Rui and Tang, Xin},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Adaptive User-Managed Service Placement for Mobile Edge Computing via Contextual Multi-Armed Bandit Learning}, 
+  year={2023},
+  volume={22},
+  number={3}
+}
+
+@ARTICLE{Wallace1991,
+  author  = {Wallace, Gregory K.},
+  journal = {Communications of the {ACM}},
+  title   = {The {JPEG} still picture compression standard},
+  year    = {1991},
+  volume  = {34},
+  number  = {4},
+  pages   = {30--44},
+  doi     = {10.1145/103085.103089}
+}
+
+@ARTICLE{Zelin2024,
+  author={Ji, Zelin and Qin, Zhijin},
+  journal={IEEE Journal of Selected Topics in Signal Processing}, 
+  title={Computational Offloading in Semantic-Aware Cloud-Edge-End Collaborative Networks}, 
+  year={2024},
+  volume={18},
+  number={7},
+  pages={1235-1248},
+  doi={10.1109/JSTSP.2024.3433387}}
+
+@INPROCEEDINGS{10437445,
+  author={Carra, Damiano and Neglia, Giovanni},
+  booktitle={IEEE Global Communications Conference (GLOBECOM)}, 
+  title={DNN Split Computing: Quantization and Run-Length Coding are Enough}, 
+  year={2023},
+  pages={7357-7362},
+  doi={10.1109/GLOBECOM54140.2023.10437445}}
+
+@article{10.1145/214762.214771,
+  author  = {Witten, Ian H. and Neal, Radford M. and Cleary, John G.},
+  title   = {Arithmetic coding for data compression},
+  journal = {Communications of the {ACM}},
+  volume  = {30},
+  number  = {6},
+  pages   = {520--540},
+  year    = {1987},
+  doi     = {10.1145/214762.214771}
+}
+
+@INPROCEEDINGS{5702580,
+  author={Marpe, Detlev and Schwarz, Heiko and Wiegand, Thomas},
+  booktitle={28th Picture Coding Symposium}, 
+  title={Entropy coding in video compression using probability interval partitioning}, 
+  year={2010},
+  pages={66-69},
+  doi={10.1109/PCS.2010.5702580}}
+
+@ARTICLE{Wen2021,
+  author={Wu, Wen and Chen, Nan and Zhou, Conghao and Li, Mushu and Shen, Xuemin and Zhuang, Weihua and Li, Xu},
+  journal={IEEE Journal on Selected Areas in Communications}, 
+  title={Dynamic RAN Slicing for Service-Oriented Vehicular Networks via Constrained Learning}, 
+  year={2021},
+  volume={39},
+  number={7},
+  pages={2076-2089},
+  doi={10.1109/JSAC.2020.3041405}}
+
+@ARTICLE{Hang2024,
+  author={Shen, Hang and Tian, Yibo and Wang, Tianjing and Bai, Guangwei},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Slicing-Based Task Offloading in Space-Air-Ground Integrated Vehicular Networks}, 
+  year={2024},
+  volume={23},
+  number={5},
+  pages={4009-4024},
+  doi={10.1109/TMC.2023.3283852}}
+
+@inproceedings{COCO,
+  author    = {Lin, Tsung-Yi and Maire, Michael and Belongie, Serge and Hays, James and Perona, Pietro and Ramanan, Deva and Doll{\'a}r, Piotr and Zitnick, C. Lawrence},
+  title     = {Microsoft {COCO}: Common Objects in Context},
+  booktitle = {European Conference on Computer Vision ({ECCV})},
+  year      = {2014},
+  pages     = {740--755},
+  doi       = {10.1007/978-3-319-10602-1_48}
+}
+
+@misc{rANS_entropy,
+  author       = {Duda, Jarek},
+  title        = {Asymmetric numeral systems: entropy coding combining speed of {Huffman} coding with compression rate of arithmetic coding},
+  year         = {2013},
+  howpublished = {arXiv:1311.2540}
+}
+
+@conference{GDN_paper,
+title = "Density modeling of images using a generalized normalization transformation" and each component is then normalized by a pooled activity measure, computed by ex-ponentiating a weighted sum of rectified and exponentiated components and a constant. We optimize the parameters of the full transformation (linear transform, exponents, weights, constant) over a database of natural images, directly minimizing the negentropy of the responses. The optimized transformation substantially Gaussianizes the data, achieving a significantly smaller mutual information between transformed components than alternative methods including ICA and radial Gaussianization. The transformation is differentiable and can be efficiently inverted, and thus induces a density model on images. We show that samples of this model are visually similar to samples of natural image patches. We demonstrate the use of the model as a prior probability density that can be used to remove additive noise. Finally, we show that the transformation can be cascaded, with each layer optimized using the same Gaussianization objective, thus offering an unsupervised method of optimizing a deep network architecture.",
+author = "Johannes Ball{\'e} and Valero Laparra and Simoncelli, {Eero P.}",
+year = "2016",
+month = jan,
+day = "1",
+language = "English (US)",
+booktitle = "4th International Conference on Learning Representations (ICLR)"
+}
+
+@article{split_computing_survey,
+author = {Matsubara, Yoshitomo and Levorato, Marco and Restuccia, Francesco},
+title = {Split Computing and Early Exiting for Deep Learning Applications: Survey and Research Challenges},
+year = {2022},
+publisher = {ACM},
+address = {New York, NY, USA},
+volume = {55},
+number = {5},
+doi = {10.1145/3527155},
+journal = {ACM Comput. Surv.},
+month = dec
+}
+
+@article{GRIPPO2000127,
+title = {On the convergence of the block nonlinear Gauss–Seidel method under convex constraints},
+journal = {Operations Research Letters},
+volume = {26},
+number = {3},
+pages = {127-136},
+year = {2000},
+doi = {10.1016/S0167-6377(99)00074-7},
+author = {L. Grippo and M. Sciandrone}
+}
+
+@misc{he2018maskrcnn,
+  title        = {Mask {R-CNN}},
+  author       = {He, Kaiming and Gkioxari, Georgia and Doll{\'a}r, Piotr and Girshick, Ross},
+  year         = {2018},
+  howpublished = {arXiv:1703.06870}
+}
+
+@techreport{3gpp-ts38214,
+  author       = {{3GPP}},
+  title        = {{NR; Physical layer procedures for data}},
+  institution  = {3rd Generation Partnership Project (3GPP)},
+  type         = {Technical Specification (TS)},
+  number       = {38.214},
+  year         = {2024},
+  note         = {V18.4.0, Release 18}
+}
+
+@misc{Hoydis2022Sionna,
+  author       = {Hoydis, Jakob and Cammerer, Sebastian and A{\"\i}t Aoudia, Fay{\c{c}}al and Vem, Avinash and Binder, Nikolaus and Marcus, Guillermo and Keller, Alexander},
+  title        = {{Sionna}: An Open-Source Library for Next-Generation Physical Layer Research},
+  year         = {2022},
+  howpublished = {arXiv:2203.11854}
+}
+
+@ARTICLE{Qin2024,
+  author={Qin, Langtian and Lu, Hancheng and Chen, Yuang and Chong, Baolin and Wu, Feng},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Toward Decentralized Task Offloading and Resource Allocation in User-Centric MEC}, 
+  year={2024},
+  volume={23},
+  number={12},
+  pages={11807-11823},
+  doi={10.1109/TMC.2024.3399766}}
+
+@INPROCEEDINGS{Qin2026,
+  author={Qin, Langtian and Harshbarger, Ian Andrew and Nasraoui, Leïla and Chiasserini, Carla Fabiana and Levorato, Marco},
+  booktitle={IEEE INFOCOM 2026 - IEEE Conference on Computer Communications}, 
+  title={OMNIS: Semantic RAN Slicing via Dynamic Split Neural Networks}, 
+  year={2026},
+  pages={1-10},
+  doi={10.1109/INFOCOM59046.2026.11571606}}
+
+@ARTICLE{Mhatre2025,
+  author={Mhatre, Suvidha and Adelantado, Ferran and Ramantas, Kostas and Verikoukis, Christos},
+  journal={IEEE Transactions on Vehicular Technology}, 
+  title={Intelligent QoS-Aware Slice Resource Allocation With User Association Parameterization for Beyond 5G O-RAN-Based Architecture Using DRL}, 
+  year={2025},
+  volume={74},
+  number={2},
+  pages={3096-3109},
+  doi={10.1109/TVT.2024.3483288}}
+
+@ARTICLE{Chen2024,
+  author={Chen, Xing and Hu, Shengxi and Yu, Chujia and Chen, Zheyi and Min, Geyong},
+  journal={IEEE Transactions on Parallel and Distributed Systems}, 
+  title={Real-Time Offloading for Dependent and Parallel Tasks in Cloud-Edge Environments Using Deep Reinforcement Learning}, 
+  year={2024},
+  volume={35},
+  number={3},
+  pages={391-404},
+  doi={10.1109/TPDS.2023.3349177}}
+
+@ARTICLE{Nguyen2024,
+  author={Nguyen, Van-Dinh and Vu, Thang X. and Nguyen, Nhan Thanh and Nguyen, Dinh C. and Juntti, Markku and Luong, Nguyen Cong and Hoang, Dinh Thai and Nguyen, Diep N. and Chatzinotas, Symeon},
+  journal={IEEE Journal on Selected Areas in Communications}, 
+  title={Network-Aided Intelligent Traffic Steering in 6G O-RAN: A Multi-Layer Optimization Framework}, 
+  year={2024},
+  volume={42},
+  number={2},
+  pages={389-405},
+  doi={10.1109/JSAC.2023.3336183}}
+
+@ARTICLE{Xie2025,
+  author={Xie, Bo and Cui, Haixia and He, Yejun and Guizani, Mohsen},
+  journal={IEEE Transactions on Cognitive Communications and Networking}, 
+  title={A Deep Reinforcement Learning Approach for Dependent Task Offloading in Multi-Access Edge Computing}, 
+  year={2025},
+  volume={11},
+  number={4},
+  pages={2601-2617},
+  doi={10.1109/TCCN.2024.3520961}}
+
+@ARTICLE{Li2025,
+  author={Li, Han and Xiong, Ke and Lu, Yuping and Chen, Wei and Fan, Pingyi and Letaief, Khaled Ben},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={Collaborative Task Offloading and Resource Allocation in Small-Cell MEC: A Multi-Agent PPO-Based Scheme}, 
+  year={2025},
+  volume={24},
+  number={3},
+  pages={2346-2359},
+  doi={10.1109/TMC.2024.3496536}}

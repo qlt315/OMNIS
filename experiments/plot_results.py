@@ -230,7 +230,7 @@ def _comm_defaults(user_num=None):
     if user_num is not None:
         users = int(user_num)
     # Same estimate as convergence_lib.algo_ms_per_slot when agent has no local_obs_dim
-    local_obs_dim = 4 + top_l + 2
+    local_obs_dim = 4 + top_l + 1
     return {
         "rtt_s": rtt_s,
         "ctrl_rate_bps": rate,

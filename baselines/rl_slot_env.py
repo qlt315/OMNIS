@@ -20,7 +20,7 @@ class OnlineRLBaseline(SlotEnv):
         self.top_l = self.top_l_cells
         self.n_models = len(self.models)
         self.n_actions_local = self.n_models * self.top_l
-        self.local_obs_dim = 4 + self.top_l + 2  # per-user features
+        self.local_obs_dim = 4 + self.top_l + 1  # QoS + Top-L SINR + backlog
         self.global_state_dim = self.user_num * self.local_obs_dim
         self.dpp_reward = getattr(config, "rl_dpp_reward", True)
         self.eval_mode = getattr(config, "rl_eval", False)
@@ -50,7 +50,6 @@ class OnlineRLBaseline(SlotEnv):
                 sinrs.append(0.0)
         scale = float(getattr(self, "dpp_task_scale", 3.0))
         q_n = self.pipeline.composite_backlog(user) / scale
-        z_n = self.energy_queue[user] / self.dpp_energy_scale
         return np.array([
             task_u["delay_constraint"] / 3.0,
             task_u["energy_constraint"] / 2.0,
@@ -58,7 +57,6 @@ class OnlineRLBaseline(SlotEnv):
             task_u["energy_weight"],
             *sinrs,
             min(q_n, 5.0) / 5.0,
-            min(z_n, 5.0) / 5.0,
         ], dtype=np.float32)
 
     def global_state(self, task_dic, cand_cells_dic, sinr_db_all_dic):

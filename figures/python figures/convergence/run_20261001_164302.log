@@ -1,0 +1,5 @@
+=== causal seed=0 ===
+    reward=9.7684 acc=0.2222 delay=1.228 energy=0.040 backlog=0 vio=0.048 ms/slot=13.86 (dec=1.77 comm=7.22 alloc=4.87) wall=51s
+=== causal seed=1 ===
+    reward=9.5836 acc=0.2224 delay=1.228 energy=0.039 backlog=0 vio=0.052 ms/slot=27.09 (dec=5.61 comm=7.22 alloc=14.25) wall=130s
+=== causal seed=2 ===

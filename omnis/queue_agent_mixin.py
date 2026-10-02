@@ -169,7 +169,4 @@ def task_dpp_drift(agent, user, model_name, mcs_idx, energy_hat, snr_db=0.0,
     arrivals_n = float(agent.arrival_rate[user]) / scale
     q_n = float(np.tanh(
         agent.pipeline.composite_backlog(user, cell_id=cell_id) / scale))
-    z_n = float(np.tanh(agent.energy_queue[user] / agent.dpp_energy_scale))
-    budget_n = agent.energy_budget[user] / agent.dpp_energy_scale
-    energy_n = energy_hat / agent.dpp_energy_scale
-    return q_n * (service_n - arrivals_n) + z_n * (budget_n - energy_n)
+    return q_n * (service_n - arrivals_n)

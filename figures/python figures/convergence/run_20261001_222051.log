@@ -1,0 +1,403 @@
+=== causal seed=0 ===
+    reward=9.1824 acc=0.2107 delay=1.468 energy=0.039 backlog=0 vio=0.135 ms/slot=13.09 (dec=1.51 comm=7.22 alloc=4.36) wall=42s
+=== causal seed=1 ===
+    reward=9.2251 acc=0.2165 delay=1.434 energy=0.038 backlog=0 vio=0.128 ms/slot=14.38 (dec=2.05 comm=7.22 alloc=5.10) wall=63s
+=== causal seed=2 ===
+    reward=8.8256 acc=0.2131 delay=1.455 energy=0.038 backlog=0 vio=0.139 ms/slot=16.78 (dec=2.73 comm=7.22 alloc=6.83) wall=78s
+=== causal seed=3 ===
+    reward=9.4331 acc=0.2137 delay=1.406 energy=0.038 backlog=0 vio=0.120 ms/slot=13.97 (dec=1.86 comm=7.22 alloc=4.89) wall=60s
+=== causal seed=4 ===
+    reward=9.0869 acc=0.2110 delay=1.466 energy=0.040 backlog=0 vio=0.135 ms/slot=14.86 (dec=2.28 comm=7.22 alloc=5.35) wall=64s
+=== ucb seed=0 ===
+    reward=7.5823 acc=0.1344 delay=1.506 energy=0.041 backlog=0 vio=0.168 ms/slot=11.44 (dec=1.76 comm=7.22 alloc=2.45) wall=38s
+=== ucb seed=1 ===
+    reward=7.3163 acc=0.1444 delay=1.530 energy=0.045 backlog=0 vio=0.183 ms/slot=11.11 (dec=1.58 comm=7.22 alloc=2.31) wall=37s
+=== ucb seed=2 ===
+    reward=7.0205 acc=0.1471 delay=1.563 energy=0.048 backlog=0 vio=0.196 ms/slot=11.29 (dec=1.62 comm=7.22 alloc=2.44) wall=38s
+=== ucb seed=3 ===
+    reward=7.8496 acc=0.1347 delay=1.435 energy=0.041 backlog=0 vio=0.147 ms/slot=11.12 (dec=1.62 comm=7.22 alloc=2.28) wall=36s
+=== ucb seed=4 ===
+    reward=7.2643 acc=0.1331 delay=1.534 energy=0.045 backlog=0 vio=0.174 ms/slot=11.21 (dec=1.56 comm=7.22 alloc=2.43) wall=37s
+=== dts seed=0 ===
+    reward=7.1986 acc=0.1682 delay=1.644 energy=0.054 backlog=0 vio=0.213 ms/slot=11.12 (dec=1.59 comm=7.22 alloc=2.31) wall=37s
+=== dts seed=1 ===
+    reward=7.0007 acc=0.1700 delay=1.636 energy=0.055 backlog=0 vio=0.227 ms/slot=10.86 (dec=1.52 comm=7.22 alloc=2.13) wall=35s
+=== dts seed=2 ===
+    reward=6.3899 acc=0.1755 delay=1.726 energy=0.061 backlog=0 vio=0.260 ms/slot=10.84 (dec=1.43 comm=7.22 alloc=2.18) wall=36s
+=== dts seed=3 ===
+    reward=7.2430 acc=0.1699 delay=1.599 energy=0.056 backlog=0 vio=0.212 ms/slot=10.92 (dec=1.54 comm=7.22 alloc=2.16) wall=35s
+=== dts seed=4 ===
+    reward=6.9885 acc=0.1720 delay=1.671 energy=0.059 backlog=0 vio=0.228 ms/slot=11.04 (dec=1.55 comm=7.22 alloc=2.27) wall=37s
+=== gdo seed=0 ===
+    reward=7.5249 acc=0.2326 delay=1.729 energy=0.060 backlog=0 vio=0.242 ms/slot=14.65 (dec=2.51 comm=9.62 alloc=2.52) wall=39s
+=== gdo seed=1 ===
+    reward=7.5621 acc=0.2335 delay=1.691 energy=0.060 backlog=0 vio=0.225 ms/slot=14.23 (dec=2.22 comm=9.62 alloc=2.39) wall=37s
+=== gdo seed=2 ===
+    reward=7.4071 acc=0.2320 delay=1.702 energy=0.058 backlog=0 vio=0.224 ms/slot=13.99 (dec=2.20 comm=9.62 alloc=2.16) wall=36s
+=== gdo seed=3 ===
+    reward=7.9867 acc=0.2348 delay=1.655 energy=0.059 backlog=0 vio=0.195 ms/slot=14.28 (dec=2.32 comm=9.62 alloc=2.33) wall=37s
+=== gdo seed=4 ===
+    reward=7.5323 acc=0.2319 delay=1.715 energy=0.061 backlog=0 vio=0.231 ms/slot=14.28 (dec=2.26 comm=9.62 alloc=2.40) wall=37s
+=== dqn seed=0 ===
+  [dqn] slot=0 team_r=0.0000 eps=1.000 K=2000
+  [dqn] slot=50 team_r=1.5762 eps=0.953 K=2000
+  [dqn] slot=100 team_r=15.6056 eps=0.905 K=2000
+  [dqn] slot=150 team_r=11.6156 eps=0.858 K=2000
+  [dqn] slot=200 team_r=15.6192 eps=0.810 K=2000
+  [dqn] slot=250 team_r=5.6054 eps=0.762 K=2000
+  [dqn] slot=300 team_r=1.6001 eps=0.715 K=2000
+  [dqn] slot=350 team_r=0.0000 eps=0.667 K=2000
+  [dqn] slot=400 team_r=5.5249 eps=0.620 K=2000
+  [dqn] slot=450 team_r=4.4628 eps=0.573 K=2000
+  [dqn] slot=500 team_r=0.0000 eps=0.525 K=2000
+  [dqn] slot=550 team_r=3.2117 eps=0.478 K=2000
+  [dqn] slot=600 team_r=1.8312 eps=0.430 K=2000
+  [dqn] slot=650 team_r=3.7864 eps=0.383 K=2000
+  [dqn] slot=700 team_r=6.5358 eps=0.335 K=2000
+  [dqn] slot=750 team_r=6.2589 eps=0.288 K=2000
+  [dqn] slot=800 team_r=10.4358 eps=0.240 K=2000
+  [dqn] slot=850 team_r=8.4266 eps=0.193 K=2000
+  [dqn] slot=900 team_r=0.0000 eps=0.145 K=2000
+  [dqn] slot=950 team_r=0.0000 eps=0.098 K=2000
+    reward=6.8144 acc=0.1759 delay=1.717 energy=0.060 backlog=0 vio=0.252 ms/slot=21.02 (dec=8.70 comm=9.62 alloc=2.69) wall=47s
+=== dqn seed=1 ===
+  [dqn] slot=0 team_r=0.0000 eps=1.000 K=2000
+  [dqn] slot=50 team_r=13.9723 eps=0.953 K=2000
+  [dqn] slot=100 team_r=11.7599 eps=0.905 K=2000
+  [dqn] slot=150 team_r=10.2434 eps=0.858 K=2000
+  [dqn] slot=200 team_r=13.5135 eps=0.810 K=2000
+  [dqn] slot=250 team_r=-3.4068 eps=0.762 K=2000
+  [dqn] slot=300 team_r=0.0000 eps=0.715 K=2000
+  [dqn] slot=350 team_r=8.5141 eps=0.667 K=2000
+  [dqn] slot=400 team_r=0.0000 eps=0.620 K=2000
+  [dqn] slot=450 team_r=3.9218 eps=0.573 K=2000
+  [dqn] slot=500 team_r=0.0000 eps=0.525 K=2000
+  [dqn] slot=550 team_r=0.0000 eps=0.478 K=2000
+  [dqn] slot=600 team_r=16.0747 eps=0.430 K=2000
+  [dqn] slot=650 team_r=7.4136 eps=0.383 K=2000
+  [dqn] slot=700 team_r=13.6230 eps=0.335 K=2000
+  [dqn] slot=750 team_r=-4.0444 eps=0.288 K=2000
+  [dqn] slot=800 team_r=12.0991 eps=0.240 K=2000
+  [dqn] slot=850 team_r=10.1469 eps=0.193 K=2000
+  [dqn] slot=900 team_r=-1.8811 eps=0.145 K=2000
+  [dqn] slot=950 team_r=4.1607 eps=0.098 K=2000
+    reward=6.7817 acc=0.1717 delay=1.665 energy=0.058 backlog=0 vio=0.235 ms/slot=20.93 (dec=8.72 comm=9.62 alloc=2.58) wall=47s
+=== dqn seed=2 ===
+  [dqn] slot=0 team_r=0.0000 eps=1.000 K=2000
+  [dqn] slot=50 team_r=9.6934 eps=0.953 K=2000
+  [dqn] slot=100 team_r=10.1181 eps=0.905 K=2000
+  [dqn] slot=150 team_r=11.5440 eps=0.858 K=2000
+  [dqn] slot=200 team_r=4.8025 eps=0.810 K=2000
+  [dqn] slot=250 team_r=15.3814 eps=0.762 K=2000
+  [dqn] slot=300 team_r=-2.5243 eps=0.715 K=2000
+  [dqn] slot=350 team_r=6.1683 eps=0.667 K=2000
+  [dqn] slot=400 team_r=8.2259 eps=0.620 K=2000
+  [dqn] slot=450 team_r=0.0000 eps=0.573 K=2000
+  [dqn] slot=500 team_r=-3.0306 eps=0.525 K=2000
+  [dqn] slot=550 team_r=0.0000 eps=0.478 K=2000
+  [dqn] slot=600 team_r=6.3108 eps=0.430 K=2000
+  [dqn] slot=650 team_r=4.8211 eps=0.383 K=2000
+  [dqn] slot=700 team_r=2.9620 eps=0.335 K=2000
+  [dqn] slot=750 team_r=6.3244 eps=0.288 K=2000
+  [dqn] slot=800 team_r=9.9943 eps=0.240 K=2000
+  [dqn] slot=850 team_r=5.6795 eps=0.193 K=2000
+  [dqn] slot=900 team_r=0.0000 eps=0.145 K=2000
+  [dqn] slot=950 team_r=7.4502 eps=0.098 K=2000
+    reward=6.4466 acc=0.1748 delay=1.709 energy=0.061 backlog=0 vio=0.255 ms/slot=21.74 (dec=9.39 comm=9.62 alloc=2.72) wall=50s
+=== dqn seed=3 ===
+  [dqn] slot=0 team_r=0.0000 eps=1.000 K=2000
+  [dqn] slot=50 team_r=-2.4973 eps=0.953 K=2000
+  [dqn] slot=100 team_r=14.9227 eps=0.905 K=2000
+  [dqn] slot=150 team_r=12.8365 eps=0.858 K=2000
+  [dqn] slot=200 team_r=25.3057 eps=0.810 K=2000
+  [dqn] slot=250 team_r=0.0000 eps=0.762 K=2000
+  [dqn] slot=300 team_r=8.1219 eps=0.715 K=2000
+  [dqn] slot=350 team_r=11.3115 eps=0.667 K=2000
+  [dqn] slot=400 team_r=0.0000 eps=0.620 K=2000
+  [dqn] slot=450 team_r=11.5948 eps=0.573 K=2000
+  [dqn] slot=500 team_r=4.4316 eps=0.525 K=2000
+  [dqn] slot=550 team_r=5.3974 eps=0.478 K=2000
+  [dqn] slot=600 team_r=0.0000 eps=0.430 K=2000
+  [dqn] slot=650 team_r=5.9630 eps=0.383 K=2000
+  [dqn] slot=700 team_r=12.1961 eps=0.335 K=2000
+  [dqn] slot=750 team_r=6.4729 eps=0.288 K=2000
+  [dqn] slot=800 team_r=8.0779 eps=0.240 K=2000
+  [dqn] slot=850 team_r=6.9641 eps=0.193 K=2000
+  [dqn] slot=900 team_r=1.9084 eps=0.145 K=2000
+  [dqn] slot=950 team_r=5.2092 eps=0.098 K=2000
+    reward=7.0092 acc=0.1770 delay=1.651 energy=0.060 backlog=0 vio=0.232 ms/slot=20.90 (dec=8.65 comm=9.62 alloc=2.63) wall=48s
+=== dqn seed=4 ===
+  [dqn] slot=0 team_r=0.0000 eps=1.000 K=2000
+  [dqn] slot=50 team_r=8.6606 eps=0.953 K=2000
+  [dqn] slot=100 team_r=2.0082 eps=0.905 K=2000
+  [dqn] slot=150 team_r=1.0819 eps=0.858 K=2000
+  [dqn] slot=200 team_r=6.5635 eps=0.810 K=2000
+  [dqn] slot=250 team_r=14.8551 eps=0.762 K=2000
+  [dqn] slot=300 team_r=13.1147 eps=0.715 K=2000
+  [dqn] slot=350 team_r=-1.7095 eps=0.667 K=2000
+  [dqn] slot=400 team_r=5.2144 eps=0.620 K=2000
+  [dqn] slot=450 team_r=5.3303 eps=0.573 K=2000
+  [dqn] slot=500 team_r=0.1580 eps=0.525 K=2000
+  [dqn] slot=550 team_r=0.0000 eps=0.478 K=2000
+  [dqn] slot=600 team_r=4.9368 eps=0.430 K=2000
+  [dqn] slot=650 team_r=9.6891 eps=0.383 K=2000
+  [dqn] slot=700 team_r=5.7233 eps=0.335 K=2000
+  [dqn] slot=750 team_r=8.2851 eps=0.288 K=2000
+  [dqn] slot=800 team_r=11.8294 eps=0.240 K=2000
+  [dqn] slot=850 team_r=0.0000 eps=0.193 K=2000
+  [dqn] slot=900 team_r=-0.3749 eps=0.145 K=2000
+  [dqn] slot=950 team_r=4.6288 eps=0.098 K=2000
+    reward=6.6166 acc=0.1739 delay=1.733 energy=0.063 backlog=0 vio=0.246 ms/slot=19.84 (dec=7.67 comm=9.62 alloc=2.54) wall=43s
+=== ppo seed=0 ===
+  [ppo train] slot=0 team_r=0.0000
+  [ppo train] slot=50 team_r=4.0353
+  [ppo train] slot=100 team_r=10.2642
+  [ppo train] slot=150 team_r=13.1730
+  [ppo train] slot=200 team_r=11.0882
+  [ppo train] slot=250 team_r=8.4390
+  [ppo train] slot=300 team_r=4.3988
+  [ppo train] slot=350 team_r=0.0000
+  [ppo train] slot=400 team_r=7.7517
+  [ppo train] slot=450 team_r=3.7126
+  [ppo train] slot=500 team_r=3.8331
+  [ppo train] slot=550 team_r=3.2112
+  [ppo train] slot=600 team_r=-4.1836
+  [ppo train] slot=650 team_r=7.4980
+  [ppo train] slot=700 team_r=0.0000
+  [ppo train] slot=750 team_r=11.2595
+  [ppo train] slot=800 team_r=5.8179
+  [ppo train] slot=850 team_r=11.6539
+  [ppo train] slot=900 team_r=0.0000
+  [ppo train] slot=950 team_r=0.5310
+    reward=6.7305 acc=0.1753 delay=1.731 energy=0.061 backlog=0 vio=0.245 ms/slot=16.95 (dec=5.25 comm=9.62 alloc=2.07) wall=36s
+=== ppo seed=1 ===
+  [ppo train] slot=0 team_r=0.0000
+  [ppo train] slot=50 team_r=19.4255
+  [ppo train] slot=100 team_r=14.2150
+  [ppo train] slot=150 team_r=6.3464
+  [ppo train] slot=200 team_r=6.5957
+  [ppo train] slot=250 team_r=0.0000
+  [ppo train] slot=300 team_r=0.0000
+  [ppo train] slot=350 team_r=4.6822
+  [ppo train] slot=400 team_r=0.0000
+  [ppo train] slot=450 team_r=4.5136
+  [ppo train] slot=500 team_r=0.0000
+  [ppo train] slot=550 team_r=0.0000
+  [ppo train] slot=600 team_r=13.9598
+  [ppo train] slot=650 team_r=5.3846
+  [ppo train] slot=700 team_r=14.8845
+  [ppo train] slot=750 team_r=-2.2105
+  [ppo train] slot=800 team_r=7.3610
+  [ppo train] slot=850 team_r=19.8461
+  [ppo train] slot=900 team_r=0.0000
+  [ppo train] slot=950 team_r=5.5942
+    reward=6.7072 acc=0.1704 delay=1.695 energy=0.060 backlog=0 vio=0.231 ms/slot=15.91 (dec=4.51 comm=9.62 alloc=1.78) wall=31s
+=== ppo seed=2 ===
+  [ppo train] slot=0 team_r=0.0000
+  [ppo train] slot=50 team_r=19.7691
+  [ppo train] slot=100 team_r=8.6946
+  [ppo train] slot=150 team_r=10.6105
+  [ppo train] slot=200 team_r=6.4475
+  [ppo train] slot=250 team_r=3.8982
+  [ppo train] slot=300 team_r=7.2014
+  [ppo train] slot=350 team_r=7.2487
+  [ppo train] slot=400 team_r=7.0752
+  [ppo train] slot=450 team_r=0.5432
+  [ppo train] slot=500 team_r=0.0000
+  [ppo train] slot=550 team_r=4.3639
+  [ppo train] slot=600 team_r=7.1585
+  [ppo train] slot=650 team_r=5.7078
+  [ppo train] slot=700 team_r=3.0861
+  [ppo train] slot=750 team_r=17.4162
+  [ppo train] slot=800 team_r=5.4444
+  [ppo train] slot=850 team_r=0.0000
+  [ppo train] slot=900 team_r=-2.9533
+  [ppo train] slot=950 team_r=5.6503
+    reward=6.5185 acc=0.1758 delay=1.706 energy=0.060 backlog=0 vio=0.252 ms/slot=16.59 (dec=5.10 comm=9.62 alloc=1.86) wall=34s
+=== ppo seed=3 ===
+  [ppo train] slot=0 team_r=0.0000
+  [ppo train] slot=50 team_r=-0.9288
+  [ppo train] slot=100 team_r=13.3376
+  [ppo train] slot=150 team_r=14.5928
+  [ppo train] slot=200 team_r=20.2942
+  [ppo train] slot=250 team_r=0.0000
+  [ppo train] slot=300 team_r=18.1969
+  [ppo train] slot=350 team_r=9.5159
+  [ppo train] slot=400 team_r=0.0000
+  [ppo train] slot=450 team_r=11.0136
+  [ppo train] slot=500 team_r=14.8971
+  [ppo train] slot=550 team_r=4.2111
+  [ppo train] slot=600 team_r=7.5141
+  [ppo train] slot=650 team_r=5.3463
+  [ppo train] slot=700 team_r=7.4890
+  [ppo train] slot=750 team_r=10.4437
+  [ppo train] slot=800 team_r=7.1117
+  [ppo train] slot=850 team_r=1.6623
+  [ppo train] slot=900 team_r=0.1999
+  [ppo train] slot=950 team_r=3.6551
+    reward=6.9834 acc=0.1728 delay=1.643 energy=0.059 backlog=0 vio=0.233 ms/slot=16.73 (dec=5.11 comm=9.62 alloc=2.00) wall=35s
+=== ppo seed=4 ===
+  [ppo train] slot=0 team_r=0.0000
+  [ppo train] slot=50 team_r=16.5765
+  [ppo train] slot=100 team_r=-0.9587
+  [ppo train] slot=150 team_r=0.0000
+  [ppo train] slot=200 team_r=6.9792
+  [ppo train] slot=250 team_r=18.4813
+  [ppo train] slot=300 team_r=9.1296
+  [ppo train] slot=350 team_r=-1.9594
+  [ppo train] slot=400 team_r=3.9302
+  [ppo train] slot=450 team_r=3.7254
+  [ppo train] slot=500 team_r=6.9954
+  [ppo train] slot=550 team_r=4.6416
+  [ppo train] slot=600 team_r=4.9368
+  [ppo train] slot=650 team_r=10.8858
+  [ppo train] slot=700 team_r=5.9406
+  [ppo train] slot=750 team_r=11.4819
+  [ppo train] slot=800 team_r=5.4845
+  [ppo train] slot=850 team_r=0.0000
+  [ppo train] slot=900 team_r=0.0000
+  [ppo train] slot=950 team_r=19.3141
+    reward=6.7235 acc=0.1743 delay=1.710 energy=0.062 backlog=0 vio=0.250 ms/slot=16.11 (dec=4.68 comm=9.62 alloc=1.81) wall=31s
+=== mappo seed=0 ===
+  [mappo train] slot=0 team_r=0.0000
+  [mappo train] slot=50 team_r=4.9676
+  [mappo train] slot=100 team_r=5.1624
+  [mappo train] slot=150 team_r=6.3785
+  [mappo train] slot=200 team_r=9.2922
+  [mappo train] slot=250 team_r=12.8714
+  [mappo train] slot=300 team_r=3.0782
+  [mappo train] slot=350 team_r=4.3433
+  [mappo train] slot=400 team_r=7.9233
+  [mappo train] slot=450 team_r=0.0000
+  [mappo train] slot=500 team_r=4.5101
+  [mappo train] slot=550 team_r=6.8227
+  [mappo train] slot=600 team_r=5.4466
+  [mappo train] slot=650 team_r=2.5731
+  [mappo train] slot=700 team_r=6.5083
+  [mappo train] slot=750 team_r=5.4140
+  [mappo train] slot=800 team_r=6.9402
+  [mappo train] slot=850 team_r=10.9196
+  [mappo train] slot=900 team_r=0.0000
+  [mappo train] slot=950 team_r=0.0000
+    reward=6.7790 acc=0.1804 delay=1.754 energy=0.062 backlog=0 vio=0.260 ms/slot=10.74 (dec=1.16 comm=7.22 alloc=2.36) wall=35s
+=== mappo seed=1 ===
+  [mappo train] slot=0 team_r=0.0000
+  [mappo train] slot=50 team_r=14.0518
+  [mappo train] slot=100 team_r=7.2209
+  [mappo train] slot=150 team_r=9.8123
+  [mappo train] slot=200 team_r=14.0775
+  [mappo train] slot=250 team_r=-2.4732
+  [mappo train] slot=300 team_r=0.0000
+  [mappo train] slot=350 team_r=5.4640
+  [mappo train] slot=400 team_r=0.0000
+  [mappo train] slot=450 team_r=4.2205
+  [mappo train] slot=500 team_r=0.0000
+  [mappo train] slot=550 team_r=-1.5337
+  [mappo train] slot=600 team_r=10.4537
+  [mappo train] slot=650 team_r=0.0000
+  [mappo train] slot=700 team_r=3.6937
+  [mappo train] slot=750 team_r=3.6813
+  [mappo train] slot=800 team_r=10.1141
+  [mappo train] slot=850 team_r=6.5706
+  [mappo train] slot=900 team_r=-1.8811
+  [mappo train] slot=950 team_r=3.6439
+    reward=7.0396 acc=0.1767 delay=1.647 energy=0.056 backlog=0 vio=0.226 ms/slot=10.60 (dec=1.13 comm=7.22 alloc=2.24) wall=34s
+=== mappo seed=2 ===
+  [mappo train] slot=0 team_r=0.0000
+  [mappo train] slot=50 team_r=18.2751
+  [mappo train] slot=100 team_r=7.4079
+  [mappo train] slot=150 team_r=9.8922
+  [mappo train] slot=200 team_r=5.8077
+  [mappo train] slot=250 team_r=13.8515
+  [mappo train] slot=300 team_r=1.2490
+  [mappo train] slot=350 team_r=8.1677
+  [mappo train] slot=400 team_r=10.8668
+  [mappo train] slot=450 team_r=0.8990
+  [mappo train] slot=500 team_r=0.0000
+  [mappo train] slot=550 team_r=2.6837
+  [mappo train] slot=600 team_r=5.3622
+  [mappo train] slot=650 team_r=10.2268
+  [mappo train] slot=700 team_r=2.9666
+  [mappo train] slot=750 team_r=16.5446
+  [mappo train] slot=800 team_r=9.9895
+  [mappo train] slot=850 team_r=0.0000
+  [mappo train] slot=900 team_r=-1.0339
+  [mappo train] slot=950 team_r=7.5346
+    reward=6.5172 acc=0.1718 delay=1.693 energy=0.060 backlog=0 vio=0.241 ms/slot=10.74 (dec=1.19 comm=7.22 alloc=2.32) wall=35s
+=== mappo seed=3 ===
+  [mappo train] slot=0 team_r=0.0000
+  [mappo train] slot=50 team_r=7.7187
+  [mappo train] slot=100 team_r=22.7310
+  [mappo train] slot=150 team_r=15.8042
+  [mappo train] slot=200 team_r=9.9859
+  [mappo train] slot=250 team_r=0.0000
+  [mappo train] slot=300 team_r=18.6738
+  [mappo train] slot=350 team_r=14.6340
+  [mappo train] slot=400 team_r=0.0000
+  [mappo train] slot=450 team_r=10.6848
+  [mappo train] slot=500 team_r=12.0425
+  [mappo train] slot=550 team_r=4.1473
+  [mappo train] slot=600 team_r=0.0000
+  [mappo train] slot=650 team_r=2.7077
+  [mappo train] slot=700 team_r=3.4728
+  [mappo train] slot=750 team_r=8.8428
+  [mappo train] slot=800 team_r=6.4424
+  [mappo train] slot=850 team_r=4.8605
+  [mappo train] slot=900 team_r=9.1991
+  [mappo train] slot=950 team_r=5.2211
+    reward=7.0600 acc=0.1778 delay=1.649 energy=0.060 backlog=0 vio=0.225 ms/slot=10.14 (dec=1.01 comm=7.22 alloc=1.90) wall=30s
+=== mappo seed=4 ===
+  [mappo train] slot=0 team_r=0.0000
+  [mappo train] slot=50 team_r=14.4492
+  [mappo train] slot=100 team_r=2.9125
+  [mappo train] slot=150 team_r=3.6896
+  [mappo train] slot=200 team_r=7.5312
+  [mappo train] slot=250 team_r=10.9893
+  [mappo train] slot=300 team_r=4.4751
+  [mappo train] slot=350 team_r=4.7378
+  [mappo train] slot=400 team_r=4.2403
+  [mappo train] slot=450 team_r=0.0000
+  [mappo train] slot=500 team_r=6.9299
+  [mappo train] slot=550 team_r=6.5468
+  [mappo train] slot=600 team_r=4.9368
+  [mappo train] slot=650 team_r=14.8558
+  [mappo train] slot=700 team_r=5.6093
+  [mappo train] slot=750 team_r=6.8404
+  [mappo train] slot=800 team_r=11.6174
+  [mappo train] slot=850 team_r=0.0000
+  [mappo train] slot=900 team_r=-0.8494
+  [mappo train] slot=950 team_r=13.8641
+    reward=6.7829 acc=0.1715 delay=1.693 energy=0.060 backlog=0 vio=0.240 ms/slot=10.16 (dec=0.99 comm=7.22 alloc=1.95) wall=31s
+=== cto seed=0 ===
+    reward=9.2289 acc=0.2092 delay=1.465 energy=0.038 backlog=0 vio=0.130 ms/slot=17.27 (dec=3.63 comm=9.62 alloc=4.02) wall=50s
+=== cto seed=1 ===
+    reward=9.2387 acc=0.2107 delay=1.419 energy=0.036 backlog=0 vio=0.124 ms/slot=17.19 (dec=3.56 comm=9.62 alloc=4.00) wall=50s
+=== cto seed=2 ===
+    reward=8.9417 acc=0.2106 delay=1.433 energy=0.037 backlog=0 vio=0.128 ms/slot=18.44 (dec=4.16 comm=9.62 alloc=4.65) wall=54s
+=== cto seed=3 ===
+    reward=9.4710 acc=0.2118 delay=1.395 energy=0.037 backlog=0 vio=0.120 ms/slot=18.44 (dec=3.72 comm=9.62 alloc=5.10) wall=53s
+=== cto seed=4 ===
+    reward=9.1874 acc=0.2083 delay=1.449 energy=0.039 backlog=0 vio=0.128 ms/slot=17.37 (dec=3.75 comm=9.62 alloc=4.00) wall=52s
+
+=== SUMMARY (mean ± std; ms/slot = median ± std) ===
+name         reward      acc    delay   energy    backlog      vio    ms/slot
+causal        9.151±0.22    0.213±0.00    1.446±0.03    0.039±0.00      0.086±0.00    0.131±0.01     14.375±1.37
+ucb           7.407±0.32    0.139±0.01    1.513±0.05    0.044±0.00      0.090±0.00    0.174±0.02     11.210±0.14
+dts           6.964±0.34    0.171±0.00    1.655±0.05    0.057±0.00      0.094±0.00    0.228±0.02     10.925±0.12
+gdo           7.603±0.22    0.233±0.00    1.698±0.03    0.060±0.00      0.096±0.00    0.224±0.02     14.278±0.24
+dqn           6.734±0.21    0.175±0.00    1.695±0.04    0.060±0.00      0.096±0.00    0.244±0.01     20.926±0.68
+ppo           6.733±0.17    0.174±0.00    1.697±0.03    0.060±0.00      0.096±0.00    0.242±0.01     16.585±0.43
+mappo         6.836±0.22    0.176±0.00    1.687±0.04    0.060±0.00      0.095±0.00    0.238±0.01     10.599±0.30
+cto           9.214±0.19    0.210±0.00    1.432±0.03    0.037±0.00      0.086±0.00    0.126±0.00     17.374±0.64
+wrote/merged CSVs + series -> figures/python figures/convergence/
+note: resource-allocation wall medians differ across algos (spread=3.2ms: causal=5.1, cto=4.0, dqn=2.6, dts=2.2, gdo=2.4, mappo=2.2, ppo=1.9, ucb=2.4); runtime stack uses shared median bcd_ms=2.41
+wrote plot exports -> figures/python figures/convergence/plot_data.mat (+ .pkl/.npz)
+note: resource-allocation wall medians differ across algos (spread=3.2ms: causal=5.1, cto=4.0, dqn=2.6, dts=2.2, gdo=2.4, mappo=2.2, ppo=1.9, ucb=2.4); runtime stack uses shared median bcd_ms=2.41
+plotting: ['causal', 'ucb', 'dts', 'gdo', 'dqn', 'ppo', 'mappo', 'cto']
+comm model: users=25 RTT=0.5ms R_ctrl=2e+06bps
+resource allocation: stack bcd_ms=2.41 (shared); raw walls: causal=5.10, ucb=2.43, dts=2.18, gdo=2.39, dqn=2.63, ppo=1.86, mappo=2.24, cto=4.02
+wrote plots -> figures/python figures/convergence/
+runtime stack -> figures/python figures/convergence/runtime.png
+runtime compute -> figures/python figures/convergence/runtime_compute.png
+mean bars -> 6 files (*_bar.png)
+wrote plot exports -> figures/python figures/convergence/plot_data.mat (+ .pkl/.npz)

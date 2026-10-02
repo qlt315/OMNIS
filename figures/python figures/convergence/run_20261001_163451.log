@@ -1,0 +1,22 @@
+=== causal seed=0 ===
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+  File "/Users/qlt315/Documents/GitHub/OMNIS/experiments/convergence_lib.py", line 601, in cli_main
+    run_convergence(algos, slots=slots, users=users, seeds=seeds, out=out,
+  File "/Users/qlt315/Documents/GitHub/OMNIS/experiments/convergence_lib.py", line 503, in run_convergence
+    r = run_one(name, cls, seed, slots, users,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/qlt315/Documents/GitHub/OMNIS/experiments/convergence_lib.py", line 261, in run_one
+    agent.simulation()
+  File "/Users/qlt315/Documents/GitHub/OMNIS/omnis/omnis_main.py", line 1047, in simulation
+    run_discrete_simulation(self)
+  File "/Users/qlt315/Documents/GitHub/OMNIS/omnis/sim_loop.py", line 195, in run_discrete_simulation
+    flush_pending_learn(agent)
+  File "/Users/qlt315/Documents/GitHub/OMNIS/omnis/sim_loop.py", line 59, in flush_pending_learn
+    apply_learn_payload(agent, pend)
+  File "/Users/qlt315/Documents/GitHub/OMNIS/omnis/sim_loop.py", line 78, in apply_learn_payload
+    agent.causal_mab.register_outcome(
+  File "/Users/qlt315/Documents/GitHub/OMNIS/omnis/causal_bandit.py", line 445, in register_outcome
+    snr_db, model_idx, _cell_id = self._pending.pop(user)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^
+KeyError: 'user_5'

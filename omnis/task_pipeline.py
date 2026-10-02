@@ -232,7 +232,7 @@ class TaskPipeline:
         self.active[user] = task
         return task
 
-    def _complete(self, task: Task, energy_budget: float):
+    def _complete(self, task: Task):
         if task.t_done is None:
             task.t_done = self.time_s
         if task.t_edge_start is not None:
@@ -251,10 +251,6 @@ class TaskPipeline:
             self.edge_q[cell].popleft()
         elif task in self.edge_q[cell]:
             self.edge_q[cell].remove(task)
-        self.energy_queue[user] = max(
-            0.0,
-            self.energy_queue[user] + task.total_energy - float(energy_budget),
-        )
         self._just_done.append(task)
         self.completed.append(task)
 
@@ -265,7 +261,7 @@ class TaskPipeline:
         gpu_hz: Dict[str, float],
         goodput_se: Dict[str, float],
         tx_power: Dict[str, float],
-        energy_budget: Dict[str, float],
+        energy_budget: Dict[str, float] = None,
         default_gpu_hz: float = 0.0,
     ):
         """Advance by ``dt`` seconds with concurrent edge GPU sharing.
@@ -275,6 +271,7 @@ class TaskPipeline:
         parallel; ``gpu_hz`` weights are renormalized onto ``default_gpu_hz``
         (the cell pool) among currently ready tasks.
         """
+        del energy_budget  # legacy kw; virtual energy queue removed
         if dt <= 0:
             return
         self._just_done.clear()
@@ -405,7 +402,7 @@ class TaskPipeline:
                         )
                     ):
                         t.t_done = t_cursor
-                        self._complete(t, energy_budget[t.user])
+                        self._complete(t)
 
         self.time_s = slot_end
 

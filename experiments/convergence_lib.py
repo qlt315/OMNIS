@@ -99,7 +99,6 @@ def _lyapunov_completion_values(agent):
     V = agent.lyapunov_v
     T = len(agent.instant_metrics[agent.users[0]]["reward"])
     q_scale = float(getattr(agent, "dpp_task_scale", 3.0))
-    e_scale = float(getattr(agent, "dpp_energy_scale", 0.8))
     vals = []
     for t in range(T):
         for u in agent.users:
@@ -107,18 +106,12 @@ def _lyapunov_completion_values(agent):
             if served_t < 0.5:
                 continue
             r = agent.instant_metrics[u]["reward"][t]
-            energy = agent.instant_metrics[u]["energy"][t]
             backlog_t = agent.instant_metrics[u]["backlog"][t]
-            eq_t = agent.instant_metrics[u]["energy_queue"][t]
             arrivals_t = agent.instant_metrics[u]["arrivals"][t]
             q_n = float(np.tanh(backlog_t / max(q_scale, 1e-9)))
-            z_n = float(np.tanh(eq_t / max(e_scale, 1e-9)))
             service_n = served_t / max(q_scale, 1e-9)
             arrivals_n = arrivals_t / max(q_scale, 1e-9)
-            budget_n = agent.energy_budget[u] / max(e_scale, 1e-9)
-            energy_n = energy / max(e_scale, 1e-9)
-            energy_drift = z_n * (budget_n - energy_n)
-            drift = q_n * (service_n - arrivals_n) + energy_drift
+            drift = q_n * (service_n - arrivals_n)
             vals.append(V * r + drift)
     return vals
 
@@ -133,7 +126,6 @@ def reward_series(agent):
     V = agent.lyapunov_v
     T = len(agent.instant_metrics[agent.users[0]]["reward"])
     q_scale = float(getattr(agent, "dpp_task_scale", 3.0))
-    e_scale = float(getattr(agent, "dpp_energy_scale", 0.8))
     n_u = len(agent.users)
     obj = np.zeros(T, dtype=float)
     for t in range(T):
@@ -143,18 +135,12 @@ def reward_series(agent):
             if served_t < 0.5:
                 continue
             r = agent.instant_metrics[u]["reward"][t]
-            energy = agent.instant_metrics[u]["energy"][t]
             backlog_t = agent.instant_metrics[u]["backlog"][t]
-            eq_t = agent.instant_metrics[u]["energy_queue"][t]
             arrivals_t = agent.instant_metrics[u]["arrivals"][t]
             q_n = float(np.tanh(backlog_t / max(q_scale, 1e-9)))
-            z_n = float(np.tanh(eq_t / max(e_scale, 1e-9)))
             service_n = served_t / max(q_scale, 1e-9)
             arrivals_n = arrivals_t / max(q_scale, 1e-9)
-            budget_n = agent.energy_budget[u] / max(e_scale, 1e-9)
-            energy_n = energy / max(e_scale, 1e-9)
-            energy_drift = z_n * (budget_n - energy_n)
-            drift = q_n * (service_n - arrivals_n) + energy_drift
+            drift = q_n * (service_n - arrivals_n)
             slot += V * r + drift
         obj[t] = slot / n_u
     return obj
@@ -188,7 +174,7 @@ def algo_ms_per_slot(agent, slots, name=None):
     # distributed decision_ms = parallel (max-agent)
     decision_ms = 1000.0 * (dec + upd) / max(slots, 1)
     bcd_ms = 1000.0 * bcd / max(slots, 1)
-    local_dim = int(getattr(agent, "local_obs_dim", 4 + agent.top_l_cells + 2))
+    local_dim = int(getattr(agent, "local_obs_dim", 4 + agent.top_l_cells + 1))
     comm = comm_ms_per_slot(
         name or getattr(agent, "name", "causal"),
         user_num=agent.user_num,

@@ -104,7 +104,7 @@ class OMNIS:
         # Acc/reward learning piggybacks on next-slot uplink (0 = same-slot).
         self.learn_delay_slots = int(getattr(config, 'learn_delay_slots', 1) or 0)
         self._pending_learn = None
-        # Discrete task pipeline: Q^a_m, Q^e_c, sticky BS until task done, Z_m
+        # Discrete task pipeline: Q^u_m, Q^e_c, sticky BS until task done
         self.pipeline = TaskPipeline(self.users, self.num_cells)
         self.backlog = {user: 0.0 for user in self.users}  # alias: task-queue length
         self.energy_queue = self.pipeline.energy_queue
