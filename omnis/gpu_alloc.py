@@ -14,14 +14,15 @@ def allocate_edge_gpu(
     num_cells: int,
     compute_stats,
 ) -> Dict[str, float]:
-    """Closed-form share of the cell GPU pool among concurrent edge tasks.
+    """Closed-form GPU frequencies among concurrent edge tasks.
 
-    Minimizes ``sum_m (A_m / f_m + B_m f_m^2)`` subject to ``sum f = F`` by
-    taking the unconstrained stationary point ``f_m* = (A_m / (2 B_m))^{1/3}``
-    (conference P2.2') and normalizing onto the pool ``F^e``.
+    Minimizes ``sum_m (A_m / f_m + B_m f_m^2)`` subject to ``sum f <= F``.
+    Uses ``f_m* = (A_m / (2 B_m))^{1/3}`` when ``B_m > 0``. Delay-only users
+    (``B_m = 0``) request the full pool ``F`` in Hz. If every user has
+    ``B_m > 0`` and ``sum f* <= F``, keep absolute ``f*``; otherwise scale
+    weights onto the pool ``F^e``.
 
-    A/B use only online ``W_hat`` / ``E_norm_hat`` from ``compute_stats``
-    (no FLOPs / κ / power-coefficient formulas).
+    A/B use only online ``W_hat`` / ``E_norm_hat`` from ``compute_stats``.
     """
     users = list(users)
     out = {u: 0.0 for u in users}
@@ -49,6 +50,7 @@ def allocate_edge_gpu(
             continue
 
         weights = {}
+        pool_binds = False
         n_edge = len(edge_users)
         f_eq = f_tot / max(n_edge, 1)
         for u in edge_users:
@@ -68,6 +70,7 @@ def allocate_edge_gpu(
 
             if model is None:
                 weights[u] = 1.0
+                pool_binds = True
                 continue
 
             W_full, E_norm = compute_stats.edge_work(model)
@@ -87,7 +90,9 @@ def allocate_edge_gpu(
             B = omega_e * max(E_norm, 1e-18)
 
             if B <= 1e-18:
-                weights[u] = max(A, 1e-12)
+                # Delay-only: request full pool (Hz); then scale with others.
+                weights[u] = f_tot
+                pool_binds = True
             else:
                 weights[u] = (A / (2.0 * B)) ** (1.0 / 3.0)
 
@@ -96,6 +101,9 @@ def allocate_edge_gpu(
             share = f_tot / len(edge_users)
             for u in edge_users:
                 out[u] = share
+        elif (not pool_binds) and s <= f_tot + 1e-12:
+            for u in edge_users:
+                out[u] = float(weights[u])
         else:
             for u in edge_users:
                 out[u] = f_tot * weights[u] / s

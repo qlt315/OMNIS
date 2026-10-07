@@ -742,63 +742,84 @@ class OMNIS:
 
     def mcs_selection(self, task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                       local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic, users=None):
-        """Select MCS: ILLA BLER filter + drift/QoS (no Acc-table term)."""
-        users = self.users if users is None else users
-        bler_t = getattr(self, 'bler_target', self.mcs_table.bler_target)
-        mcs_dic = {}
+        """Select MCS per P2.3': max min{GP Acc, xi_minus} - Phi (coordinate update)."""
+        users = list(self.users if users is None else users)
         edge_overhead_dic = self.get_edge_overhead(model_selection_dic, gpu_allocation_dic)
+        mab = getattr(self, 'causal_mab', None)
+        use_gp = mab is not None and hasattr(mab, 'predict_acc_mean_batch')
+        mcs_list = list(self.available_mcs)
+        avail = set(mcs_list)
+        last = getattr(self, '_last_mcs', None) or {}
+        current_xi = {}
+        current_mcs = {}
+
+        def _xi_phi(user, mcs, acc_means, i):
+            model_name_u = model_selection_dic[user]["model"]
+            snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
+            delay_c = float(task_dic[user]['delay_constraint'])
+            energy_c = float(task_dic[user]['energy_constraint'])
+            omega_d = float(task_dic[user]['delay_weight'])
+            omega_e = float(task_dic[user]['energy_weight'])
+            temp_mcs_dic = {user: mcs}
+            trans_overhead_dic = self.get_trans_overhead(
+                {user: trans_rate_dic[user]}, {user: model_selection_dic[user]},
+                {user: bandwidth_allocation_dic[user]}, temp_mcs_dic,
+                snr_dic={user: snr_dic[user]})
+            service_delay = (local_overhead_dic[user]['delay']
+                             + edge_overhead_dic[user]['delay']
+                             + trans_overhead_dic[user]['delay'])
+            total_energy = (local_overhead_dic[user]['energy']
+                            + edge_overhead_dic[user]['energy']
+                            + trans_overhead_dic[user]['energy'])
+            bler = float(self.mcs_table.bler(model_name_u, mcs, snr_db))
+            se = float(self.mcs_table.se[mcs])
+            goodput = (1.0 - bler) * se
+            xi_hat = float(acc_means[i]) if acc_means is not None else goodput
+            phi = (omega_d * erf(service_delay - delay_c)
+                   + omega_e * erf(total_energy - energy_c))
+            return xi_hat, phi, se
+
+        for user in users:
+            m0 = last.get(user)
+            if m0 not in avail:
+                m0 = mcs_list[0]
+            model_name_u = model_selection_dic[user]["model"]
+            snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
+            if use_gp:
+                acc0 = mab.predict_acc_mean_batch(
+                    snr_db, model_name_u, [m0], user=user)
+            else:
+                acc0 = None
+            xi0, _phi0, _se0 = _xi_phi(user, m0, acc0, 0)
+            current_mcs[user] = m0
+            current_xi[user] = xi0
+
         for user in users:
             model_name_u = model_selection_dic[user]["model"]
             snr_db = 10 * np.log10(max(snr_dic[user], 1e-12))
-            under, over, best_infeas, best_infeas_score = [], [], None, -np.inf
-            for mcs in self.available_mcs:
-                temp_mcs_dic = {user: mcs}
-
-                trans_overhead_dic = self.get_trans_overhead(
-                    {user: trans_rate_dic[user]}, {user: model_selection_dic[user]},
-                    {user: bandwidth_allocation_dic[user]}, temp_mcs_dic,
-                    snr_dic={user: snr_dic[user]})
-
-                service_delay = (local_overhead_dic[user]['delay'] + edge_overhead_dic[user]['delay'] +
-                                 trans_overhead_dic[user]['delay'])
-                total_energy = (local_overhead_dic[user]['energy'] + edge_overhead_dic[user]['energy'] +
-                                trans_overhead_dic[user]['energy'])
-                cell_id = None
-                pipe = getattr(self, "pipeline", None)
-                if pipe is not None:
-                    locked = pipe.locked_cell(user)
-                    if locked is not None:
-                        cell_id = int(locked)
-                drift = self.dpp_drift(
-                    user, model_name_u, mcs, total_energy,
-                    snr_db=snr_db, cell_id=cell_id)
-
-                if (service_delay <= task_dic[user]['delay_constraint']
-                        and total_energy <= task_dic[user]['energy_constraint']):
-                    score = drift
-                    bler = self.mcs_table.bler(model_name_u, mcs, snr_db)
-                    entry = (mcs, score, bler, self.mcs_table.se[mcs])
-                    if bler <= bler_t:
-                        under.append(entry)
-                    else:
-                        over.append(entry)
-                else:
-                    score = (self.lyapunov_v * (
-                             task_dic[user]['delay_weight']
-                             * erf(task_dic[user]['delay_constraint'] - service_delay)
-                             + task_dic[user]['energy_weight']
-                             * erf(task_dic[user]['energy_constraint'] - total_energy))
-                             + drift)
-                    if score > best_infeas_score:
-                        best_infeas, best_infeas_score = mcs, score
-
-            pool = under if under else over
-            if pool:
-                mcs_dic[user] = max(pool, key=lambda t: (t[1], t[3]))[0]
+            if use_gp:
+                acc_means = mab.predict_acc_mean_batch(
+                    snr_db, model_name_u, mcs_list, user=user)
             else:
-                mcs_dic[user] = best_infeas
+                acc_means = None
+            others = [current_xi[j] for j in users if j != user]
+            xi_minus = min(others) if others else np.inf
+            best_mcs, best_score, best_xi = None, -np.inf, None
+            for i, mcs in enumerate(mcs_list):
+                xi_hat, phi, se = _xi_phi(user, mcs, acc_means, i)
+                score = min(xi_hat, xi_minus) - phi
+                if (best_mcs is None or score > best_score
+                        or (score == best_score and se > float(self.mcs_table.se[best_mcs]))):
+                    best_score = score
+                    best_mcs = mcs
+                    best_xi = xi_hat
+            current_mcs[user] = best_mcs
+            current_xi[user] = best_xi
 
-        return mcs_dic
+        return current_mcs
+
+
+
 
     def mcs_selection_all_cells(self, task_dic, snr_dic, trans_rate_dic, model_selection_dic,
                                 local_overhead_dic, bandwidth_allocation_dic, gpu_allocation_dic,

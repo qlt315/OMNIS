@@ -88,6 +88,31 @@ class CausalMAB:
         rate = float(self.scm.mcs_table.code_rate[int(mcs_idx)])
         return np.array([snr_db, quant_flag, channels, rate])
 
+    def _model_idx(self, model_name):
+        return next(
+            (i for i, m in enumerate(self.scm.models) if m["name"] == model_name),
+            0,
+        )
+
+    def predict_acc_mean(self, snr_db, model_name, mcs_idx, user=None):
+        """Shared-GP posterior mean for ES P2.3' (no UCB exploration term)."""
+        model_idx = self._model_idx(model_name)
+        x = self._make_x(float(snr_db), model_idx, int(mcs_idx))
+        gp = self._gp_for(user) if (user is not None and not self.shared) else self.gp
+        mu, _std = gp.predict(np.asarray(x, dtype=float)[None, :])
+        return float(np.asarray(mu).ravel()[0])
+
+    def predict_acc_mean_batch(self, snr_db, model_name, mcs_list, user=None):
+        """Vectorized posterior means for a locked branch over MCS candidates."""
+        model_idx = self._model_idx(model_name)
+        xs = np.asarray(
+            [self._make_x(float(snr_db), model_idx, int(m)) for m in mcs_list],
+            dtype=float,
+        )
+        gp = self._gp_for(user) if (user is not None and not self.shared) else self.gp
+        mu, _std = gp.predict(xs)
+        return np.asarray(mu, dtype=float).ravel()
+
     def _prior_at(self, x):
         """Uninformative Acc prior (0). Never reads mcs_table.accuracy."""
         if not self.use_prior:
