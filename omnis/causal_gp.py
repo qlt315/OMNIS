@@ -3,19 +3,10 @@ from scipy.linalg import solve_triangular
 
 
 class ResidualGP:
-    """Gaussian process over the residual r(x) = f(x) - prior_mean(x) with
-    exact online posterior updates via incremental Cholesky factorization.
+    """Residual GP r(x)=f(x)-prior(x); anisotropic Matérn-3/2, incremental Cholesky.
 
-    Kernel: anisotropic Matern-3/2 with fixed hyperparameters, matching the
-    kernel family used by the conference-version GP-UCB agents. Each `add`
-    costs O(n) (one triangular row extension into a preallocated buffer); the
-    O(n^2) posterior solve is deferred to the next `predict` call, so it runs
-    once per slot rather than once per observation. No per-slot hyperparameter
-    optimization is performed, which removes the O(t^3) L-BFGS refits of the
-    original implementation.
-
-    With an empty (uninformative) prior and ``_n==0``, predictive std is
-    inflated so UCB/TS explores aggressively until observations arrive.
+    Hyperparameters are fixed. ``add`` is O(n); the O(n^2) solve runs on predict.
+    Empty GP uses ``empty_prior_std`` until observations arrive.
     """
 
     def __init__(self, prior_mean_fn, length_scales, signal_var=2.5e-3, noise_var=1e-4,
@@ -136,9 +127,7 @@ class ResidualGP:
 
     def predict(self, X):
         X = np.atleast_2d(np.asarray(X, dtype=float))
-        # Fast path: uninformative prior mean is identically 0 (Causal Acc GP).
         if self._n == 0:
-            # Still evaluate one prior sample so custom priors stay correct.
             p0 = float(self.prior_mean_fn(X[0]))
             if p0 == 0.0 and len(X) > 1:
                 prior = np.zeros(len(X))
@@ -155,7 +144,6 @@ class ResidualGP:
         std = np.sqrt(np.maximum(var, 1e-12))
         p0 = float(self.prior_mean_fn(X[0]))
         if p0 == 0.0:
-            # Assume constant-zero prior (Acc-table prior banned).
             return mean_res, std
         prior = np.array([self.prior_mean_fn(x) for x in X])
         return prior + mean_res, std

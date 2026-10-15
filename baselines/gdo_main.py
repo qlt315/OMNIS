@@ -1,4 +1,4 @@
-"""GDO: Acc-UCB among QoS-feasible arms; radio/GPU via ES BCD. No Lyapunov drift."""
+"""GDO baseline: Acc EWMA+UCB among QoS-feasible arms; ES BCD for radio/GPU."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ class GDO(SlotEnv):
         self.gdo_price_compute = float(getattr(config, "gdo_price_compute", 1.0))
         self.gdo_offer = float(getattr(config, "gdo_offer", 2.0))
         self.gdo_mab_beta = float(getattr(config, "gdo_mab_beta", 0.25))
-        # Scale predicted delay/energy limits: <1 tightens the QoS gate.
         self.gdo_feas_margin = float(getattr(config, "gdo_feas_margin", 1.0))
         self._pr = float(self.gdo_price_radio)
         self._pc = float(self.gdo_price_compute)
@@ -32,7 +31,7 @@ class GDO(SlotEnv):
         self._acc_t = 0
 
     def learn_after_slot(self, pend):
-        """Update per-branch Acc UCB from completion labels (env Acc only)."""
+        """Update per-branch Acc stats from completions."""
         t0 = time.time()
         acc_dic = pend.get("acc") or {}
         msel = pend.get("model_selection") or {}
@@ -46,7 +45,6 @@ class GDO(SlotEnv):
         self._last_parallel_update_s = time.time() - t0
 
     def _forecast_uplink_bw(self, user, cell_id, last_bw):
-        """Same association-share + grant-EWMA BW forecast as OMNIS+."""
         del last_bw
         from omnis.compute_stats import ensure_compute_stats
         stats = ensure_compute_stats(self)
@@ -66,7 +64,6 @@ class GDO(SlotEnv):
 
     def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0,
                              cell_id=None):
-        """Same measurement-driven hats as OMNIS+ (fair comparison)."""
         del rate_m
         from omnis.compute_stats import predict_service_overheads
         return predict_service_overheads(
@@ -85,7 +82,6 @@ class GDO(SlotEnv):
         return best_mcs if best_se >= 0.0 else fallback_mcs
 
     def _pred_acc(self, model_name):
-        """UCB Acc from observations only (never the offline Acc table)."""
         n = int(self._acc_n.get(model_name, 0))
         if n <= 0:
             return 1.0

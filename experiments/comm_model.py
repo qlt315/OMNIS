@@ -31,7 +31,6 @@ def profile_bytes(name: str, user_num: int, local_obs_dim: int = 9,
     rounds = CONTROL_ROUNDS
     # One broadcast of per-cell compute state for next-slot association.
     cell_bcast = int(num_cells) * B_CELL_COMPUTE
-    # Measurement exchange shared by all schemes (fair comparison).
     meas_up = U * B_LOCAL_MEAS
     meas_down = U * B_EDGE_MEAS
 

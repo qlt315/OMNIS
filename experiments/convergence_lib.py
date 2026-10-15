@@ -201,7 +201,6 @@ def configure(name, seed, slots, users, *, no_update=False, freeze_after=0,
     c = Config(seed)
     c.time_slot_num = slots
     c.update_users(users)
-    # CTO is centralized causal (same score as OMNIS+). Do not shrink its GP.
     if name in ("causal", "ucb"):
         c.algo = name
     if name == "dqn":

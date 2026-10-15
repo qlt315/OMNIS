@@ -24,34 +24,28 @@ class SlotEnv:
     """
 
     def __init__(self, config):
-        """Initialize system parameters including models, devices, and users."""
-        # Basic configuration
         self.name = "slot"
         self.seed = config.seed
-        np.random.seed(self.seed)  # Set random seed for reproducibility
+        np.random.seed(self.seed)
 
-        # Computation-related parameters
         self.models = config.models
         self.data_size = config.data_size
         self.head_flops = config.head_flops
         self.tail_flops = config.tail_flops
 
 
-        # User and system parameters
         self.users = config.users
         self.user_num = config.user_num
         self.md_params = config.md_params
         self.es_params = config.es_params
         self.time_slot_num = config.time_slot_num
 
-        # Network and communication parameters
         self.mcs_table = config.mcs_table
         self.available_mcs = config.available_mcs
         self.total_bandwidth = config.total_bandwidth
         self.noise_power_dBm = config.noise_power_dBm
         self.noise_power = config.noise_power
 
-        # Fixed execution costs
         self.fixed_delay = config.fixed_delay
         self.fixed_energy = config.fixed_energy
         self.fixed_energy_weight = config.fixed_energy_weight
@@ -59,7 +53,6 @@ class SlotEnv:
         self.energy_constraint_range = config.energy_constraint_range
         self.energy_weight_range = config.energy_weight_range
 
-        # Performance metrics
         self.instant_metrics = config.instant_metrics
         self.average_metrics = config.average_metrics
         self.std_metrics = config.std_metrics
@@ -76,14 +69,11 @@ class SlotEnv:
         self.num_cells = config.num_cells
         self.assoc_w_radio = float(getattr(config, "assoc_w_radio", 1.0))
         self.assoc_w_compute = float(getattr(config, "assoc_w_compute", 1.0))
-        # Std of the per-task accuracy observation noise (0 disables)
         self.acc_noise_std = getattr(config, 'acc_noise_std', 0.0)
 
-        # BCD (Block Coordinate Descent) algorithm settings
         self.bcd_flag = config.bcd_flag
         self.bcd_max_iter = config.bcd_max_iter
 
-        # Queueing model + Lyapunov framework (journal extension)
         self.slot_duration = getattr(config, 'slot_duration', 1.0)
         self.arrival_rate = getattr(config, 'arrival_rate', {user: 0.7 for user in self.users})
         self.energy_budget = getattr(config, 'energy_budget', {user: 0.45 for user in self.users})
@@ -158,7 +148,7 @@ class SlotEnv:
 
     def predict_md_overheads(self, user, rate_m, model_name, mcs_idx, snr_db=0.0,
                              cell_id=None):
-        """Same measurement-driven hats as OMNIS+ (fair comparison)."""
+        """Delay/energy hats from ComputeStats."""
         del rate_m
         from omnis.compute_stats import predict_service_overheads
         return predict_service_overheads(

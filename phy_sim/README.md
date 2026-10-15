@@ -1,10 +1,8 @@
 # phy_sim
 
-This package generates the physical-layer inputs used by OMNIS: MCS
-definitions, transport-block BLER tables, accuracy tables, and multi-cell
-SINR traces. All link simulations follow 5G NR procedures in Sionna
-(LDPC5G, QAM mapping, 3GPP 38.901 channels). The system simulator reads
-the CSV outputs through `omnis/mcs_table.py` and `omnis/sinr_trace.py`.
+Physical-layer inputs for OMNIS+: MCS definitions, TB BLER / Acc tables,
+and multi-cell SINR traces (Sionna 5G NR, 3GPP 38.901). The simulator loads
+outputs via `omnis/mcs_table.py` and `omnis/sinr_trace.py`.
 
 Payload sizes match the six split-DNN branches in `sys_data/config.py`
 (Box3/6/12, Standard3/6/12). One inference task is one transport block.

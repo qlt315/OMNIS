@@ -32,7 +32,7 @@ class MyopicDPP(SlotEnv):
     def _emp_acc(self, model_name):
         n = self._emp_acc_n[model_name]
         if n <= 0:
-            return 0.5  # uninformative until observations arrive
+            return 0.5
         return self._emp_acc_sum[model_name] / n
 
     def _arm_score(self, user, model_name, snr_db, task_u, cell_id=None):

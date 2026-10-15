@@ -1,4 +1,4 @@
-"""Conference-style continuous GPU frequency allocation among edge-stage tasks."""
+"""GPU frequency allocation among concurrent edge-stage tasks."""
 
 from __future__ import annotations
 
@@ -14,15 +14,11 @@ def allocate_edge_gpu(
     num_cells: int,
     compute_stats,
 ) -> Dict[str, float]:
-    """Closed-form GPU frequencies among concurrent edge tasks.
+    """Closed-form shares: min sum (A/f + B f^2) s.t. sum f <= F.
 
-    Minimizes ``sum_m (A_m / f_m + B_m f_m^2)`` subject to ``sum f <= F``.
-    Uses ``f_m* = (A_m / (2 B_m))^{1/3}`` when ``B_m > 0``. Delay-only users
-    (``B_m = 0``) request the full pool ``F`` in Hz. If every user has
-    ``B_m > 0`` and ``sum f* <= F``, keep absolute ``f*``; otherwise scale
-    weights onto the pool ``F^e``.
-
-    A/B use only online ``W_hat`` / ``E_norm_hat`` from ``compute_stats``.
+    Stationary point f* = (A/(2B))^{1/3} when B>0; delay-only (B=0) requests F.
+    Keep absolute f* if all B>0 and sum f* <= F; else scale onto F.
+    A, B from online W_hat / E_norm_hat in compute_stats.
     """
     users = list(users)
     out = {u: 0.0 for u in users}
@@ -32,8 +28,7 @@ def allocate_edge_gpu(
         return {u: f_tot / n for u in users}
 
     if compute_stats is None:
-        raise ValueError(
-            "allocate_edge_gpu requires compute_stats; FLOPs oracle path removed")
+        raise ValueError("allocate_edge_gpu requires compute_stats")
 
     f_tot = float(es_params["freq"])
 
@@ -90,7 +85,6 @@ def allocate_edge_gpu(
             B = omega_e * max(E_norm, 1e-18)
 
             if B <= 1e-18:
-                # Delay-only: request full pool (Hz); then scale with others.
                 weights[u] = f_tot
                 pool_binds = True
             else:

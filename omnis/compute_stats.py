@@ -1,16 +1,4 @@
-"""Online local/edge delay–energy statistics from MD↔ES measurement exchange.
-
-FLOPs / power coefficients are simulator-only. Controllers learn invariants:
-
-* local: EWMA of measured (local_s, local_e) per (user, branch), with a
-  branch-level fallback shared across MDs (exchange / broadcast)
-* edge:  EWMA of W = edge_s * f_bar and E_norm = edge_e / f_bar^2 per branch
-* uplink (MD): goodput airtime bits/(b·SE) with provisional b; online EWMA of
-  past radio grants improves the b prior. ES treats realized τ^u as measured
-  (timestamps / grant accounting), not estimated.
-
-Decision-time hats recombine with the forecast GPU share f_hat.
-"""
+"""EWMA delay/energy / edge-work stats used by MD and ES forecasts."""
 
 from __future__ import annotations
 
@@ -18,7 +6,7 @@ from typing import Dict, Optional, Tuple
 
 
 class ComputeStats:
-    """Shared by OMNIS+ and all baselines for fair QoS scoring / GPU weights."""
+    """Per-branch EWMA stats shared across schemes."""
 
     def __init__(
         self,

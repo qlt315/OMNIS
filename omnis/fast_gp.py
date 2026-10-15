@@ -1,13 +1,4 @@
-"""Drop-in GaussianProcessRegressor with a fast posterior-predict path.
-
-sklearn's predict() goes through the generic kernel __call__ machinery, which
-is painfully slow for large query sets (CTO evaluates 6^6 = 46656 joint
-candidates per slot). For the kernel actually used in this project
-(WhiteKernel + Matern with vector length_scale), the cross-covariance reduces
-to the Matern part (White contributes only on the diagonal), so mean and std
-can be computed with one cdist plus one triangular solve, in pure BLAS speed
-and with bit-comparable results.
-"""
+"""sklearn GP with a faster predict for White+Matern kernels (used by CTO)."""
 import numpy as np
 from scipy.linalg import solve_triangular
 from sklearn.gaussian_process import GaussianProcessRegressor

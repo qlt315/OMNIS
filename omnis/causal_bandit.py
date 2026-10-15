@@ -19,35 +19,22 @@ class CausalMAB:
         self.beta = beta
         self.penalty_gain = penalty_gain
         self.acquisition = acquisition
-        # Acc-table prior is banned; flag kept for compatibility (always off).
         self.use_prior = bool(use_prior) and bool(scm._acc_prior)
         self.shared = shared
         self.lyapunov_v = lyapunov_v
         self.drift_gain = drift_gain
         self.w_acc = w_acc
-        # Random (model, cell) until this many pooled GP observations (乱搞),
-        # or until explore_slots selection rounds — whichever keeps exploring longer.
+        # Random arms until init_random GP obs or explore_slots rounds.
         self.init_random = int(init_random)
         self.explore_slots = int(explore_slots)
         self.min_obs_per_model = 12
         self._select_slots = 0
         self._model_obs = [0 for _ in scm.models]
-        # Lyapunov-feasible accuracy upgrade: bias toward wider models when
-        # SINR is good and the bit queue is light (does not change get_reward).
         self.acc_upgrade_snr_db = float(acc_upgrade_snr_db)
         self.acc_upgrade_backlog_tanh = float(acc_upgrade_backlog_tanh)
         self.acc_upgrade_bonus = float(acc_upgrade_bonus)
-        # Require predicted sojourn/energy ≤ margin * constraint (margin≤1),
-        # with a small inflation on sojourn to cover prediction optimism.
         self.feas_margin = float(np.clip(feas_margin, 0.5, 1.0))
-        # Centralized controller (CTO): charge the sum of per-MD work plus the
-        # full GP predict. Distributed MDs charge max(local) plus GP wall / U.
         self.centralized = bool(centralized)
-        # Small cushion for SINR error. The admit-slot grant wait and the
-        # broadcast association share are already inside the sojourn forecast.
-        # Slightly inside the raw delay limit. GDO admits whenever the
-        # predicted sojourn meets the limit, so the same heavy branch is
-        # eligible here unless the forecast is already against the constraint.
         self.sojourn_guard = 1.0
         self.sojourn_guard_hi_snr = 1.0
         self.sojourn_guard_snr_db = 6.5
@@ -114,7 +101,7 @@ class CausalMAB:
         return np.asarray(mu, dtype=float).ravel()
 
     def _prior_at(self, x):
-        """Uninformative Acc prior (0). Never reads mcs_table.accuracy."""
+        """Zero-mean Acc prior before any GP observations."""
         if not self.use_prior:
             return 0.0
         snr_db, quant_flag, channels, mcs_idx = x
@@ -478,12 +465,7 @@ class CausalMAB:
             self.register_outcome(user, mcs_realized, acc_obs, do_update=do_update)
 
     def prediction_errors(self, records):
-        """Abs accuracy errors vs prior / current posterior at the pending arm.
-
-        Call **before** ``register_outcomes_batch`` (uses ``_pending``).
-        Returns (mean_|acc-prior|, mean_|acc-posterior|) over users in ``records``.
-        With empty prior, prior error ≈ |acc| (uninformative baseline).
-        """
+        """Mean |acc-prior| and |acc-posterior| at pending arms (call before register)."""
         prior_errs = []
         post_errs = []
         if self.shared and records:

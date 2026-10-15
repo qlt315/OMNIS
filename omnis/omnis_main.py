@@ -36,16 +36,13 @@ class OMNIS:
         self.es_params = config.es_params
         self.time_slot_num = config.time_slot_num
 
-        # Network and transmission-related parameters
         self.total_bandwidth = config.total_bandwidth
         self.noise_power_dBm = config.noise_power_dBm
         self.noise_power = config.noise_power
 
-        # PHY layer: Sionna-generated MCS tables (journal version)
         self.mcs_table = config.mcs_table
         self.available_mcs = config.available_mcs
 
-        # Fixed overhead costs for task execution
         self.fixed_delay = config.fixed_delay
         self.fixed_energy = config.fixed_energy
         self.fixed_energy_weight = config.fixed_energy_weight
@@ -53,15 +50,13 @@ class OMNIS:
         self.energy_constraint_range = config.energy_constraint_range
         self.energy_weight_range = config.energy_weight_range
 
-        # Performance metrics
         self.instant_metrics = config.instant_metrics
         self.average_metrics = config.average_metrics
         self.std_metrics = config.std_metrics
 
-        # Wall-clock: MD decision + ES BCD + learning update [s]
         self.decision_time = 0.0
         self.bcd_time = 0.0
-        self.bcd_iters = 0.0  # running avg BCD iterations / slot
+        self.bcd_iters = 0.0
         self.update_time = 0.0
         self.est_err = config.est_err
         self.est_err_db = getattr(config, 'est_err_db', 1.0)
@@ -69,17 +64,13 @@ class OMNIS:
         self.sinr_trace = config.sinr_trace
         self.top_l_cells = config.top_l_cells
         self.num_cells = config.num_cells
-        # Coarse Top-L: mix radio + broadcast compute (pruning only).
-        # Joint MAB still learns (model, cell_rank) inside Top-L (coupled obj).
         self.assoc_w_radio = float(getattr(config, "assoc_w_radio", 1.0))
         self.assoc_w_compute = float(getattr(config, "assoc_w_compute", 1.0))
         self.action_freq = config.action_freq
 
-        # BCD (Block Coordinate Descent) algorithm-related parameters
         self.bcd_flag = config.bcd_flag
         self.bcd_max_iter = config.bcd_max_iter
 
-        # Decision-making and optimization-related parameters
         self.contexts = config.contexts
         self.action = config.action
         self.context_dim = config.context_dim
@@ -91,7 +82,6 @@ class OMNIS:
         self.optimizers = config.optimizers
         self.utility = config.utility
 
-        # Queueing model + Lyapunov framework (journal extension)
         self.slot_duration = getattr(config, 'slot_duration', 1.0)
         self.arrival_rate = getattr(config, 'arrival_rate', {user: 0.7 for user in self.users})
         self.energy_budget = getattr(config, 'energy_budget', {user: 0.45 for user in self.users})
@@ -101,15 +91,12 @@ class OMNIS:
         self.dpp_bit_scale = getattr(config, 'dpp_bit_scale', 2.2e4)
         self.dpp_task_scale = float(getattr(config, 'dpp_task_scale', 3.0))
         self.dpp_energy_scale = getattr(config, 'dpp_energy_scale', 0.45)
-        # Acc/reward learning piggybacks on next-slot uplink (0 = same-slot).
         self.learn_delay_slots = int(getattr(config, 'learn_delay_slots', 1) or 0)
         self._pending_learn = None
-        # Discrete task pipeline: Q^u_m, Q^e_c, sticky BS until task done
         self.pipeline = TaskPipeline(self.users, self.num_cells)
-        self.backlog = {user: 0.0 for user in self.users}  # alias: task-queue length
+        self.backlog = {user: 0.0 for user in self.users}
         self.energy_queue = self.pipeline.energy_queue
 
-        # Causal MAB (journal extension)
         self.algo = getattr(config, 'algo', 'ucb')
         self.acc_noise_std = getattr(config, 'acc_noise_std', 0.0)
         if self.algo == 'causal':
@@ -717,11 +704,7 @@ class OMNIS:
             cell_dic, snr_dic=snr_dic)
 
     def gpu_resource_allocation(self, task_dic, model_selection_dic, users=None):
-        """Continuous GPU frequency share among concurrent edge-stage MDs.
-
-        Closed form from the convex edge subproblem (conference-style):
-        minimize sum_m [A_m/f_m + B_m f_m^2] s.t. sum f = F^e.
-        """
+        """GPU frequencies for concurrent edge-stage MDs (closed form)."""
         from omnis.gpu_alloc import allocate_edge_gpu
         from omnis.compute_stats import ensure_compute_stats
         users = self.users if users is None else users
