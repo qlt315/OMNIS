@@ -1,26 +1,33 @@
 # phy_sim
 
-Physical-layer inputs for OMNIS+: MCS definitions, TB BLER / Acc tables,
-and multi-cell SINR traces (Sionna 5G NR, 3GPP 38.901). The simulator loads
-outputs via `omnis/mcs_table.py` and `omnis/sinr_trace.py`.
+Sionna-based PHY for OMNIS+: MCS tables, TB BLER / accuracy sweeps, and multi-cell
+channel traces. The system simulator loads results through `omnis/mcs_table.py`
+and `omnis/channel_trace.py`.
 
-Payload sizes match the six split-DNN branches in `sys_data/config.py`
+Payload sizes match the six branches in `sys_data/config.py`
 (Box3/6/12, Standard3/6/12). One inference task is one transport block.
 
-## Overview of the pipeline
+## Pipeline
 
 ```
-mcs.py ──────────────► mcs_def.csv
-payloads.py ──┐
-link.py ──────┼──► run_bler.py ──► bler_table.csv
-              ├──► run_acc.py  ──► acc_table.csv, acc_clean.csv
-              └──► run_cb_scan.py ──► cb_scan.csv ──► synth_acc.py
-run_traces.py ────────────────────► channel_*.npz
+mcs.py        →  mcs_def.csv
+link.py       →  used by run_bler / run_acc
+run_bler.py   →  bler_table.csv
+run_acc.py    →  acc_table.csv, acc_clean.csv
+run_traces.py →  channel_<tag>.npz
 ```
 
-Typical workflow: build MCS definitions, sweep BLER and accuracy over
-`(branch, MCS, SNR)`, generate SINR traces for the multi-cell scenario,
-then point `sys_data/config.py` at the resulting files under `output/`.
+## Files
+
+| File | Description |
+|------|-------------|
+| `mcs.py` | 5G NR MCS table (3GPP TS 38.214, indices 0–28) |
+| `payloads.py` | Branch payload sizes (keep in sync with `Config.data_size`) |
+| `link.py` | Encode / transmit / decode one transport block |
+| `features.py` | Load feature payloads and score accuracy with the split-DNN tail |
+| `run_bler.py` | Sweep (branch, MCS, SNR) → TB BLER |
+| `run_acc.py` | Sweep (branch, MCS, SNR) → task accuracy through the link + tail |
+| `run_traces.py` | Generate 7-cell UMi uplink channel traces |
 
 ## Install
 
@@ -28,213 +35,79 @@ then point `sys_data/config.py` at the resulting files under `output/`.
 pip install sionna
 ```
 
-Developed with Sionna 2.x and a PyTorch backend. LDPC decoding is the
-main cost; use `--device cuda` for large sweeps.
+Sionna 2.x with a PyTorch backend. Use `--device cuda` for large sweeps.
 
----
-
-## MCS definitions (`mcs.py`)
-
-Implements 3GPP TS 38.214 Table 5.1.3.1-1 (64QAM table, indices 0–28).
-Each index stores modulation order `qm`, code rate \(R = R_{1024}/1024\),
-and spectral efficiency \(qm \cdot R\).
+## How to run
 
 ```bash
-python mcs.py   # writes output/mcs_def.csv
-```
+cd phy_sim
 
-Columns: `mcs_index, modulation, qm, code_rate, spectral_efficiency`.
+# MCS definitions
+python mcs.py
 
-## Payloads (`payloads.py`)
-
-| Branch | Bytes | Bits |
-|--------|------:|-----:|
-| Box3 | 6000 | 48000 |
-| Box6 | 13260 | 106080 |
-| Box12 | 33580 | 268640 |
-| Standard3 | 11230 | 89840 |
-| Standard6 | 22460 | 179680 |
-| Standard12 | 44930 | 359440 |
-
-Keep these values aligned with `Config.data_size` in `sys_data/config.py`.
-
-## Link chain (`link.py`)
-
-`TBLink` encodes, transmits, and decodes one transport block for a given
-payload length and MCS.
-
-**SNR definition.** Tables are conditioned on AWGN Es/N0 at the demapper
-input with unit average symbol energy. Fast fading is not applied in the
-link chain; time-varying SINR is provided separately by the traces.
-
-**Code-block layout (`design_tb`).**
-
-- Mother rate \(\max(R, 0.2)\). Rates below 1/5 use a rate-1/5 mother code
-  with circular repetition of coded bits; the receiver folds LLRs before
-  decoding (38.212).
-- Base graph: BG2 if mother rate \(< 1/3\), else BG1. Maximum info bits
-  per block: 3840 (BG2) or 8448 (BG1).
-- Number of code blocks \(K = \lceil P / k_{\max}\rceil\); info bits per
-  block \(k = \lceil P / K\rceil\).
-- Transmitted coded bits per block \(G\) are rounded up to a multiple of
-  `qm`.
-
-**Decoder.** Sionna `LDPC5GDecoder` with hard info-bit output. Default
-`num_iter=30`. Mapper/demapper use max-log LLRs; QAM for `qm≥2`, PAM/BPSK
-for `qm=1` (legacy calibration).
-
-**TB error event.** A transport block is wrong if any of its \(K\) code
-blocks has at least one information-bit error after decoding.
-
-```bash
-python link.py   # self-test over a few MCS × SNR points
-```
-
----
-
-## BLER table (`run_bler.py`)
-
-Monte Carlo sweep of TB-level BLER over branch, MCS, and SNR.
-
-**Output.** `model,mcs_index,snr_db,bler,n_trials`
-
-**Default grid.**
-
-| Argument | Default |
-|----------|---------|
-| `--branches` | all six |
-| `--mcs` | 0 … 28 |
-| `--snr` | −5 … 20 dB, step 1 |
-| `--num-tbs` | 20000 max TBs per grid point |
-| `--round-tbs` | 1000 TBs per adaptive round |
-| `--target-errors` | stop after 100 TB errors |
-| `--batch-tbs` | 8 parallel TBs |
-| `--num-iter` | 30 LDPC iterations |
-| `--device` | `cpu` |
-| `--seed` | 1000 |
-
-Adaptive stopping concentrates samples near the waterfall: each point
-runs until `target-errors` TB failures or `num-tbs` trials. Rows append
-to the CSV so interrupted runs can resume by narrowing `--branches` /
-`--mcs`.
-
-```bash
-# smoke
+# BLER table (smoke / full)
 python run_bler.py --branches Box3 --mcs 9 16 28 --snr 0 16 2 \
     --num-tbs 100 --round-tbs 50 --batch-tbs 10 --out output/bler_smoke.csv
-
-# production
 python run_bler.py --num-tbs 50000 --target-errors 200 \
     --batch-tbs 64 --device cuda --out output/bler_table.csv
-```
 
-## Accuracy table (`run_acc.py`)
-
-Transmits real or synthetic feature payloads through `TBLink`, then scores
-the reconstructed bits with a tail evaluator.
-
-**Outputs.**
-
-- `acc_table.csv`: `model,mcs_index,snr_db,accuracy,n_trials`
-- `acc_clean.csv`: error-free accuracy per branch (written once)
-
-**Providers.**
-
-- `--provider random`: random bit payloads + logistic synthetic accuracy
-  for pipeline checks.
-- `--provider npz`: load `features/<branch>.npz` with arrays
-  `payloads` (uint8, packed) and `labels` (int64); implement
-  `NPZTailEvaluator.accuracy` around the split-DNN tail.
-
-**Default grid.** Same SNR/MCS ranges as BLER; `--num-samples` defaults
-to 64 (use ~1000 for production), `--batch-samples` 16, `--seed` 2000.
-
-```bash
-python run_acc.py --branches Box3 --mcs 9 28 --snr 0 10 5 \
-    --num-samples 16 --batch-samples 8 \
-    --out output/acc_smoke.csv --clean-out output/acc_clean_smoke.csv
-
+# Accuracy table (feature NPZ + split-DNN tail)
 python run_acc.py --provider npz --num-samples 1000 \
     --batch-samples 32 --device cuda --out output/acc_table.csv
+
+# Channel traces
+python run_traces.py --slots 1000 --tag smoke7
 ```
 
-OMNIS reads accuracy from the fitted Acc(model, coding rate, SINR) curves.
-BLER from `bler_table.csv` is used for goodput and delay, not mixed into accuracy.
+`link.py` can be run alone for a short self-test.
 
-## Code-block scan (`run_cb_scan.py`)
+## Payloads
 
-Cheaper CB-level statistics used by `synth_acc.py`. Because TB BLER
-satisfies \(\mathrm{BLER}_{TB}=1-(1-p_{CB})^K\), scanning one reference
-code block per MCS is enough for table assembly.
+| Branch | Bytes |
+|--------|------:|
+| Box3 / Box6 / Box12 | 6000 / 13260 / 33580 |
+| Standard3 / Standard6 / Standard12 | 11230 / 22460 / 44930 |
 
-**Modes.**
+## Link (`link.py`)
 
-- `--mode mcs`: NR MCS 0–28 at reference \(k\) (BG1: 8000, BG2: 3693).
-- `--mode legacy`: LDPC at rates 0.2 and 0.5 with BPSK, matching the
-  PHY used in `sys_data/acc_data/acc_data.xlsx`.
+`TBLink` sends one TB at a given payload and MCS.
+Tables use AWGN Es/N0 at the demapper; time-varying SINR comes from the traces.
+Code-block layout follows 5G NR (BG1/BG2, rate matching). A TB fails if any
+code block has an information-bit error after LDPC decoding.
 
-**Output.** `config,mcs_index,qm,code_rate,bg,k,snr_db,cb_fail_rate,residual_ber,n_trials`
+## BLER (`run_bler.py`)
 
-```bash
-python run_cb_scan.py --mode legacy ...
-python run_cb_scan.py --mode mcs --snr -5 20 1 ...
-```
+Monte Carlo TB BLER over branch × MCS × SNR.
+Default grid: MCS 0–28, SNR −5…20 dB (1 dB step).
+Each point stops after enough TB errors or a trial cap; CSV rows append so runs
+can resume.
 
-## Synthesized accuracy (`synth_acc.py`)
+## Accuracy (`run_acc.py`)
 
-Builds `acc_table.csv` without exporting split-DNN features:
+Sends real feature payloads through `TBLink`, then scores the recovered bits
+with the split-DNN tail (`--provider npz`, features under `features/<branch>.npz`).
+Writes `acc_table.csv` and clean (error-free) accuracy in `acc_clean.csv`.
 
-1. Fit branch-wise Φ curves (accuracy vs residual BER) from
-   `acc_data.xlsx`, primarily using uncoded rate-1.0 rows with analytic
-   BER \(Q(\sqrt{2\cdot\mathrm{SNR}})\).
-2. Map each `(MCS, SNR)` residual BER from `run_cb_scan.py` through Φ.
-3. Optionally assemble `bler_table.csv` via \(1-(1-p_{CB})^K\) with the
-   system payload sizes.
+## Channel traces (`run_traces.py`)
 
-```bash
-python synth_acc.py --calib-only   # Φ plots only
-python synth_acc.py                # full tables
-```
-
----
-
-## Channel gains (`run_traces.py`)
-
-Generates uplink MIMO channel gains under 3GPP TR 38.901 UMi. The system
-simulator turns those gains into SINR after it knows who is transmitting.
-
-**Channel.** 7 omnidirectional cells at the hex-site centers, inter-site
-distance 200 m. BS: 2×4 antennas, omnidirectional elements. MD: 2 antennas.
-One sample per system slot (1 s). Default speed 0.8 m/s. A chunk of slots
-shares one cluster draw and a continuous Doppler clock; the next chunk moves
-the MDs and redraws shadowing. MDs bounce inside the deployment.
-
-**What is stored.** `channel_<tag>.npz` holds
-`H[slot, cell, ue, n_rx, n_tx]`, the path-summed channel. SINR is not in
-the file. At runtime, same-cell MDs are orthogonal, other-cell transmitters
-enter an interference-rejection combiner, and the two layer SINRs are
-combined with EESM (\(\beta=1\)). The transport-block spectral efficiency
-is the sum of the two layers. Transmit power is fractional control with
-\(P_{\max}=0.1\) W, \(P_0=-85\) dBm, \(\alpha=0.8\), and an 8 dB noise figure.
+Uplink MIMO channels under 3GPP TR 38.901 UMi: 7 cells, ISD 200 m,
+BS 2×4 antennas, MD 2 antennas, 0.8 m/s mobility, 1 s slots.
+Stores `H[slot, cell, ue, n_rx, n_tx]` in `channel_<tag>.npz`.
+At runtime the simulator computes IRC SINR and EESM; SINR is not stored in the file.
 
 ```bash
 python run_traces.py --slots 1000 --tag smoke7
 ```
 
-`SinrTrace.from_config_dir` loads `channel_<tag>.npz` when it exists.
+## Outputs used by OMNIS+
 
----
+| File | Used for |
+|------|----------|
+| `output/mcs_def.csv` | MCS indices and rates |
+| `output/bler_table.csv` | Goodput / delay |
+| `output/acc_table.csv` | Realized task accuracy |
+| `output/acc_clean.csv` | Clean accuracy per branch |
+| `output/channel_*.npz` | Multi-cell channel gains |
+| `output/channel_*_meta.json` | Antenna / power-control metadata |
 
-## Outputs consumed by OMNIS
-
-| Artifact | Consumer |
-|----------|----------|
-| `output/mcs_def.csv` | `McsTable` |
-| `output/bler_table.csv` | BLER / goodput |
-| `output/acc_table.csv` | Channel-conditioned Acc (when present; else synth curves) |
-| `output/acc_clean.csv` | Clean accuracy anchors |
-| `output/channel_*.npz` | `ChannelTrace` / `SinrTrace` (live IRC SINR) |
-| `output/channel_*_meta.json` | antenna, layer, and power-control metadata |
-
-Split-DNN branch training that supplies measured payloads / Acc calibration inputs is in
-`../split_dnn/` (not invoked by these scripts at runtime).
+Split-DNN training lives in `../split_dnn/` (not called at runtime).

@@ -12,7 +12,7 @@ OMNIS/
 ├── baselines/       # comparison schemes
 ├── experiments/     # run / plot scripts
 ├── phy_sim/         # PHY tables and channel traces
-├── split_dnn/       # offline DNN training
+├── split_dnn/       # split DNN training
 ├── sys_data/        # config
 └── figures/         # plot outputs
 ```
@@ -102,20 +102,18 @@ OMNIS/
 | `mcs.py` | Build 5G NR MCS definition table |
 | `payloads.py` | Branch payload sizes (keep in sync with `Config.data_size`) |
 | `link.py` | One transport-block encode / transmit / decode (Sionna) |
-| `features.py` | Hooks to feed Acc table from real or synthetic features |
+| `features.py` | Load feature payloads; score Acc with the split-DNN tail |
 | `run_bler.py` | Sweep (branch, MCS, SNR) → `bler_table.csv` |
 | `run_acc.py` | Sweep (branch, MCS, SNR) → `acc_table.csv` |
-| `run_cb_scan.py` | Cheap code-block fail / residual-BER scan |
-| `synth_acc.py` | Build Acc/BLER tables from legacy curves (no DNN export) |
 | `run_traces.py` | Generate 7-cell UMi channel traces |
 
-Default outputs live in `phy_sim/output/` (tag `smoke7`).
+Default outputs: `phy_sim/output/` (tag `smoke7`).
 Online sim only needs those files; rebuilding needs Sionna (`phy_sim/README.md`).
 
-### `split_dnn/` (offline only)
+### `split_dnn/`
 
-Online control never imports this folder. Payloads and Acc tables are copied into
-`sys_data/config.py` / `phy_sim/`.
+Online control never imports this folder. Train models here; payloads go into
+`sys_data/config.py`. Details: `split_dnn/README.md`.
 
 | File | Description |
 |------|-------------|
@@ -125,14 +123,14 @@ Online control never imports this folder. Payloads and Acc tables are copied int
 | `boxcoder.py` | Box quantization and bitstream pack / unpack |
 | `rpn_updated.py` | Custom RPN for split training |
 | `anchor_utils_updated.py` | Anchors for the custom RPN |
-| `coco_utils.py` | COCO (and related) dataset loaders |
+| `coco_utils.py` | COCO dataset loaders |
 | `transforms.py` | Detection transforms |
-| `utils.py` | Training / annotation helpers |
+| `utils.py` | Training helpers |
 | `Split_FRCNN_training.py` | Train split Faster R-CNN |
 | `Split_MaskRCNN_training.py` | Train split Mask R-CNN |
-| `Split_MaskRCNN_training_with_bitstream.py` | Mask R-CNN train with bitstream / BER path |
-| `eval_DD.py` | Quick COCO mAP check for a checkpoint |
-| `bitstream_tests.py` | Bitstream / noise test loops |
+| `Split_MaskRCNN_training_with_bitstream.py` | Mask R-CNN + bitstream / BER path |
+| `eval_DD.py` | Quick mAP check |
+| `bitstream_tests.py` | Bitstream / noise tests |
 
 ## Setup
 
