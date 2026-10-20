@@ -21,7 +21,7 @@ run_traces.py →  channel_<tag>.npz
 
 | File | Description |
 |------|-------------|
-| `mcs.py` | 5G NR MCS table (3GPP TS 38.214, indices 0–28) |
+| `mcs.py` | PUSCH MCS Table 5.1.3.1-1 (no transform precoding; indices 0–28) |
 | `payloads.py` | Branch payload sizes (keep in sync with `Config.data_size`) |
 | `link.py` | Encode / transmit / decode one transport block |
 | `features.py` | Load feature payloads and score accuracy with the split-DNN tail |
@@ -42,7 +42,7 @@ Sionna 2.x with a PyTorch backend. Use `--device cuda` for large sweeps.
 ```bash
 cd phy_sim
 
-# MCS definitions
+# MCS definitions (TS 38.214 Table 5.1.3.1-1)
 python mcs.py
 
 # BLER table (smoke / full)

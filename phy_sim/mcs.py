@@ -1,8 +1,12 @@
 """MCS definitions from 3GPP TS 38.214 Table 5.1.3.1-1 (64QAM, indices 0-28).
 
+OMNIS+ models MIMO PUSCH with transform precoding disabled (CP-OFDM).
+Under that configuration, TS 38.214 Clause 6.1.4.1 selects Table 5.1.3.1-1
+for MCS (the same 64QAM table used for PDSCH). Tables 6.1.4.1-1/2 apply only
+when transform precoding is enabled (DFT-s-OFDM) and are not used here.
+
 Code rates are the exact standard values (R x 1024). This is the same MCS set
-used in the accuracy figure produced with the link-level simulator, so the
-indices here are the canonical key joining every PHY table in this package.
+used in the link-level BLER / Acc sweeps, so the indices join every PHY table.
 """
 
 import csv
